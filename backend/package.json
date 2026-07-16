@@ -1,0 +1,13 @@
+{
+  "name": "eva-debrief-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Backend Express de EVA Debrief : API + stockage JSON + auth par cookie signé.",
+  "main": "server.js",
+  "dependencies": {
+    "express": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
