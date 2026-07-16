@@ -89,7 +89,7 @@ flowchart LR
     subgraph Navigateur
         UI["frontend/src/*.js<br/>(modules ES, buildés par Vite)"]
     end
-    subgraph Serveur Node.js — backend/
+    subgraph SRVBOX["Serveur Node.js — backend/"]
         SRV["server.js<br/>(Express : routes API + statique)"]
         AUTH["auth.js<br/>(sessions par cookie)"]
         DB["db.js<br/>(store JSON, écriture atomique)"]
