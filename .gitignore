@@ -3,3 +3,4 @@ data.json
 data.json.tmp
 *.log
 CLAUDE.md
+frontend/dist/

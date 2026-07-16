@@ -18,7 +18,10 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DATA_DIR = process.env.DATA_DIR || __dirname;
+// __dirname pointe maintenant vers backend/ (ce fichier y a été déplacé) — on
+// remonte d'un niveau par défaut pour que data.json reste à la racine du repo,
+// là où il vivait avant ce déplacement, sans casser les déploiements existants.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..');
 const DATA_FILE = path.join(DATA_DIR, process.env.DATA_FILE || 'data.json');
 
 // Forme initiale de la base quand data.json n'existe pas encore (premier lancement).

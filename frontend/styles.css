@@ -1,0 +1,11 @@
+@import "styles/tokens.css";
+@import "styles/base.css";
+@import "styles/shell.css";
+@import "styles/tables.css";
+@import "styles/historique.css";
+@import "styles/trends.css";
+@import "styles/profile.css";
+@import "styles/equipes.css";
+@import "styles/analytics.css";
+@import "styles/import.css";
+@import "styles/responsive.css";

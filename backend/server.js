@@ -1,16 +1,25 @@
 // ============================================================================
 // Serveur EVA Debrief — historique de parties + stats de saison + équipes
 //
-// Sert le frontend statique (public/) et expose une API qui centralise
-// l'import, la déduplication et le stockage des données. Toute la logique
-// d'analyse (tendances, profils, comparatifs, équipes) reste côté navigateur,
-// ce serveur ne fait que stocker/servir les données brutes de façon fiable.
+// Sert le frontend buildé (../frontend/dist, généré par `npm run build` — voir
+// frontend/vite.config.js) et expose une API qui centralise l'import, la
+// déduplication et le stockage des données. Toute la logique d'analyse
+// (tendances, profils, comparatifs, équipes) reste côté navigateur, ce
+// serveur ne fait que stocker/servir les données brutes de façon fiable.
+//
+// En développement, ne pas ouvrir ce serveur directement dans le navigateur :
+// utiliser le serveur de dev Vite (`npm run dev`, port 5173 par défaut), qui
+// sert le frontend depuis les sources avec rechargement à chaud et proxifie
+// les appels /api/* vers ce serveur. `frontend/dist` n'existe que si
+// `npm run build` a déjà été lancé au moins une fois.
 // ============================================================================
 
 const express = require('express');
 const path = require('path');
 const db = require('./db');
 const auth = require('./auth');
+
+const FRONTEND_DIR = path.join(__dirname, '..', 'frontend', 'dist');
 
 const app = express();
 app.use(express.json({ limit: '100mb' })); // les exports d'historique complets peuvent être volumineux
@@ -29,11 +38,6 @@ if (!auth.isProtected()) {
 app.use((req, res, next) => {
   req.cookies = auth.parseCookies(req);
   next();
-});
-
-// Sert la page de connexion (accessible sans être authentifié, sinon on ne pourrait jamais se connecter).
-app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 // Vérifie le mot de passe et ouvre une session (cookie signé, voir auth.js).
@@ -56,12 +60,12 @@ app.post('/api/logout', (req, res) => {
 
 app.use((req, res, next) => {
   if (!auth.isProtected()) return next(); // pas de mot de passe configuré = accès libre
-  if (req.path === '/login' || req.path === '/api/login') return next();
+  if (req.path === '/login.html' || req.path === '/api/login') return next();
   if (auth.isValidSession(req.cookies[auth.SESSION_COOKIE])) return next();
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentification requise.' });
   }
-  return res.redirect('/login?next=' + encodeURIComponent(req.originalUrl));
+  return res.redirect('/login.html?next=' + encodeURIComponent(req.originalUrl));
 });
 
 // ---------------------------------------------------------------------------
@@ -212,9 +216,9 @@ app.delete('/api/reset', (req, res) => {
 // ---------------------------------------------------------------------------
 // Frontend statique
 // ---------------------------------------------------------------------------
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(FRONTEND_DIR));
 app.use((req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
 });
 
 // ---------------------------------------------------------------------------
