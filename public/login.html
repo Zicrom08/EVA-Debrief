@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>EVA Debrief — Connexion</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  :root{
+    --bg:#0a0d14; --panel:#11151f; --panel-2:#161b28; --line:#232a3a;
+    --text:#e7ebf3; --muted:#7c8598; --alliance:#4f9dff; --rebels:#ff7a45; --loss:#ff5c69;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;}
+  body{
+    background:
+      radial-gradient(circle at 15% 0%, #131a29 0%, transparent 45%),
+      radial-gradient(circle at 100% 100%, #1a1120 0%, transparent 40%),
+      var(--bg);
+    color:var(--text);
+    font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+    display:flex; align-items:center; justify-content:center; min-height:100vh;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:14px;
+    padding:38px 34px; width:320px; box-shadow:0 20px 60px rgba(0,0,0,.45);
+  }
+  .mark{
+    width:44px; height:44px; border-radius:8px; margin:0 auto 18px;
+    background:linear-gradient(135deg, var(--alliance), var(--rebels));
+    transform:rotate(45deg);
+  }
+  h1{
+    font-family:'Segoe UI',system-ui,sans-serif; font-weight:700; font-size:17px;
+    text-align:center; margin:0 0 4px; letter-spacing:0.05em; text-transform:uppercase;
+  }
+  p{color:var(--muted); font-size:12px; text-align:center; margin:0 0 24px;}
+  input[type=password]{
+    width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
+    color:var(--text); padding:11px 12px; font-size:14px; margin-bottom:14px;
+  }
+  input[type=password]:focus{outline:none; border-color:var(--alliance);}
+  button{
+    width:100%; background:var(--alliance); color:#0a0d14; border:none; border-radius:8px;
+    padding:11px; font-weight:700; font-size:14px; cursor:pointer;
+  }
+  button:hover{filter:brightness(1.08);}
+  button:disabled{opacity:0.6; cursor:default;}
+  .error{color:var(--loss); font-size:12px; text-align:center; min-height:16px; margin-top:12px;}
+</style>
+</head>
+<body>
+  <form class="card" id="loginForm">
+    <div class="mark"></div>
+    <h1>EVA Debrief</h1>
+    <p>Entre le mot de passe pour accéder au site</p>
+    <input type="password" id="password" placeholder="Mot de passe" autofocus autocomplete="current-password">
+    <button type="submit" id="loginBtn">Se connecter</button>
+    <div class="error" id="loginError"></div>
+  </form>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const btn = document.getElementById('loginBtn');
+    const errEl = document.getElementById('loginError');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errEl.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Connexion…';
+      const password = document.getElementById('password').value;
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({}));
+          errEl.textContent = j.error || 'Mot de passe incorrect.';
+          btn.disabled = false;
+          btn.textContent = 'Se connecter';
+          return;
+        }
+        // redirige vers la page demandée à l'origine si connue, sinon l'accueil
+        const params = new URLSearchParams(window.location.search);
+        window.location.href = params.get('next') || '/';
+      } catch (err) {
+        errEl.textContent = 'Erreur de connexion au serveur.';
+        btn.disabled = false;
+        btn.textContent = 'Se connecter';
+      }
+    });
+  </script>
+</body>
+</html>
