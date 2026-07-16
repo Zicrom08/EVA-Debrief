@@ -1,0 +1,27 @@
+/* Polices système uniquement — aucune requête réseau externe (pas de Google Fonts) */
+:root{
+  --bg:#0a0d14;
+  --panel:#11151f;
+  --panel-2:#161b28;
+  --line:#232a3a;
+  --text:#e7ebf3;
+  --muted:#7c8598;
+  --alliance:#4f9dff;
+  --rebels:#ff7a45;
+  --win:#3ddc84;
+  --loss:#ff5c69;
+  --gold:#ffc857;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:
+    radial-gradient(circle at 15% 0%, #131a29 0%, transparent 45%),
+    radial-gradient(circle at 100% 100%, #1a1120 0%, transparent 40%),
+    var(--bg);
+  color:var(--text);
+  font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+  min-height:100vh;
+}
+.mono{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;}
+.disp{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;}

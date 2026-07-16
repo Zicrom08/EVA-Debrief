@@ -87,9 +87,9 @@ le rendu apparaisse directement dans ce README sur GitHub)*
 ```mermaid
 flowchart LR
     subgraph Navigateur
-        UI["public/index.html<br/>(SPA, aucun framework)"]
+        UI["frontend/src/*.js<br/>(modules ES, buildés par Vite)"]
     end
-    subgraph Serveur Node.js
+    subgraph Serveur Node.js — backend/
         SRV["server.js<br/>(Express : routes API + statique)"]
         AUTH["auth.js<br/>(sessions par cookie)"]
         DB["db.js<br/>(store JSON, écriture atomique)"]
@@ -112,14 +112,24 @@ le JSON brut à `/api/import`, puis recharge l'état complet depuis
 sont gérés une seule fois, côté serveur — que l'import vienne d'un
 navigateur, d'un autre, ou d'un appel API direct.
 
+Le frontend (`frontend/`) et le backend (`backend/`) sont deux projets
+distincts avec chacun leur `package.json`, reliés uniquement par le contrat
+HTTP `/api/*` — mais ils se déploient comme un seul process Node en
+production : `npm run build` compile le frontend en fichiers statiques
+(`frontend/dist`), que `backend/server.js` sert lui-même (voir
+[Installation](#installation)).
+
 ## Stack technique
 
 - **Backend** : Node.js + [Express](https://expressjs.com/), aucune autre
   dépendance de production. Pas de base de données externe.
 - **Stockage** : fichier JSON unique avec écriture atomique (voir
   [pourquoi](#où-sont-stockées-les-données) plutôt qu'une base SQL).
-- **Frontend** : HTML/CSS/JS vanilla, un seul fichier, graphiques SVG faits
-  main (aucune librairie de charting).
+- **Frontend** : HTML/CSS/JS vanilla (aucun framework UI), organisé en
+  modules ES par domaine et buildé par [Vite](https://vitejs.dev/) (dev
+  server avec rechargement à chaud + bundling pour la prod — aucune
+  dépendance runtime ajoutée, Vite n'est qu'un outil de build). Graphiques
+  SVG faits main (aucune librairie de charting).
 - **Auth** : sessions par cookie signé, sans dépendance (`crypto` natif de
   Node), mot de passe unique partagé.
 - **Collecteur** : userscript Tampermonkey qui intercepte `fetch`/`XHR` sur
@@ -128,15 +138,29 @@ navigateur, d'un autre, ou d'un appel API direct.
 ## Structure du projet
 
 ```
-eva-server/
-├── server.js                       # Point d'entrée : routes API + fichiers statiques + HTTP(S)
-├── db.js                           # Couche de stockage (data.json, dédup, requêtes)
-├── auth.js                         # Sessions par cookie, comparaison de mot de passe
-├── package.json
-├── public/
-│   ├── index.html                  # Toute l'interface (SPA)
-│   └── login.html                  # Page de connexion
-└── eva_history_collector.user.js   # Script Tampermonkey (côté navigateur, sur le site EVA)
+eva-debrief/
+├── package.json                     # Orchestrateur racine (workspaces npm, scripts dev/build/start)
+├── data.json                        # Données (généré au runtime, gitignored)
+├── backend/
+│   ├── package.json                 # dependencies: express
+│   ├── server.js                    # Point d'entrée : routes API + fichiers statiques buildés + HTTP(S)
+│   ├── db.js                        # Couche de stockage (data.json, dédup, requêtes)
+│   └── auth.js                      # Sessions par cookie, comparaison de mot de passe
+├── frontend/
+│   ├── package.json                 # devDependencies: vite
+│   ├── vite.config.js                # Config Vite (multipage, proxy /api en dev)
+│   ├── index.html                    # Squelette HTML de la SPA
+│   ├── login.html                    # Page de connexion
+│   ├── styles.css, styles/*.css       # CSS, un fichier par domaine
+│   ├── src/
+│   │   ├── main.js                    # Point d'entrée JS (bootstrap)
+│   │   ├── state.js                   # État partagé
+│   │   ├── format.js, api.js, ui-prefs.js, game-filters.js
+│   │   ├── historique.js, tendances.js, comparatif.js, equipes.js
+│   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
+│   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
+│   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
+└── eva_history_collector.user.js    # Script Tampermonkey (côté navigateur, sur le site EVA)
 ```
 
 ## Installation
@@ -145,10 +169,13 @@ Prérequis : [Node.js](https://nodejs.org/) version 18 ou plus récente (déjà
 présent sur la plupart des hébergements Node). Aucun compilateur, aucune
 base de données externe à installer.
 
+**En production** (un seul process Node, un seul port) :
+
 ```bash
-cd eva-server
-npm install
-npm start
+cd eva-debrief
+npm install          # installe les deux workspaces (backend + frontend)
+npm run build         # build le frontend (Vite) dans frontend/dist
+npm start              # démarre backend/server.js, qui sert frontend/dist + l'API
 ```
 
 Le serveur démarre sur `http://localhost:3000` par défaut. Ouvre cette
@@ -161,10 +188,24 @@ Pour changer de port :
 PORT=8080 npm start
 ```
 
+**En développement** (rechargement à chaud du frontend) :
+
+```bash
+npm run dev
+```
+
+Ça lance deux process en parallèle : le backend sur `:3000` (API seulement)
+et le serveur de dev Vite sur `:5173` (frontend, avec proxy automatique des
+appels `/api/*` vers le port 3000). **Ouvre `http://localhost:5173`**, pas
+3000 — le port 3000 ne sert que l'API tant que `frontend/dist` n'a pas été
+buildé au moins une fois.
+
 ## Où sont stockées les données
 
-Dans `data.json`, à la racine du projet (à côté de `server.js`). Pour
-changer son emplacement :
+Dans `data.json`, à la racine du projet (`backend/db.js` y vit désormais,
+mais son `DATA_DIR` par défaut remonte volontairement d'un niveau pour que
+`data.json` reste au même endroit qu'avant ce déplacement). Pour changer son
+emplacement :
 
 ```bash
 DATA_DIR=/var/lib/eva-debrief npm start
@@ -176,18 +217,18 @@ DATA_FILE=mes-donnees.json npm start
 équipes). Le copier suffit à faire une sauvegarde complète. Tu peux aussi
 récupérer un export complet à tout moment via `GET /api/export`.
 
-**Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `db.js` stocke
-tout avec une écriture atomique (jamais de fichier à moitié écrit même si le
-process est tué en pleine sauvegarde). Ce choix est volontaire : les bases
-SQL embarquées type `better-sqlite3` demandent une compilation native (C++)
-qui échoue souvent sur des hébergements standards sans outils de build —
-c'est d'ailleurs ce qui s'est produit en développant cette appli. Un fichier
-JSON, lui, fonctionne partout où Node tourne, sans rien à compiler. Pour le
-volume de données concerné ici (l'historique de parties d'un joueur ou d'un
-petit groupe), c'est largement suffisant. Si tu préfères une vraie base SQL
-plus tard (Postgres, MySQL, SQLite natif...), seul `db.js` a besoin d'être
-réécrit — `server.js` et le frontend n'ont pas à changer, tant que les
-mêmes fonctions sont exportées.
+**Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `backend/db.js`
+stocke tout avec une écriture atomique (jamais de fichier à moitié écrit
+même si le process est tué en pleine sauvegarde). Ce choix est volontaire :
+les bases SQL embarquées type `better-sqlite3` demandent une compilation
+native (C++) qui échoue souvent sur des hébergements standards sans outils
+de build — c'est d'ailleurs ce qui s'est produit en développant cette appli.
+Un fichier JSON, lui, fonctionne partout où Node tourne, sans rien à
+compiler. Pour le volume de données concerné ici (l'historique de parties
+d'un joueur ou d'un petit groupe), c'est largement suffisant. Si tu préfères
+une vraie base SQL plus tard (Postgres, MySQL, SQLite natif...), seul
+`backend/db.js` a besoin d'être réécrit — `backend/server.js` et le
+frontend n'ont pas à changer, tant que les mêmes fonctions sont exportées.
 
 ## Authentification par mot de passe
 
@@ -203,7 +244,7 @@ avertissement au démarrage et **reste accessible sans mot de passe** —
 pratique en développement local, à éviter en production.
 
 Comment ça marche : toute requête (page ou API) sans session valide est
-redirigée vers `/login` (ou reçoit une réponse `401` pour les appels API).
+redirigée vers `/login.html` (ou reçoit une réponse `401` pour les appels API).
 Une fois le bon mot de passe saisi, une session est créée (cookie
 `HttpOnly`, 30 jours, marqué `Secure` automatiquement si servi en HTTPS) et
 stockée en mémoire côté serveur — un redémarrage du serveur déconnecte tout
@@ -220,7 +261,7 @@ Environment=EVA_PASSWORD=un-mot-de-passe-solide
 Avec pm2 :
 
 ```bash
-EVA_PASSWORD=un-mot-de-passe-solide pm2 start server.js --name eva-debrief
+EVA_PASSWORD=un-mot-de-passe-solide pm2 start backend/server.js --name eva-debrief
 pm2 save
 ```
 
@@ -233,6 +274,10 @@ réseau.
 
 ### Avec systemd (recommandé sur un VPS Linux)
 
+⚠️ Le service ne rebuild pas le frontend tout seul : lance `npm run build`
+après chaque mise à jour du code (`git pull && npm install && npm run build`)
+avant de redémarrer le service.
+
 Crée `/etc/systemd/system/eva-debrief.service` :
 
 ```ini
@@ -242,8 +287,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/chemin/vers/eva-server
-ExecStart=/usr/bin/node server.js
+WorkingDirectory=/chemin/vers/eva-debrief
+ExecStart=/usr/bin/node backend/server.js
 Restart=on-failure
 Environment=PORT=3000
 
@@ -261,7 +306,8 @@ sudo systemctl enable --now eva-debrief
 
 ```bash
 npm install -g pm2
-pm2 start server.js --name eva-debrief
+npm run build   # build le frontend avant de démarrer (voir remarque ci-dessus)
+pm2 start backend/server.js --name eva-debrief
 pm2 save
 pm2 startup   # affiche la commande à lancer pour le démarrage automatique
 ```
@@ -448,10 +494,13 @@ exports JSON collés à la main, puis a évolué par itérations : ajout
 progressif d'analyses (tendances, profils, comparatifs), extraction en
 équipes personnalisées, migration vers un vrai backend avec déduplication
 centralisée, authentification, HTTPS, puis une passe de responsive design
-et de polish visuel. Le code reflète cette histoire — les commentaires dans
-`server.js`/`db.js`/`auth.js` et dans `public/index.html` expliquent le
+et de polish visuel, puis d'un découpage du frontend monofichier en modules
+ES (buildés par Vite) avec séparation nette entre `backend/` et `frontend/`.
+Le code reflète cette histoire — les commentaires dans `backend/server.js`/
+`backend/db.js`/`backend/auth.js` et dans `frontend/src/*.js` expliquent le
 *pourquoi* de chaque choix (fichier JSON plutôt que SQL, sessions maison
-plutôt qu'une lib, etc.), pas seulement le *quoi*.
+plutôt qu'une lib, état partagé en un seul objet plutôt que des `let`
+séparés, etc.), pas seulement le *quoi*.
 
 ## Licence
 
