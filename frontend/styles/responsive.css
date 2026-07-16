@@ -1,0 +1,72 @@
+/* ===== Responsive : tablette / mobile (portrait ET paysage) =====
+   Seuil à 1000px plutôt que ~820px : beaucoup de téléphones en mode paysage
+   (ou grands téléphones) ont une largeur logique de 850-930px — un seuil
+   trop bas les laisse passer entre les mailles et garde la mise en page
+   desktop à deux colonnes, illisible sur un écran de cette taille. */
+@media (max-width:1000px){
+  .layout{flex-direction:column;}
+  .sidebar{width:100%;max-height:340px;}
+  .detail{max-height:none;}
+  .summary{grid-template-columns:repeat(3,1fr);}
+  .profile-grid{grid-template-columns:repeat(2,1fr);}
+
+  header{padding:16px 16px 14px;}
+  .brand h1{font-size:18px;}
+  .brand p{font-size:10px;}
+  .header-actions{width:100%;}
+  .player-select{width:100%;justify-content:space-between;}
+  .player-select select{flex:1;min-width:0;}
+
+  .tabbar{
+    padding:10px 12px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    flex-wrap:nowrap;
+  }
+  .tab-btn{flex-shrink:0;padding:8px 12px;font-size:12px;}
+
+  .range-bar{padding:10px 12px;gap:10px;}
+  .range-info{width:100%;margin-left:0;text-align:left;order:99;}
+  .map-exclude-panel{padding:12px 16px;}
+
+  .detail{padding:18px 16px;}
+  .profile-wrap{padding:16px 16px;}
+  .trends-wrap{padding:16px 16px;}
+
+  .scoreboard{padding:18px 14px;gap:10px;border-radius:10px;}
+  .team-score .pts{font-size:32px;}
+  .team-score .name{font-size:11px;}
+  .vs{font-size:12px;}
+
+  .match-team-header{padding:11px 14px;font-size:13px;}
+  table.match-roster th, table.match-roster td{padding:9px 12px;font-size:12px;}
+  table.roster th, table.roster td{padding:7px 8px;}
+  .match-rank-circle{width:22px;height:22px;font-size:11px;}
+
+  .team-vs-header{gap:10px;}
+  .team-vs-header .team-name{font-size:14px;}
+  .compare-grid-narrow{font-size:11px;}
+  .compare-grid-narrow .metric-val{font-size:14px;}
+
+  .team-select-row{flex-direction:column;}
+  .team-select-row .player-select{width:100%;}
+}
+
+@media (max-width:520px){
+  .summary{grid-template-columns:repeat(2,1fr);}
+  .summary .cell{padding:12px 14px;}
+  .summary .cell .value{font-size:20px;}
+  .profile-grid{grid-template-columns:1fr 1fr;}
+  .highlight-grid{grid-template-columns:1fr;}
+  .streak-row{grid-template-columns:1fr;}
+
+  .scoreboard{flex-wrap:wrap;justify-content:center;text-align:center;}
+  .team-score{flex:1 1 40%;}
+  .vs{flex:1 1 100%;order:99;}
+  .team-score .pts{font-size:28px;}
+
+  table.match-roster th, table.match-roster td{padding:8px 10px;font-size:11px;}
+  table.match-roster td.name-cell{font-size:12px;}
+  .match-rank-circle{width:20px;height:20px;font-size:10px;}
+
+  .import-wrap{margin:30px auto;padding:0 14px;}
+  .dropzone{padding:26px 14px;}
+}

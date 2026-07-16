@@ -1,0 +1,29 @@
+table.roster{width:100%;border-collapse:collapse;font-size:13px;}
+table.roster th{text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;font-weight:600;padding:6px 10px;border-bottom:1px solid var(--line);}
+table.roster td{padding:8px 10px;border-bottom:1px solid var(--line);font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;}
+table.roster td.name-cell{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-weight:500;}
+table.roster tr.me{background:rgba(255,200,87,0.08);}
+table.roster tr.me td.name-cell{color:var(--gold);font-weight:700;}
+table.roster tr:hover{background:var(--panel);}
+.rank-badge{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:4px;background:var(--panel-2);font-size:11px;margin-right:4px;color:var(--muted);}
+.rank-badge.r1{background:var(--gold);color:#141414;}
+td.num, th.num,
+table.roster td.num, table.roster th.num,
+table.match-roster td.num, table.match-roster th.num{text-align:right;}
+.kd-good{color:var(--win);}
+.kd-bad{color:var(--loss);}
+.table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+table.match-roster{width:100%;border-collapse:collapse;font-size:14px;}
+table.match-roster th{
+  text-align:left;font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;
+  font-weight:600;padding:10px 20px;border-bottom:1px solid rgba(255,255,255,0.07);
+}
+table.match-roster td{padding:13px 20px;font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;border-bottom:1px solid rgba(255,255,255,0.05);}
+table.match-roster tr:last-child td{border-bottom:none;}
+table.match-roster td.name-cell{font-family:-apple-system,'Segoe UI',Roboto,sans-serif;font-weight:600;font-size:14px;}
+table.match-roster tr.me{background:rgba(255,200,87,0.10);}
+table.match-roster tr.me td.name-cell{color:var(--gold);}
+table.match-roster tr:hover{background:rgba(255,255,255,0.035);}
+table.match-roster td.best-alliance{color:var(--alliance);font-weight:700;}
+table.match-roster td.best-rebels{color:var(--rebels);font-weight:700;}

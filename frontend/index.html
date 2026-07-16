@@ -1,0 +1,138 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>EVA Debrief</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <div class="mark"><span>E</span></div>
+    <div>
+      <h1>EVA Debrief</h1>
+      <p id="brandSub">Aucune donnée importée</p>
+    </div>
+  </div>
+  <div class="header-actions" id="headerActions" style="display:none;">
+    <div class="player-select">
+      <label for="playerPicker">Joueur</label>
+      <select id="playerPicker"></select>
+    </div>
+    <button class="btn" id="addMoreBtn">+ Importer</button>
+    <button class="btn danger" id="resetBtn">Réinitialiser</button>
+    <button class="btn" id="logoutBtn" title="Se déconnecter">Déconnexion</button>
+  </div>
+</header>
+
+<div id="summary" class="summary" style="display:none;"></div>
+
+<div id="tabbar" class="tabbar" style="display:none;">
+  <button class="tab-btn active" data-tab="historique">Historique</button>
+  <button class="tab-btn" data-tab="tendances">Tendances</button>
+  <button class="tab-btn" data-tab="profil">Profil</button>
+  <button class="tab-btn" data-tab="comparatif">Comparatif</button>
+  <button class="tab-btn" data-tab="equipes">Équipes</button>
+</div>
+
+<div id="rangeBar" class="range-bar" style="display:none;">
+  <div class="range-presets">
+    <button class="btn small active" data-preset="all">Tout</button>
+    <button class="btn small" data-preset="7">7 jours</button>
+    <button class="btn small" data-preset="30">30 jours</button>
+    <button class="btn small" data-preset="90">3 mois</button>
+  </div>
+  <div class="range-custom">
+    <input type="date" id="rangeFrom" class="range-input">
+    <span class="range-arrow">→</span>
+    <input type="date" id="rangeTo" class="range-input">
+    <button class="btn small" id="rangeApplyBtn">Appliquer</button>
+  </div>
+  <button class="btn small" id="mapExcludeToggleBtn">Cartes & modes ▾</button>
+  <div class="range-info" id="rangeInfo"></div>
+</div>
+
+<div id="mapExcludePanel" class="map-exclude-panel" style="display:none;"></div>
+
+<div id="viewComparatif" class="view">
+  <div class="profile-wrap" id="comparatifContent"></div>
+</div>
+
+<div id="viewEquipes" class="view">
+  <div class="profile-wrap" id="equipesContent"></div>
+</div>
+
+<div id="viewHistorique" class="view active">
+  <div class="layout">
+    <div class="sidebar">
+      <div class="filters">
+        <select id="mapFilter"><option value="">Toutes les cartes</option></select>
+        <select id="outcomeFilter">
+          <option value="">Victoires + défaites</option>
+          <option value="Victory">Victoires</option>
+          <option value="Defeat">Défaites</option>
+        </select>
+      </div>
+      <div id="gameList"></div>
+    </div>
+    <div class="detail" id="detail">
+      <div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>
+    </div>
+  </div>
+</div>
+
+<div id="viewTendances" class="view">
+  <div class="trends-wrap">
+    <div class="trends-toggle">
+      <button class="btn small active" id="trendBySession" data-mode="session">Par séance</button>
+      <button class="btn small" id="trendByMonth" data-mode="month">Par mois</button>
+    </div>
+    <div class="trend-table-wrap" id="trendTableWrap"></div>
+  </div>
+</div>
+
+<div id="viewProfil" class="view">
+  <div class="profile-wrap" id="profilContent"></div>
+</div>
+
+<div id="importScreen" class="import-wrap">
+  <h2>Importer tes données</h2>
+  <p>Glisse un ou plusieurs fichiers JSON exportés (par le collecteur EVA ou copiés depuis les requêtes réseau), ou colle le JSON directement ci-dessous. Les imports successifs se fusionnent automatiquement, sans doublon.</p>
+
+  <div class="dropzone" id="dropzone">
+    <div class="icon">📂</div>
+    <div class="main">Glisse tes fichiers .json ici, ou clique pour parcourir</div>
+    <div class="sub">Plusieurs fichiers acceptés à la fois</div>
+    <input type="file" id="fileInput" accept="application/json,.json" multiple hidden>
+  </div>
+
+  <div class="import-divider">ou</div>
+
+  <textarea id="pasteArea" placeholder="Colle ici le JSON brut d'une requête (historique de parties ou profil de joueur), ou l'export du collecteur…"></textarea>
+  <div class="import-actions">
+    <button class="btn primary" id="loadPasteBtn">Charger ce JSON</button>
+  </div>
+  <div class="import-error" id="importError"></div>
+
+  <div class="import-help">
+    <strong>Formats acceptés :</strong><br>
+    · Historique de parties : <code>{ "data": { "cursorAfterhGameHistory": { "nodes": [...] } } }</code><br>
+    · Ton profil / stats de saison : <code>{ "data": { "getPlayerByUserId": { ... } } }</code><br>
+    · Profil public d'un autre joueur : <code>{ "data": { "getPublicPlayerByUsername": { ... } } }</code><br>
+    · Export du collecteur : <code>{ "nodes": [...], "playerStats": [...] }</code><br>
+    · Un simple tableau de parties.<br><br>
+    Les stats de profil sont des totaux cumulés : importe le même profil à plusieurs
+    dates différentes pour que l'onglet <strong>Profil</strong> puisse tracer son évolution.<br><br>
+    <strong>Sauvegarde :</strong> tes données sont stockées sur le serveur (dans sa base de
+    données), pas dans ce navigateur — elles sont donc visibles depuis n'importe quel appareil
+    qui accède à ce serveur, et survivent à un vidage de cache. La déduplication (parties déjà
+    connues, profils identiques) est gérée par le serveur, donc tu peux réimporter les mêmes
+    fichiers plusieurs fois sans risque.
+  </div>
+</div>
+
+<script type="module" src="/src/main.js"></script>
+</body>
+</html>
