@@ -25,6 +25,12 @@
   display:flex;align-items:center;gap:16px;flex-wrap:wrap;
   padding:12px 28px;border-bottom:1px solid var(--line);background:var(--bg);
 }
+.range-season{display:flex;align-items:center;gap:8px;}
+.range-season label{color:var(--muted);font-size:12px;}
+.season-select{
+  background:var(--panel);border:1px solid var(--line);border-radius:6px;
+  padding:6px 8px;color:var(--text);font-size:12px;
+}
 .range-presets{display:flex;gap:6px;}
 .range-custom{display:flex;align-items:center;gap:8px;}
 .range-input{

@@ -22,6 +22,7 @@ export const state = {
   storageAvailable: true,
   dateRangeStart: null,       // timestamp (ms) ou null = pas de borne
   dateRangeEnd: null,         // timestamp (ms) ou null = pas de borne
+  selectedSeasonId: null,     // seasonId choisi dans le filtre de saison, ou null = "Toutes les saisons"
   excludedMaps: new Set(),    // noms de cartes à exclure de toutes les analyses (ex: cartes mal étiquetées)
   excludedModes: new Set(),   // identifiants de mode à exclure (ex: modes PvE qui réutilisent un nom de carte PvP)
   knownModes: new Set(),      // modes déjà vus au moins une fois (pour n'appliquer le défaut auto-exclusion qu'une fois)
