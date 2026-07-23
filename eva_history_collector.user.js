@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      2.1
-// @description  Capture automatiquement l'historique de parties (cursorAfterhGameHistory) et les statistiques de profil (getPlayerByUserId / getPublicPlayerByUsername) depuis les requêtes réseau de la page EVA, et permet de les exporter en JSON pour la visionneuse.
+// @version      2.2
+// @description  Capture automatiquement l'historique de parties (cursorAfterhGameHistory) et les statistiques de profil (getPlayerByUserId, ta page de profil connectée — getPublicPlayerByUsername reste géré si les pages publiques refonctionnent un jour côté EVA) depuis les requêtes réseau de la page EVA, et permet de les exporter en JSON pour la visionneuse.
 // @match        *://*/*
 // @grant        none
 // @run-at       document-start
@@ -14,9 +14,14 @@
 // 3. (Recommandé) Remplace la ligne "@match" tout en haut par l'adresse exacte du
 //    site EVA, par exemple app.eva.gg — c'est plus propre que le filtre HOST_HINT
 //    ci-dessous, qui sert de garde-fou de secours.
-// 4. Va sur ta page d'historique de parties, ta page de profil, ou la page publique
-//    du profil d'un autre joueur, laisse-la charger / fais défiler pour déclencher
-//    les requêtes suivantes.
+// 4. Va sur ta page d'historique de parties et sur TA page de profil connectée
+//    (celle qui affiche tes propres stats de saison quand tu es identifié —
+//    requête getPlayerByUserId), laisse-la charger / fais défiler pour déclencher
+//    les requêtes suivantes. Les pages de profil PUBLIC d'un autre joueur
+//    (getPublicPlayerByUsername) ne fonctionnent plus côté EVA.gg au moment
+//    d'écrire ce script : le script sait toujours les reconnaître si elles
+//    remarchent un jour, mais pour l'instant ta propre page connectée est la
+//    seule source fiable de stats de saison.
 // 5. Un panneau apparaît en bas à droite avec le nombre de parties et de profils
 //    capturés. Clique sur "Télécharger JSON" pour récupérer le fichier.
 // 6. Importe ce fichier dans la visionneuse HTML (eva_game_viewer.html).
@@ -110,8 +115,11 @@
       let all = [];
       list.forEach((item) => {
         const d = item && item.data ? item.data : null;
-        // "getPlayerByUserId" = ton profil (authentifié), "getPublicPlayerByUsername" =
-        // la page publique du profil d'un autre joueur. Même forme de données pour les deux.
+        // "getPlayerByUserId" = ta page de profil connectée (authentifiée) — la seule
+        // source de stats de saison actuellement fonctionnelle sur EVA.gg.
+        // "getPublicPlayerByUsername" = page publique du profil d'un autre joueur ;
+        // cassée côté EVA.gg pour l'instant, mais on garde la reconnaissance au cas où
+        // elle refonctionne un jour. Même forme de données pour les deux.
         const p = d ? (d.getPlayerByUserId || d.getPublicPlayerByUsername) : null;
         if (p && p.user && p.user.id != null) all.push(p);
       });

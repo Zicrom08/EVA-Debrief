@@ -125,8 +125,9 @@
   <div class="import-help">
     <strong>Formats acceptés :</strong><br>
     · Historique de parties : <code>{ "data": { "cursorAfterhGameHistory": { "nodes": [...] } } }</code><br>
-    · Ton profil / stats de saison : <code>{ "data": { "getPlayerByUserId": { ... } } }</code><br>
-    · Profil public d'un autre joueur : <code>{ "data": { "getPublicPlayerByUsername": { ... } } }</code><br>
+    · Ton profil / stats de saison (page connectée) : <code>{ "data": { "getPlayerByUserId": { ... } } }</code><br>
+    · Profil public d'un autre joueur : <code>{ "data": { "getPublicPlayerByUsername": { ... } } }</code>
+      <span style="color:var(--loss);">(actuellement cassé côté EVA.gg — utilise ta page de profil connectée à la place)</span><br>
     · Export du collecteur : <code>{ "nodes": [...], "playerStats": [...] }</code><br>
     · Un simple tableau de parties.<br><br>
     Les stats de profil sont des totaux cumulés : importe le même profil à plusieurs

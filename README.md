@@ -483,15 +483,19 @@ est ouvert, voir la section [Authentification](#authentification-par-mot-de-pass
 `eva_history_collector.user.js` est un script [Tampermonkey](https://www.tampermonkey.net/)
 à installer dans le navigateur, sur le site EVA lui-même — pas sur ce
 serveur. Il intercepte les requêtes réseau de la page (historique de
-parties, profils publics) et affiche un petit panneau flottant pour
+parties, stats de profil) et affiche un petit panneau flottant pour
 télécharger un export JSON, à importer ensuite dans la visionneuse via
 "+ Importer".
 
-Ne capture volontairement **pas** ton propre profil authentifié
-(`getPlayerByUserId`) — seulement l'historique de parties et les profils
-publics (`getPublicPlayerByUsername`). Pour suivre tes propres stats de
-saison, importe la version publique de ton profil, comme pour n'importe
-quel autre joueur.
+Les stats de saison sont capturées via ta page de profil **connectée**
+(`getPlayerByUserId`) — les pages de profil **publiques** d'un autre joueur
+(`getPublicPlayerByUsername`) ne fonctionnent actuellement plus côté EVA.gg.
+Le script reconnaît toujours ce format au cas où EVA le réactive un jour,
+mais pour l'instant, importe ta propre page de profil connectée (comme
+n'importe quelle autre page du site) pour suivre tes stats de saison ;
+récupérer les stats de saison *d'un autre joueur* n'est plus possible tant
+que les pages publiques restent cassées (ses stats par partie, elles,
+continuent d'apparaître normalement dans l'historique de parties).
 
 ## Historique du projet
 
