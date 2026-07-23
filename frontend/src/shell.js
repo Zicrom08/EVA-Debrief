@@ -6,7 +6,7 @@ import { filteredGamesArray } from './game-filters.js';
 import { renderList } from './historique.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
-import { renderMapExcludePanel, updateRangeInfo } from './filters-ui.js';
+import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -23,6 +23,7 @@ export function showApp() {
   renderPlayerPicker();
   renderMapFilterOptions();
   renderMapExcludePanel();
+  renderSeasonFilterOptions();
   updateRangeInfo();
   renderSummary();
   renderList();
@@ -71,7 +72,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   state.gamesById = {}; state.players = {}; state.playerStatsSnapshots = {};
   state.customTeams = {};
   state.currentUid = null; state.activeGameId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
-  state.dateRangeStart = null; state.dateRangeEnd = null;
+  state.dateRangeStart = null; state.dateRangeEnd = null; state.selectedSeasonId = null;
   state.excludedMaps = new Set();
   state.excludedModes = new Set();
   state.knownModes = new Set();
@@ -86,6 +87,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   document.querySelector('.range-presets button[data-preset="all"]').classList.add('active');
   document.getElementById('rangeFrom').value = '';
   document.getElementById('rangeTo').value = '';
+  document.getElementById('seasonFilter').innerHTML = '<option value="">Toutes les saisons</option>';
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('viewHistorique').classList.add('active');
   document.getElementById('brandSub').textContent = 'Aucune donnée importée';

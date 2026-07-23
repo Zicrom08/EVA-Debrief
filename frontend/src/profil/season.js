@@ -1,4 +1,5 @@
 import { fmtDate, fmtDateShort, fmtDelta, fmtHM } from '../format.js';
+import { displaySeasonId } from '../seasons.js';
 
 // ================= PROFIL : carte de saison (depuis les snapshots getPlayerByUserId) =================
 export function renderSeasonCard(snaps) {
@@ -16,7 +17,7 @@ export function renderSeasonCard(snaps) {
         <div>
           <div class="profile-name">${latest.user.displayName || latest.user.username || '?'}</div>
           <div class="profile-sub">
-            ${latest.user.username || ''} · Saison ${exp.seasonId ?? '?'}
+            ${latest.user.username || ''} · Saison ${displaySeasonId(exp.seasonId) ?? '?'}
             ${latest.seasonPass && latest.seasonPass.active ? ' · <span class="badge-pass">Pass actif</span>' : ''}
             · capturé le ${fmtDate(latest.capturedAt)}
           </div>
@@ -53,6 +54,22 @@ export function renderEvolutionTable(snaps) {
   for (let i = 1; i < snaps.length; i++) {
     const prevExp = snaps[i-1].experience || {};
     const curExp = snaps[i].experience || {};
+
+    // Les stats de saison repartent de 0 à chaque nouvelle saison : si les deux captures
+    // n'appartiennent pas à la même saison, un delta brut donnerait des nombres négatifs
+    // absurdes (compteurs remis à zéro) plutôt qu'une vraie régression. On le signale
+    // explicitement au lieu de calculer une évolution qui n'a pas de sens ici.
+    if (prevExp.seasonId != null && curExp.seasonId != null && prevExp.seasonId !== curExp.seasonId) {
+      rows += `
+      <tr>
+        <td class="name-cell">${fmtDateShort(snaps[i-1].capturedAt)} → ${fmtDateShort(snaps[i].capturedAt)}</td>
+        <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
+          Nouvelle saison (${displaySeasonId(prevExp.seasonId)} → ${displaySeasonId(curExp.seasonId)}) — compteurs remis à zéro, pas de delta calculé.
+        </td>
+      </tr>`;
+      continue;
+    }
+
     const prev = (snaps[i-1].statistics && snaps[i-1].statistics.data) || {};
     const cur = (snaps[i].statistics && snaps[i].statistics.data) || {};
 

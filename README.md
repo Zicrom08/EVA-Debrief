@@ -66,10 +66,16 @@ adversaires) dans les parties importées, triable par winrate/K-D/dégâts/score
 **Équipes** — crée des groupes de joueurs personnalisés, consulte leurs
 stats agrégées, compare deux équipes entre elles.
 
-**Transverse** — filtres de période (préréglages ou dates personnalisées) et
-d'exclusion de cartes/modes appliqués de façon cohérente à tous les onglets ;
-déduplication fiable des imports (parties par id, profils par empreinte de
-contenu) ; authentification par mot de passe ; HTTPS ; interface responsive.
+**Transverse** — filtre de saison (les saisons sont détectées automatiquement à
+partir des captures de profil importées, chacune portant le numéro de saison en
+cours au moment de la capture) en plus des filtres de période (préréglages ou
+dates personnalisées) et d'exclusion de cartes/modes, appliqués de façon
+cohérente à tous les onglets ; le tableau d'évolution du Profil détecte aussi
+tout seul un changement de saison entre deux captures (les stats de saison
+repartent de 0 à chaque nouvelle saison) et signale la transition plutôt que de
+calculer un delta absurde ; déduplication fiable des imports (parties par id,
+profils par empreinte de contenu) ; authentification par mot de passe ; HTTPS ;
+interface responsive.
 
 ## Aperçu
 
