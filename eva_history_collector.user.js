@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      8.0
+// @version      9.0
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        none
@@ -201,12 +201,16 @@
   let stats = loadJSON(STATS_KEY, {});          // { [userId]: [snapshot, ...] sorted asc }
 
   // ---------- games ----------
-  function mergeGameNodes(nodes) {
+  function mergeGameNodes(nodes, seasonId) {
     if (!Array.isArray(nodes)) return 0;
     let added = 0;
     nodes.forEach((n) => {
       if (n && n.id != null) {
         if (!games[n.id]) added++;
+        // La partie elle-même ne renvoie pas son seasonId dans la réponse de l'API — on
+        // l'attache nous-mêmes à partir de la variable de la requête (voir tryFireEnriched).
+        // Ça permet à la visionneuse de filtrer/regrouper l'historique par saison.
+        if (seasonId != null) n.seasonId = seasonId;
         games[n.id] = n;
       }
     });
@@ -278,11 +282,11 @@
   }
 
   // ---------- dispatch ----------
-  function handleText(text, profileMeta) {
+  function handleText(text, meta) {
     if (!text) return;
-    profileMeta = profileMeta || { allowStats: true, seasonId: null };
+    meta = meta || { allowStats: true, seasonId: null };
     const hasGames = text.indexOf(MARKER_GAMES) !== -1;
-    const hasStats = profileMeta.allowStats !== false
+    const hasStats = meta.allowStats !== false
       && text.indexOf(MARKER_STATS_OWNED) !== -1 && text.indexOf('"statistics"') !== -1;
     if (!hasGames && !hasStats) return;
     let json;
@@ -294,11 +298,11 @@
     let addedGames = 0, addedStats = 0;
     if (hasGames) {
       const nodes = extractGameNodes(json);
-      if (nodes) addedGames = mergeGameNodes(nodes);
+      if (nodes) addedGames = mergeGameNodes(nodes, meta.seasonId);
     }
     if (hasStats) {
       const players = extractPlayerStats(json);
-      if (players) players.forEach((p) => { if (mergePlayerStat(p, profileMeta.seasonId)) addedStats++; });
+      if (players) players.forEach((p) => { if (mergePlayerStat(p, meta.seasonId)) addedStats++; });
     }
     if (addedGames || addedStats) {
       updatePanel();
@@ -335,14 +339,19 @@
     const enrichedBody = Object.assign({}, parsed, { query: QUERY_REPLACEMENTS[opName] });
     const enrichedInit = Object.assign({}, init, { body: JSON.stringify(enrichedBody) });
 
+    // Ni les parties ni les captures de profil ne renvoient leur propre seasonId dans la
+    // réponse — on récupère donc le seasonId directement depuis les VARIABLES de la
+    // requête envoyée (le site le connaît forcément, puisque c'est lui qui filtre par
+    // saison) et on l'attache nous-mêmes à ce qu'on stocke. Pour HistoryBa, le site exige
+    // toujours un seasonId précis (il n'affiche que les parties de la saison sélectionnée),
+    // donc cette valeur est fiable à chaque appel.
+    const requestSeasonId = parsed.variables && parsed.variables.seasonId != null ? parsed.variables.seasonId : null;
+
     origFetch.call(window, url, enrichedInit)
       .then((res) => res.text())
       .then((text) => {
-        const seasonId = opName === 'UseProfileUserOwned' && parsed.variables && parsed.variables.seasonId != null
-          ? parsed.variables.seasonId
-          : null;
-        const allowStats = opName !== 'UseProfileUserOwned' || seasonId != null;
-        handleText(text, { allowStats, seasonId });
+        const allowStats = opName !== 'UseProfileUserOwned' || requestSeasonId != null;
+        handleText(text, { allowStats, seasonId: requestSeasonId });
       })
       .catch(() => { /* échec ponctuel, sans conséquence : on retentera à la prochaine requête du site */ });
   }
