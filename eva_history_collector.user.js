@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      2.2
-// @description  Capture automatiquement l'historique de parties (cursorAfterhGameHistory) et les statistiques de profil (getPlayerByUserId, ta page de profil connectée — getPublicPlayerByUsername reste géré si les pages publiques refonctionnent un jour côté EVA) depuis les requêtes réseau de la page EVA, et permet de les exporter en JSON pour la visionneuse.
+// @version      8.0
+// @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        none
 // @run-at       document-start
@@ -14,40 +14,74 @@
 // 3. (Recommandé) Remplace la ligne "@match" tout en haut par l'adresse exacte du
 //    site EVA, par exemple app.eva.gg — c'est plus propre que le filtre HOST_HINT
 //    ci-dessous, qui sert de garde-fou de secours.
-// 4. Va sur ta page d'historique de parties et sur TA page de profil connectée
-//    (celle qui affiche tes propres stats de saison quand tu es identifié —
-//    requête getPlayerByUserId), laisse-la charger / fais défiler pour déclencher
-//    les requêtes suivantes. Les pages de profil PUBLIC d'un autre joueur
-//    (getPublicPlayerByUsername) ne fonctionnent plus côté EVA.gg au moment
-//    d'écrire ce script : le script sait toujours les reconnaître si elles
-//    remarchent un jour, mais pour l'instant ta propre page connectée est la
-//    seule source fiable de stats de saison.
+// 4. Va sur ta page d'historique de parties et sur ta page de profil, laisse-les
+//    charger / fais défiler pour déclencher les requêtes suivantes.
 // 5. Un panneau apparaît en bas à droite avec le nombre de parties et de profils
 //    capturés. Clique sur "Télécharger JSON" pour récupérer le fichier.
-// 6. Importe ce fichier dans la visionneuse HTML (eva_game_viewer.html).
+// 6. Importe ce fichier dans la visionneuse.
+//
+// COMMENT CE SCRIPT RÉCUPÈRE LES CHAMPS QU'EVA A CESSÉ DE DEMANDER (depuis la v4.0)
+// Courant juillet 2026, EVA a changé les requêtes GraphQL que le site envoie
+// lui-même : les champs score/inflictedDamage/firedAccuracy/team/rank/niceName
+// (historique), le score de chaque équipe, et tout le bloc statistics (profil :
+// dégâts totaux, distance parcourue, meilleure série...) ne sont plus demandés
+// par défaut. Les données existent toujours côté serveur (vérifié), le site a
+// juste arrêté de les redemander.
+//
+// ⚠️ ERREUR CORRIGÉE EN v8.0 — NE PAS RÉINTRODUIRE : les versions 4.0 à 7.0
+// modifiaient la requête du site EN PLACE avant qu'elle ne parte (même
+// operationName, mais un contenu différent). Ça provoquait des requêtes en
+// boucle infinie qui ont fait bannir temporairement des comptes — probablement
+// parce que le client GraphQL du site (Apollo/React Query) attend une réponse
+// de la forme exacte qu'il a demandée pour mettre à jour son cache interne, et
+// qu'une réponse de forme différente déclenchait une erreur suivie d'une
+// re-tentative automatique, en boucle, à très haute fréquence.
+//
+// Depuis la v8.0 : la requête du site n'est JAMAIS modifiée, elle part toujours
+// strictement intacte. À la place, ce script déclenche EN PLUS un DEUXIÈME appel
+// réseau totalement séparé (mêmes URL/méthode/headers, donc la même
+// authentification, mais avec notre requête enrichie) — le site ne voit jamais
+// cette réponse-là et ne peut donc jamais boucler dessus. Cet appel
+// supplémentaire est limité à une fois toutes les 5 secondes par type de
+// requête, pour rester discret même si le site interroge son profil très
+// fréquemment (observé en pratique).
+//
+// Si EVA change encore le schéma plus tard (nouveaux noms de champs, nouvelles
+// requêtes), ce script redeviendra incomplet de la même façon — utilise
+// eva_network_inspector.user.js pour diagnostiquer si ça se reproduit.
+//
+// À PROPOS DE LA CAPTURE DE TON PROPRE PROFIL (getPlayerByUserId)
+// Une version précédente de ce script excluait volontairement la capture du
+// profil personnel authentifié suite à un bug de perte de données. C'est
+// redevenu nécessaire : c'est la seule requête qui redonne accès au bloc
+// "statistics" (dégâts, distance, etc.) de TON profil. Le mécanisme de capture
+// a changé entre-temps (réécriture active de requête plutôt que simple lecture
+// passive), donc le bug d'origine ne devrait plus se reproduire — mais reste
+// attentif en l'utilisant.
+//
+// PROFILS PUBLICS (retiré en v5.0)
+// EVA a retiré les pages de profil public — il n'existe donc plus de requête
+// "getPublicPlayerByUsername" à intercepter. Ce script ne capture plus que ton
+// propre profil authentifié. Les stats des autres joueurs que tu croises
+// continuent d'être disponibles normalement via l'historique de parties
+// (kills/morts/assists/dégâts/précision par partie), simplement plus via une
+// page de profil dédiée.
 //
 // IMPORTANT — pourquoi le script ne doit tourner QUE sur le site EVA :
 // avec "@match *://*/*", Tampermonkey injecte ce script sur CHAQUE site que tu
-// visites, y compris Google. Comme le script intercepte fetch()/XMLHttpRequest
-// pour repérer les bonnes requêtes, le laisser actif partout revient à observer
-// (inutilement) tout le trafic de tous les sites, ce qui peut ressembler à une
-// activité en boucle dans les devtools. Le filtre HOST_HINT ci-dessous coupe court
-// à ça : le script se désactive intégralement (aucun hook posé) si le nom de domaine
+// visites, y compris Google. Le filtre HOST_HINT ci-dessous coupe court à ça :
+// le script se désactive intégralement (aucun hook posé) si le nom de domaine
 // de la page ne contient pas "eva".
 //
-// Le script stocke tout dans le localStorage du site visité, donc si tu reviens
-// plus tard (même après un import), les nouvelles données se fusionnent sans
-// doublon (parties dédupliquées par id, profils par contenu de stats).
-// Comme les stats de profil sont des totaux cumulés, capture-les régulièrement
-// (chaque session par ex.) pour que la visionneuse puisse tracer leur évolution.
+// Le script stocke tout dans le localStorage du site visité. Les parties sont
+// dédupliquées par id, les profils par empreinte de contenu — donc même si une
+// page de profil se recharge automatiquement toutes les secondes (observé sur
+// certaines pages du site), une seule capture est gardée tant que les chiffres
+// n'ont pas changé. Pas de risque de gonfler le stockage avec des doublons.
 
 (function () {
   'use strict';
 
-  // Le script tourne sur "*://*/*" pour que Tampermonkey puisse l'injecter avant que
-  // tu aies réglé la bonne adresse. Mais pour éviter qu'il n'intercepte le trafic
-  // d'AUTRES sites (Google, etc.), il se désactive tout seul si le nom de domaine
-  // de la page ne correspond pas à ce filtre. Adapte HOST_HINT si besoin (ex: "app.eva.gg").
   const HOST_HINT = 'eva';
   if (!location.hostname.toLowerCase().includes(HOST_HINT)) {
     return; // page non-EVA : le script ne fait strictement rien, aucun hook n'est posé.
@@ -56,8 +90,96 @@
   const GAMES_KEY = 'eva_history_collector_data';
   const STATS_KEY = 'eva_history_collector_playerstats';
   const MARKER_GAMES = 'cursorAfterhGameHistory';
-  const MARKER_STATS = 'getPlayerByUserId';
-  const MARKER_STATS_PUBLIC = 'getPublicPlayerByUsername';
+  const MARKER_STATS_OWNED = 'getPlayerByUserId';
+
+  // ---------------------------------------------------------------------------
+  // Requêtes réécrites : on garde le même operationName et les mêmes variables
+  // que la requête d'origine du site (pagination, seasonId...), seul le corps
+  // de la "query" GraphQL change pour redemander les champs manquants.
+  // ---------------------------------------------------------------------------
+  const QUERY_REPLACEMENTS = {
+    // Liste paginée de l'historique — désormais complète en un seul appel :
+    // avant, "score" nécessitait d'ouvrir chaque partie individuellement.
+    HistoryBa: `query HistoryBa($seasonId: Int!, $cursor: Int, $limit: Int) {
+      cursorAfterhGameHistory(seasonId: $seasonId, cursor: $cursor, limit: $limit, game: BattleArena) {
+        nodes {
+          id
+          createdAt
+          mode { id identifier category __typename }
+          data {
+            teamOne { score name __typename }
+            teamTwo { score name __typename }
+            __typename
+          }
+          players {
+            id
+            userId
+            isMvp
+            data {
+              outcome
+              kills
+              deaths
+              assists
+              score
+              inflictedDamage
+              firedAccuracy
+              team
+              rank
+              niceName
+              __typename
+            }
+            __typename
+          }
+          map { id name __typename }
+          __typename
+        }
+        hasNextPage
+        nextCursor
+        __typename
+      }
+    }`,
+
+    // Profil personnel — redemande le bloc "statistics" complet (dégâts,
+    // distance parcourue, meilleure série...) disparu de la requête par défaut.
+    UseProfileUserOwned: `query UseProfileUserOwned($userId: Int!, $seasonId: Int) {
+      getPlayerByUserId(userId: $userId) {
+        user { id username displayName __typename }
+        experience(seasonId: $seasonId) {
+          level
+          levelProgressionPercentage
+          experienceForNextLevel
+          experience
+          __typename
+        }
+        seasonPass { active __typename }
+        statistics(seasonId: $seasonId) {
+          data {
+            gameCount
+            gameTime
+            gameVictoryCount
+            gameDefeatCount
+            gameDrawCount
+            inflictedDamage
+            bestInflictedDamage
+            kills
+            deaths
+            assists
+            killDeathRatio
+            killsByDeaths
+            traveledDistance
+            traveledDistanceAverage
+            bestKillStreak
+          }
+          __typename
+        }
+        __typename
+      }
+    }`,
+  };
+
+  // Note : la logique de réécriture de requête et d'extraction du seasonId est
+  // maintenant directement dans tryFireEnriched() plus bas — on ne mute plus jamais
+  // la requête du site en place (voir explication à ce sujet dans tryFireEnriched).
 
   function loadJSON(key, fallback) {
     try {
@@ -108,20 +230,18 @@
     }
   }
 
-  // ---------- player stats ----------
+  // ---------- player stats (profil personnel uniquement — les profils publics n'existent plus sur EVA) ----------
   function extractPlayerStats(payload) {
     try {
       const list = Array.isArray(payload) ? payload : [payload];
       let all = [];
       list.forEach((item) => {
         const d = item && item.data ? item.data : null;
-        // "getPlayerByUserId" = ta page de profil connectée (authentifiée) — la seule
-        // source de stats de saison actuellement fonctionnelle sur EVA.gg.
-        // "getPublicPlayerByUsername" = page publique du profil d'un autre joueur ;
-        // cassée côté EVA.gg pour l'instant, mais on garde la reconnaissance au cas où
-        // elle refonctionne un jour. Même forme de données pour les deux.
-        const p = d ? (d.getPlayerByUserId || d.getPublicPlayerByUsername) : null;
-        if (p && p.user && p.user.id != null) all.push(p);
+        // On exige la présence du bloc "statistics" : d'autres requêtes du site (ex:
+        // getPlayerExperience, DashboardOverviewOwned) utilisent aussi getPlayerByUserId
+        // mais sans les stats complètes — on ne veut pas les capturer comme un "profil".
+        const p = d ? d.getPlayerByUserId : null;
+        if (p && p.user && p.user.id != null && p.statistics) all.push(p);
       });
       return all.length ? all : null;
     } catch (e) {
@@ -129,10 +249,11 @@
     }
   }
 
-  function mergePlayerStat(raw) {
+  function mergePlayerStat(raw, seasonId) {
     const uid = raw.user.id;
     const snapshot = {
       capturedAt: new Date().toISOString(),
+      seasonId: seasonId != null ? seasonId : null,
       user: { id: raw.user.id, username: raw.user.username, displayName: raw.user.displayName },
       seasonPass: raw.seasonPass || null,
       experience: raw.experience || null,
@@ -140,20 +261,29 @@
     };
     if (!stats[uid]) stats[uid] = [];
     const list = stats[uid];
-    const sig = JSON.stringify(snapshot.statistics) + JSON.stringify(snapshot.experience);
-    const last = list[list.length - 1];
-    const lastSig = last ? JSON.stringify(last.statistics) + JSON.stringify(last.experience) : null;
-    if (sig === lastSig) return false; // identique à la dernière capture, on ignore
+    // Le seasonId fait partie de l'empreinte : au tout début d'une nouvelle saison, les
+    // stats peuvent momentanément ressembler à une capture déjà vue (ex: 0 partie partout),
+    // sans le seasonId dans la signature ce serait pris à tort pour un doublon et ignoré.
+    const sig = seasonId + '|' + JSON.stringify(snapshot.statistics) + JSON.stringify(snapshot.experience);
+    // On compare à TOUTES les captures déjà stockées, pas juste la dernière — la page de
+    // profil EVA alterne entre plusieurs variantes de requête (saison en cours / toutes
+    // saisons confondues) qui reviennent en boucle très rapidement, et une comparaison
+    // "à la dernière seulement" laisse passer ce cas A-B-A-B-A-B sans jamais rien filtrer.
+    const alreadyExists = list.some((s) => ((s.seasonId != null ? s.seasonId : null) + '|' + JSON.stringify(s.statistics) + JSON.stringify(s.experience)) === sig);
+    if (alreadyExists) return false;
     list.push(snapshot);
+    list.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
     saveJSON(STATS_KEY, stats);
     return true;
   }
 
   // ---------- dispatch ----------
-  function handleText(text) {
+  function handleText(text, profileMeta) {
     if (!text) return;
+    profileMeta = profileMeta || { allowStats: true, seasonId: null };
     const hasGames = text.indexOf(MARKER_GAMES) !== -1;
-    const hasStats = text.indexOf(MARKER_STATS) !== -1 || text.indexOf(MARKER_STATS_PUBLIC) !== -1;
+    const hasStats = profileMeta.allowStats !== false
+      && text.indexOf(MARKER_STATS_OWNED) !== -1 && text.indexOf('"statistics"') !== -1;
     if (!hasGames && !hasStats) return;
     let json;
     try {
@@ -168,7 +298,7 @@
     }
     if (hasStats) {
       const players = extractPlayerStats(json);
-      if (players) players.forEach((p) => { if (mergePlayerStat(p)) addedStats++; });
+      if (players) players.forEach((p) => { if (mergePlayerStat(p, profileMeta.seasonId)) addedStats++; });
     }
     if (addedGames || addedStats) {
       updatePanel();
@@ -179,24 +309,62 @@
     }
   }
 
-  // ---------- interception fetch() ----------
+  // On ne modifie plus JAMAIS la requête du site en place (voir explication plus haut) —
+  // à la place, on la laisse partir intacte, et on déclenche EN PLUS un appel séparé,
+  // avec les mêmes URL/méthode/headers (donc la même authentification) mais notre requête
+  // enrichie. Ce deuxième appel ne repasse jamais par le code du site : le site ne voit
+  // jamais sa réponse et ne peut donc jamais boucler dessus.
+  const lastEnrichedAt = {}; // operationName -> timestamp (ms) du dernier appel enrichi
+  const ENRICH_THROTTLE_MS = 5000; // au moins 5 secondes entre deux appels enrichis pour une même opération
+
+  function tryFireEnriched(url, init) {
+    if (!init || typeof init.body !== 'string') return;
+    let parsed;
+    try {
+      parsed = JSON.parse(init.body);
+    } catch (e) {
+      return; // pas un body JSON GraphQL
+    }
+    const opName = parsed && parsed.operationName;
+    if (!opName || !QUERY_REPLACEMENTS[opName]) return;
+
+    const now = Date.now();
+    if (lastEnrichedAt[opName] && (now - lastEnrichedAt[opName]) < ENRICH_THROTTLE_MS) return;
+    lastEnrichedAt[opName] = now;
+
+    const enrichedBody = Object.assign({}, parsed, { query: QUERY_REPLACEMENTS[opName] });
+    const enrichedInit = Object.assign({}, init, { body: JSON.stringify(enrichedBody) });
+
+    origFetch.call(window, url, enrichedInit)
+      .then((res) => res.text())
+      .then((text) => {
+        const seasonId = opName === 'UseProfileUserOwned' && parsed.variables && parsed.variables.seasonId != null
+          ? parsed.variables.seasonId
+          : null;
+        const allowStats = opName !== 'UseProfileUserOwned' || seasonId != null;
+        handleText(text, { allowStats, seasonId });
+      })
+      .catch(() => { /* échec ponctuel, sans conséquence : on retentera à la prochaine requête du site */ });
+  }
+
+  // ---------- interception fetch() : ne touche jamais à la requête du site, en déclenche une deuxième à côté ----------
   const origFetch = window.fetch;
-  window.fetch = function (...args) {
-    return origFetch.apply(this, args).then((response) => {
-      try {
-        response.clone().text().then(handleText).catch(() => {});
-      } catch (e) {}
-      return response;
-    });
+  window.fetch = function (input, init) {
+    try {
+      const url = typeof input === 'string' ? input : (input && input.url);
+      if (url) tryFireEnriched(url, init);
+    } catch (e) { /* si le déclenchement échoue, la requête du site part quand même normalement */ }
+    return origFetch.call(this, input, init);
   };
 
-  // ---------- interception XMLHttpRequest ----------
+  // ---------- interception XMLHttpRequest : capture passive uniquement (EVA n'utilise que fetch()
+  // en pratique, ceci est un filet de sécurité qui ne modifie jamais rien) ----------
   const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function (...args) {
+  XMLHttpRequest.prototype.send = function (body) {
     this.addEventListener('load', function () {
-      try { handleText(this.responseText); } catch (e) {}
+      try { handleText(this.responseText, { allowStats: true, seasonId: null }); } catch (e) {}
     });
-    return origSend.apply(this, args);
+    return origSend.call(this, body);
   };
 
   // ---------- panneau flottant ----------
