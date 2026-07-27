@@ -67,15 +67,19 @@ adversaires) dans les parties importées, triable par winrate/K-D/dégâts/score
 stats agrégées, compare deux équipes entre elles.
 
 **Transverse** — filtre de saison (les saisons sont détectées automatiquement à
-partir des captures de profil importées, chacune portant le numéro de saison en
-cours au moment de la capture) en plus des filtres de période (préréglages ou
-dates personnalisées) et d'exclusion de cartes/modes, appliqués de façon
-cohérente à tous les onglets ; le tableau d'évolution du Profil détecte aussi
-tout seul un changement de saison entre deux captures (les stats de saison
-repartent de 0 à chaque nouvelle saison) et signale la transition plutôt que de
-calculer un delta absurde ; déduplication fiable des imports (parties par id,
-profils par empreinte de contenu) ; authentification par mot de passe ; HTTPS ;
-interface responsive.
+partir des captures de profil et, depuis la v9.0 du collecteur, des parties
+elles-mêmes — chacune porte désormais aussi son propre numéro de saison, donc
+la liste de saisons reste disponible même pour un import qui ne contient que
+de l'historique de parties, sans capture de profil ; quand une saison précise
+est sélectionnée, les parties qui portent ce numéro sont filtrées exactement
+plutôt que par une fenêtre de dates approximative) en plus des filtres de
+période (préréglages ou dates personnalisées) et d'exclusion de cartes/modes,
+appliqués de façon cohérente à tous les onglets ; le tableau d'évolution du
+Profil détecte aussi tout seul un changement de saison entre deux captures
+(les stats de saison repartent de 0 à chaque nouvelle saison) et signale la
+transition plutôt que de calculer un delta absurde ; déduplication fiable des
+imports (parties par id, profils par empreinte de contenu) ; authentification
+par mot de passe ; HTTPS ; interface responsive.
 
 ## Aperçu
 
@@ -488,14 +492,35 @@ télécharger un export JSON, à importer ensuite dans la visionneuse via
 "+ Importer".
 
 Les stats de saison sont capturées via ta page de profil **connectée**
-(`getPlayerByUserId`) — les pages de profil **publiques** d'un autre joueur
-(`getPublicPlayerByUsername`) ne fonctionnent actuellement plus côté EVA.gg.
-Le script reconnaît toujours ce format au cas où EVA le réactive un jour,
-mais pour l'instant, importe ta propre page de profil connectée (comme
-n'importe quelle autre page du site) pour suivre tes stats de saison ;
-récupérer les stats de saison *d'un autre joueur* n'est plus possible tant
-que les pages publiques restent cassées (ses stats par partie, elles,
-continuent d'apparaître normalement dans l'historique de parties).
+(`getPlayerByUserId`) — EVA a retiré les pages de profil **publiques**
+(`getPublicPlayerByUsername`), le script ne les capture donc plus du tout ;
+importe ta propre page de profil connectée (comme n'importe quelle autre page
+du site) pour suivre tes stats de saison. Les stats des autres joueurs que tu
+croises restent disponibles normalement via l'historique de parties
+(kills/morts/assists/dégâts/précision par partie), simplement plus via une
+page de profil dédiée.
+
+Depuis juillet 2026, EVA a réduit ce que ses propres requêtes GraphQL
+redemandent par défaut : score d'équipe/dégâts/équipe/rang/pseudo ont
+disparu de la liste d'historique, et les stats de bataille de la page de
+profil sont passées d'un format complet (`statistics`) à un format réduit
+(`battleArenaStatistics`, sans temps de jeu ni dégâts totaux) réparti en
+plusieurs requêtes par widget. Les données existent toujours côté serveur
+EVA, le site a juste arrêté de les redemander — depuis la v8.0, le
+collecteur en profite : à chaque requête d'historique ou de profil que le
+site envoie, il déclenche EN PLUS un second appel réseau séparé (mêmes
+URL/authentification, mais une requête personnalisée qui redemande tous les
+champs manquants) et n'utilise que sa réponse, jamais celle du site. La
+requête du site elle-même n'est donc jamais modifiée — voir le gros
+avertissement en tête de `eva_history_collector.user.js` sur les versions
+précédentes (4.0 à 7.0) qui modifiaient la requête du site en place, ce qui
+provoquait des boucles de requêtes et a fait bannir temporairement des
+comptes ; **ne pas revenir à cette approche**. Résultat : une capture
+fraîche (parties comme profil) revient à nouveau complète en un seul appel,
+sans fusion de fragments nécessaire côté script. La visionneuse affiche
+toujours "n/d" pour les champs qui manqueraient sur des captures plus
+anciennes (faites avec une version du collecteur antérieure à la v8.0),
+plutôt qu'un faux 0.
 
 ## Historique du projet
 

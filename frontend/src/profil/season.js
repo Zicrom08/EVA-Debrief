@@ -1,15 +1,50 @@
 import { fmtDate, fmtDateShort, fmtDelta, fmtHM } from '../format.js';
-import { displaySeasonId } from '../seasons.js';
+import { displaySeasonId, normalizeSnapshotStats, snapshotSeasonId } from '../seasons.js';
+
+const NA = '<span style="color:var(--muted);">n/d</span>';
 
 // ================= PROFIL : carte de saison (depuis les snapshots getPlayerByUserId) =================
-export function renderSeasonCard(snaps) {
+// `baseline` (optionnel) est la dernière capture connue AVANT le début de la période
+// filtrée (voir seasonCardBaseline() dans seasons.js). Les stats de saison sont des
+// compteurs cumulés, pas des deltas : sans soustraire cette ligne de base, filtrer sur
+// "7 derniers jours" n'aurait presque aucun effet visible ici (le cumul depuis le
+// début de la saison resterait affiché tel quel). Quand baseline est fourni, la carte
+// affiche donc "ce qui a été gagné pendant la période", pas le cumul brut.
+export function renderSeasonCard(snaps, baseline) {
   const latest = snaps[snaps.length - 1];
   const exp = latest.experience || {};
-  const stat = (latest.statistics && latest.statistics.data) || {};
-  const winrate = stat.gameCount ? Math.round((stat.gameVictoryCount / stat.gameCount) * 100) : 0;
-  const hours = stat.gameTime ? (stat.gameTime / 3600).toFixed(1) : '0';
-  const distanceKm = stat.traveledDistance ? (stat.traveledDistance / 1000).toFixed(1) : '0';
-  const avgDistance = stat.traveledDistanceAverage ? Math.round(stat.traveledDistanceAverage) : 0;
+  const cur = normalizeSnapshotStats(latest) || {
+    gameCount: 0, gameVictoryCount: 0, gameDefeatCount: 0, gameDrawCount: 0,
+    kills: 0, deaths: 0, assists: 0, bestKillStreak: 0, traveledDistance: 0,
+    gameTime: 0, inflictedDamage: 0, bestInflictedDamage: 0, hasPlaytime: false, hasDamage: false,
+  };
+  const base = baseline ? normalizeSnapshotStats(baseline) : null;
+  // Le temps de jeu / les dégâts ne sont disponibles que si les DEUX bornes du delta
+  // les ont (le nouveau format d'EVA, battleArenaStatistics, ne les fournit plus du tout).
+  const hasPlaytime = cur.hasPlaytime && (!base || base.hasPlaytime);
+  const hasDamage = cur.hasDamage && (!base || base.hasDamage);
+
+  const gameCount = cur.gameCount - (base ? base.gameCount : 0);
+  const gameVictoryCount = cur.gameVictoryCount - (base ? base.gameVictoryCount : 0);
+  const gameDefeatCount = cur.gameDefeatCount - (base ? base.gameDefeatCount : 0);
+  const gameDrawCount = cur.gameDrawCount - (base ? base.gameDrawCount : 0);
+  const kills = cur.kills - (base ? base.kills : 0);
+  const deaths = cur.deaths - (base ? base.deaths : 0);
+  const assists = cur.assists - (base ? base.assists : 0);
+  const traveledDistance = cur.traveledDistance - (base ? base.traveledDistance : 0);
+  const gameTime = hasPlaytime ? cur.gameTime - (base ? base.gameTime : 0) : null;
+  const inflictedDamage = hasDamage ? cur.inflictedDamage - (base ? base.inflictedDamage : 0) : null;
+  // bestKillStreak/bestInflictedDamage sont des records cumulés (max depuis le début
+  // de la saison), pas des sommes : leur "delta" est le record BATTU pendant la
+  // période (0 si aucun nouveau record n'a été établi durant la fenêtre filtrée).
+  const bestKillStreak = Math.max(0, cur.bestKillStreak - (base ? base.bestKillStreak : 0));
+  const bestInflictedDamage = hasDamage ? Math.max(0, cur.bestInflictedDamage - (base ? base.bestInflictedDamage : 0)) : null;
+
+  const winrate = gameCount ? Math.round((gameVictoryCount / gameCount) * 100) : 0;
+  const hours = gameTime != null ? (gameTime / 3600).toFixed(1) : null;
+  const distanceKm = traveledDistance ? (traveledDistance / 1000).toFixed(1) : '0';
+  const avgDistance = gameCount ? Math.round(traveledDistance / gameCount) : 0;
+  const kd = deaths ? (kills / deaths).toFixed(2) : kills.toFixed(2);
 
   return `
     <div class="profile-card">
@@ -17,8 +52,9 @@ export function renderSeasonCard(snaps) {
         <div>
           <div class="profile-name">${latest.user.displayName || latest.user.username || '?'}</div>
           <div class="profile-sub">
-            ${latest.user.username || ''} · Saison ${displaySeasonId(exp.seasonId) ?? '?'}
+            ${latest.user.username || ''} · Saison ${displaySeasonId(snapshotSeasonId(latest)) ?? '?'}
             ${latest.seasonPass && latest.seasonPass.active ? ' · <span class="badge-pass">Pass actif</span>' : ''}
+            ${base ? ' · <span style="color:var(--gold);">stats de la période sélectionnée</span>' : ''}
             · capturé le ${fmtDate(latest.capturedAt)}
           </div>
         </div>
@@ -30,21 +66,24 @@ export function renderSeasonCard(snaps) {
       </div>
 
       <div class="profile-grid">
-        <div class="cell"><div class="label">Parties</div><div class="value">${stat.gameCount ?? 0}</div></div>
-        <div class="cell"><div class="label">V / D / Nul</div><div class="value" style="font-size:16px;"><span class="win">${stat.gameVictoryCount ?? 0}</span> / <span class="loss">${stat.gameDefeatCount ?? 0}</span> / ${stat.gameDrawCount ?? 0}</div></div>
+        <div class="cell"><div class="label">Parties</div><div class="value">${gameCount}</div></div>
+        <div class="cell"><div class="label">V / D / Nul</div><div class="value" style="font-size:16px;"><span class="win">${gameVictoryCount}</span> / <span class="loss">${gameDefeatCount}</span> / ${gameDrawCount}</div></div>
         <div class="cell"><div class="label">Taux de victoire</div><div class="value">${winrate}%</div></div>
-        <div class="cell"><div class="label">Temps de jeu</div><div class="value">${hours} h</div></div>
+        <div class="cell"><div class="label">Temps de jeu</div><div class="value">${hours != null ? hours + ' h' : NA}</div></div>
 
-        <div class="cell"><div class="label">Kills / Morts / Assists</div><div class="value" style="font-size:16px;">${stat.kills ?? 0} / ${stat.deaths ?? 0} / ${stat.assists ?? 0}</div></div>
-        <div class="cell"><div class="label">Ratio K/D</div><div class="value">${(stat.deaths ? (stat.kills||0)/stat.deaths : (stat.kills||0)).toFixed(2)}</div></div>
-        <div class="cell"><div class="label">Meilleure série de kills</div><div class="value">${stat.bestKillStreak ?? 0}</div></div>
-        <div class="cell"><div class="label">Dégâts totaux infligés</div><div class="value">${(stat.inflictedDamage ?? 0).toLocaleString('fr-FR')}</div></div>
+        <div class="cell"><div class="label">Kills / Morts / Assists</div><div class="value" style="font-size:16px;">${kills} / ${deaths} / ${assists}</div></div>
+        <div class="cell"><div class="label">Ratio K/D</div><div class="value">${kd}</div></div>
+        <div class="cell"><div class="label">${base ? 'Record battu (série de kills)' : 'Meilleure série de kills'}</div><div class="value">${bestKillStreak}</div></div>
+        <div class="cell"><div class="label">Dégâts totaux infligés</div><div class="value">${inflictedDamage != null ? inflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
 
-        <div class="cell"><div class="label">Meilleurs dégâts (1 partie)</div><div class="value">${(stat.bestInflictedDamage ?? 0).toLocaleString('fr-FR')}</div></div>
+        <div class="cell"><div class="label">${base ? 'Record battu (dégâts, 1 partie)' : 'Meilleurs dégâts (1 partie)'}</div><div class="value">${bestInflictedDamage != null ? bestInflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
         <div class="cell"><div class="label">Distance parcourue</div><div class="value">${distanceKm} km</div></div>
         <div class="cell"><div class="label">Distance moy. / partie</div><div class="value">${avgDistance} m</div></div>
         <div class="cell"><div class="label">Snapshots capturés</div><div class="value">${snaps.length}</div></div>
       </div>
+      ${!hasDamage || !hasPlaytime ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+        Temps de jeu et dégâts ne sont plus renvoyés par le profil EVA depuis son dernier changement d'API — non disponibles tant qu'EVA ne les republie pas.
+      </div>` : ''}
     </div>`;
 }
 
@@ -54,37 +93,44 @@ export function renderEvolutionTable(snaps) {
   for (let i = 1; i < snaps.length; i++) {
     const prevExp = snaps[i-1].experience || {};
     const curExp = snaps[i].experience || {};
+    const prevSid = snapshotSeasonId(snaps[i-1]);
+    const curSid = snapshotSeasonId(snaps[i]);
 
     // Les stats de saison repartent de 0 à chaque nouvelle saison : si les deux captures
     // n'appartiennent pas à la même saison, un delta brut donnerait des nombres négatifs
     // absurdes (compteurs remis à zéro) plutôt qu'une vraie régression. On le signale
     // explicitement au lieu de calculer une évolution qui n'a pas de sens ici.
-    if (prevExp.seasonId != null && curExp.seasonId != null && prevExp.seasonId !== curExp.seasonId) {
+    if (prevSid != null && curSid != null && prevSid !== curSid) {
       rows += `
       <tr>
         <td class="name-cell">${fmtDateShort(snaps[i-1].capturedAt)} → ${fmtDateShort(snaps[i].capturedAt)}</td>
         <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
-          Nouvelle saison (${displaySeasonId(prevExp.seasonId)} → ${displaySeasonId(curExp.seasonId)}) — compteurs remis à zéro, pas de delta calculé.
+          Nouvelle saison (${displaySeasonId(prevSid)} → ${displaySeasonId(curSid)}) — compteurs remis à zéro, pas de delta calculé.
         </td>
       </tr>`;
       continue;
     }
 
-    const prev = (snaps[i-1].statistics && snaps[i-1].statistics.data) || {};
-    const cur = (snaps[i].statistics && snaps[i].statistics.data) || {};
+    const prev = normalizeSnapshotStats(snaps[i-1]);
+    const cur = normalizeSnapshotStats(snaps[i]);
+    if (!prev || !cur) continue; // capture sans aucune stat exploitable (fragment isolé) — rien à comparer
+    // Le nouveau format d'EVA (battleArenaStatistics) ne fournit plus le temps de jeu ni
+    // les dégâts : un delta n'a de sens que si les DEUX captures les fournissent.
+    const hasPlaytime = prev.hasPlaytime && cur.hasPlaytime;
+    const hasDamage = prev.hasDamage && cur.hasDamage;
 
-    const dGames = (cur.gameCount||0) - (prev.gameCount||0);
-    const dWins = (cur.gameVictoryCount||0) - (prev.gameVictoryCount||0);
-    const dLoss = (cur.gameDefeatCount||0) - (prev.gameDefeatCount||0);
-    const dDraw = (cur.gameDrawCount||0) - (prev.gameDrawCount||0);
-    const dKills = (cur.kills||0) - (prev.kills||0);
-    const dDeaths = (cur.deaths||0) - (prev.deaths||0);
-    const dAssists = (cur.assists||0) - (prev.assists||0);
-    const dDmg = (cur.inflictedDamage||0) - (prev.inflictedDamage||0);
-    const dDistance = (cur.traveledDistance||0) - (prev.traveledDistance||0);
-    const dGameTime = (cur.gameTime||0) - (prev.gameTime||0);
-    const dBestStreak = (cur.bestKillStreak||0) - (prev.bestKillStreak||0);
-    const dBestDmg = (cur.bestInflictedDamage||0) - (prev.bestInflictedDamage||0);
+    const dGames = cur.gameCount - prev.gameCount;
+    const dWins = cur.gameVictoryCount - prev.gameVictoryCount;
+    const dLoss = cur.gameDefeatCount - prev.gameDefeatCount;
+    const dDraw = cur.gameDrawCount - prev.gameDrawCount;
+    const dKills = cur.kills - prev.kills;
+    const dDeaths = cur.deaths - prev.deaths;
+    const dAssists = cur.assists - prev.assists;
+    const dDistance = cur.traveledDistance - prev.traveledDistance;
+    const dBestStreak = cur.bestKillStreak - prev.bestKillStreak;
+    const dGameTime = hasPlaytime ? cur.gameTime - prev.gameTime : null;
+    const dDmg = hasDamage ? cur.inflictedDamage - prev.inflictedDamage : null;
+    const dBestDmg = hasDamage ? cur.bestInflictedDamage - prev.bestInflictedDamage : null;
     const dLevel = (curExp.level||0) - (prevExp.level||0);
     const dXp = (curExp.experience||0) - (prevExp.experience||0);
 
@@ -101,13 +147,13 @@ export function renderEvolutionTable(snaps) {
         <td class="num">${fmtDelta(dKills)}</td>
         <td class="num">${fmtDelta(dDeaths)}</td>
         <td class="num">${fmtDelta(dAssists)}</td>
-        <td class="num">${fmtDelta(dDmg)}</td>
+        <td class="num">${dDmg != null ? fmtDelta(dDmg) : NA}</td>
         <td class="num" style="color:var(--gold);font-weight:600;">${fmtDelta(dDistance/1000, dDistance ? 1 : 0)} km</td>
-        <td class="num">${fmtHM(dGameTime)}</td>
+        <td class="num">${dGameTime != null ? fmtHM(dGameTime) : NA}</td>
         <td class="num">${dLevel ? fmtDelta(dLevel) : '—'}</td>
         <td class="num">${fmtDelta(dXp)}</td>
         <td class="num">${dBestStreak>0 ? fmtDelta(dBestStreak) : '—'}</td>
-        <td class="num">${dBestDmg>0 ? fmtDelta(dBestDmg) : '—'}</td>
+        <td class="num">${dBestDmg==null ? NA : (dBestDmg>0 ? fmtDelta(dBestDmg) : '—')}</td>
       </tr>`;
   }
   return `

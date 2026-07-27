@@ -1,4 +1,4 @@
-import { findPlayerInGame } from '../format.js';
+import { findPlayerInGame, resolvePlayerName } from '../format.js';
 import { computeSessions } from '../tendances.js';
 
 // ================= PROFIL : helpers d'analyse (depuis l'historique de parties) =================
@@ -226,15 +226,20 @@ export function computeDuoNemesisStats(games, uid, minGames) {
     const me = findPlayerInGame(g, uid);
     if (!me) return;
     const myTeam = me.data.team;
+    // Sans assignation d'équipe (nouveau format d'historique EVA, juillet 2026), on ne
+    // peut plus distinguer coéquipiers d'adversaires — undefined === undefined classerait
+    // TOUT le monde comme coéquipier, ce qui serait faux : on ignore la partie à la place.
+    if (myTeam == null) return;
     const won = me.data.outcome === 'Victory';
     (g.players || []).forEach(p => {
       if (p.userId == uid) return;
       const bucket = p.data.team === myTeam ? teammates : opponents;
       const oid = p.userId;
-      if (!bucket[oid]) bucket[oid] = { n: 0, wins: 0, name: p.data.niceName };
+      const name = p.data.niceName || resolvePlayerName(p.userId);
+      if (!bucket[oid]) bucket[oid] = { n: 0, wins: 0, name };
       bucket[oid].n++;
       if (won) bucket[oid].wins++;
-      bucket[oid].name = p.data.niceName;
+      bucket[oid].name = name;
     });
   });
 
@@ -280,7 +285,10 @@ export function computeRankStats(games, uid) {
 export function computeContributionTrend(games, uid) {
   return games.map(g => {
     const p = findPlayerInGame(g, uid);
-    if (!p) return null;
+    // Sans assignation d'équipe (nouveau format d'historique EVA), impossible de savoir
+    // qui est dans l'équipe du joueur — undefined === undefined regrouperait TOUT le
+    // monde à tort, donc on exclut la partie plutôt que de calculer une contribution fausse.
+    if (!p || p.data.team == null) return null;
     const teamPlayers = (g.players || []).filter(pl => pl.data.team === p.data.team);
     const teamTotal = teamPlayers.reduce((s, pl) => s + (pl.data.score || 0), 0);
     return teamTotal ? Math.round((p.data.score / teamTotal) * 100) : 0;
@@ -291,7 +299,7 @@ export function computeContributionTrend(games, uid) {
 export function computeDamageContributionTrend(games, uid) {
   return games.map(g => {
     const p = findPlayerInGame(g, uid);
-    if (!p) return null;
+    if (!p || p.data.team == null) return null;
     const teamPlayers = (g.players || []).filter(pl => pl.data.team === p.data.team);
     const teamTotal = teamPlayers.reduce((s, pl) => s + (pl.data.inflictedDamage || 0), 0);
     return teamTotal ? Math.round(((p.data.inflictedDamage || 0) / teamTotal) * 100) : 0;
@@ -303,7 +311,7 @@ export function computeDamageTeamStats(games, uid) {
   let n = 0, teamDmgSum = 0, playerDmgSum = 0;
   games.forEach(g => {
     const p = findPlayerInGame(g, uid);
-    if (!p) return;
+    if (!p || p.data.team == null) return;
     const teamPlayers = (g.players || []).filter(pl => pl.data.team === p.data.team);
     const teamTotal = teamPlayers.reduce((s, pl) => s + (pl.data.inflictedDamage || 0), 0);
     teamDmgSum += teamTotal;
@@ -320,7 +328,7 @@ export function computeDamageTeamStats(games, uid) {
 // Calcule le temps de jeu total et moyen par partie, sur la période filtrée.
 export function computePlaytimeStats(games, uid) {
   const myGames = games.filter(g => findPlayerInGame(g, uid));
-  const totalSec = myGames.reduce((s, g) => s + (g.data.duration || 0), 0);
+  const totalSec = myGames.reduce((s, g) => s + ((g.data && g.data.duration) || 0), 0);
   const avgSec = myGames.length ? Math.round(totalSec / myGames.length) : 0;
   return { totalSec, avgSec, n: myGames.length };
 }
@@ -337,7 +345,7 @@ export function computeEfficiencyStats(games, uid) {
     deaths += p.data.deaths || 0;
     assists += p.data.assists || 0;
     dmg += p.data.inflictedDamage || 0;
-    totalSec += g.data.duration || 0;
+    totalSec += (g.data && g.data.duration) || 0;
     accSum += p.data.firedAccuracy || 0;
   });
   const minutes = totalSec / 60;

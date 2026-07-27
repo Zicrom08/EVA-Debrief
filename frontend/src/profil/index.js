@@ -1,7 +1,7 @@
 import { state } from '../state.js';
 import { mostCommonName } from '../format.js';
 import { gamesForPlayerSorted } from '../game-filters.js';
-import { filteredSnapshotsForUser } from '../seasons.js';
+import { filteredSnapshotsForUser, seasonCardBaseline } from '../seasons.js';
 import { aggregateGames } from '../tendances.js';
 import { compareRow } from '../equipes.js';
 import { persistUiPrefs } from '../ui-prefs.js';
@@ -26,12 +26,13 @@ export function renderProfil() {
 // Construit la colonne principale de l'onglet Profil (carte de saison + toutes les sections d'analyse).
 export function renderProfilMain(uid) {
   const snaps = uid ? filteredSnapshotsForUser(uid) : null;
+  const baseline = (uid && snaps && snaps.length) ? seasonCardBaseline(uid, snaps) : null;
   const games = uid ? gamesForPlayerSorted(uid) : [];
 
   let html = '';
 
   if (snaps && snaps.length) {
-    html += renderSeasonCard(snaps);
+    html += renderSeasonCard(snaps, baseline);
     if (snaps.length > 1) {
       html += renderEvolutionTable(snaps);
     } else {
@@ -49,7 +50,8 @@ export function renderProfilMain(uid) {
   } else {
     html += `<div class="detail-empty" style="margin-top:0;">
       Aucune statistique de saison importée pour ce joueur.<br>
-      Importe son profil (<code>getPlayerByUserId</code> ou <code>getPublicPlayerByUsername</code>) via "+ Importer".
+      Les profils publics n'existent plus sur EVA — seule sa propre page de profil connectée
+      (<code>getPlayerByUserId</code>) peut être capturée, via "+ Importer".
     </div>`;
   }
 

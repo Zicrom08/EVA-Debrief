@@ -28,6 +28,31 @@ export function mostCommonName(rec){
   return Object.entries(rec.niceNames).sort((a,b)=>b[1]-a[1])[0][0];
 }
 
+// Retrouve le nom d'affichage d'un joueur par son userId, quelle que soit la source
+// disponible : depuis juillet 2026, les parties importées (nouveau format d'historique
+// EVA) ne portent plus aucun pseudo (p.data.niceName a disparu), donc state.players ne
+// peut plus toujours en fournir un pour les nouvelles parties. On retombe alors sur le
+// user/username capturé par une éventuelle snapshot de profil de ce joueur (le sien ou
+// celui d'un coéquipier déjà importé), et en dernier recours sur son id brut.
+export function resolvePlayerName(uid) {
+  const rec = state.players[uid];
+  if (rec && rec.niceNames && Object.keys(rec.niceNames).length) return mostCommonName(rec);
+  const snaps = state.playerStatsSnapshots[uid];
+  if (snaps && snaps.length) {
+    const u = snaps[snaps.length - 1].user;
+    if (u && (u.displayName || u.username)) return u.displayName || u.username;
+  }
+  return `Joueur #${uid}`;
+}
+
+// Vrai si cette partie porte encore le détail complet de match (score par équipe,
+// dégâts, précision, assignation Alliance/Rebels) — absent des parties importées
+// depuis le changement d'API EVA de juillet 2026, qui ne fournit plus que le résultat
+// et K/D/A par joueur. Sert à basculer entre la vue détail complète et une vue réduite.
+export function hasFullMatchData(g) {
+  return !!(g.data && (g.players || []).some(p => p.data && p.data.team));
+}
+
 // Formate un nombre en notation française, avec un nombre de décimales personnalisable.
 export function niceNum(n, decimals) {
   if (n == null || isNaN(n)) return '–';

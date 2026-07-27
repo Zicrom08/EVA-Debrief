@@ -13,7 +13,7 @@ export function computeSessions(games, uid, gapMinutes) {
   let cur = null;
   relevant.forEach(g => {
     const start = new Date(g.createdAt).getTime();
-    const end = start + (g.data.duration || 0) * 1000;
+    const end = start + ((g.data && g.data.duration) || 0) * 1000;
     if (!cur || (start - cur.lastEnd) > gapMinutes * 60 * 1000) {
       cur = { games: [], start, lastEnd: end };
       sessions.push(cur);

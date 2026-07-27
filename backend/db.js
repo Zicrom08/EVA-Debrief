@@ -97,12 +97,70 @@ function genId(prefix) {
   return (prefix || 't') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-// Empreinte de contenu d'une capture de profil (statistics + experience), utilisée
-// pour détecter les doublons — deux captures avec exactement les mêmes chiffres
-// sont considérées comme la même capture, peu importe leur date.
+// Empreinte de contenu d'une capture de profil (statistics + battleArenaStatistics +
+// experience + seasonId), utilisée pour détecter les doublons — deux captures avec
+// exactement les mêmes chiffres sont considérées comme la même capture, peu importe
+// leur date. battleArenaStatistics est le remplaçant de "statistics" depuis le
+// changement d'API EVA de juillet 2026 (voir server.js) — inclus dans l'empreinte pour
+// ne pas dédupliquer à tort deux captures qui ne diffèrent que par ce champ.
+// seasonId (posé au niveau racine de la capture depuis le collecteur v8.0, la requête
+// enrichie ne redemandant plus experience.seasonId — voir snapshotSeasonId() côté
+// frontend) est inclus pour la même raison que côté collecteur (mergePlayerStat) : en
+// tout début de saison, deux captures de saisons différentes peuvent avoir des
+// compteurs identiques (souvent 0 partout), et seraient prises à tort pour un doublon
+// sans le seasonId dans l'empreinte.
 function hashSnapshot(snap) {
-  const basis = JSON.stringify(snap.statistics || null) + '|' + JSON.stringify(snap.experience || null);
+  const basis = JSON.stringify(snap.statistics || null) + '|' + JSON.stringify(snap.experience || null) + '|' + JSON.stringify(snap.battleArenaStatistics || null) + '|' + (snap.seasonId != null ? snap.seasonId : '');
   return crypto.createHash('sha256').update(basis).digest('hex');
+}
+
+// Fusionne deux versions d'une même partie plutôt que de laisser la plus récente écraser
+// l'autre. Depuis le changement d'API EVA de juillet 2026, la liste d'historique
+// (cursorAfterhGameHistory) et le détail d'une partie (getAfterhGameHistoryById) portent
+// chacune un sous-ensemble différent des champs (la liste a "outcome" par joueur, le
+// détail a team/score/rank/niceName/teamOne-teamTwo) — sans fusion, réimporter l'un après
+// l'autre perdrait les infos de celui déjà stocké. Fusion à deux niveaux : g.data
+// (teamOne/teamTwo/duration...) et chaque joueur (par userId), sur son propre .data.
+// Le champ racine `seasonId` (posé par le collecteur v9.0 sur chaque partie, voir
+// eva_history_collector.user.js et snapshotSeasonId() côté frontend) passe déjà par ce
+// même Object.assign de premier niveau sans traitement particulier : `incoming` ne porte
+// la propriété que quand le collecteur a pu la déterminer, donc une capture plus ancienne
+// sans ce champ n'écrase jamais un seasonId déjà connu (Object.assign ne copie que les
+// propriétés réellement présentes sur la source, jamais une valeur undefined implicite).
+function mergeGameRecord(existing, incoming) {
+  if (!existing) return incoming;
+  if (!incoming) return existing;
+  const merged = Object.assign({}, existing, incoming);
+  merged.data = Object.assign({}, existing.data, incoming.data);
+  if ((existing.data && existing.data.teamOne) || (incoming.data && incoming.data.teamOne)) {
+    merged.data.teamOne = Object.assign({}, existing.data && existing.data.teamOne, incoming.data && incoming.data.teamOne);
+  }
+  if ((existing.data && existing.data.teamTwo) || (incoming.data && incoming.data.teamTwo)) {
+    merged.data.teamTwo = Object.assign({}, existing.data && existing.data.teamTwo, incoming.data && incoming.data.teamTwo);
+  }
+  const byUid = new Map();
+  (existing.players || []).forEach(p => byUid.set(p.userId, p));
+  (incoming.players || []).forEach(p => {
+    const cur = byUid.get(p.userId);
+    byUid.set(p.userId, cur ? Object.assign({}, cur, p, { data: Object.assign({}, cur.data, p.data) }) : p);
+  });
+  merged.players = Array.from(byUid.values());
+  return merged;
+}
+
+// La liste porte "outcome" par joueur, le détail ne le porte plus (seulement les scores
+// d'équipe) — si un joueur n'a toujours pas d'outcome après fusion (détail importé sans
+// être jamais passé par la liste), on le déduit de teamOne/teamTwo.score.
+function deriveOutcomes(g) {
+  const t1 = g.data && g.data.teamOne;
+  const t2 = g.data && g.data.teamTwo;
+  if (!t1 || !t2 || t1.score == null || t2.score == null) return;
+  const winner = t1.score === t2.score ? null : (t1.score > t2.score ? t1.name : t2.name);
+  (g.players || []).forEach(p => {
+    if (p.data && p.data.outcome == null && p.data.team != null) {
+      p.data.outcome = winner == null ? 'Draw' : (p.data.team === winner ? 'Victory' : 'Defeat');
+    }
+  });
 }
 
 module.exports = {
@@ -111,7 +169,10 @@ module.exports = {
     return Object.prototype.hasOwnProperty.call(state.games, String(id));
   },
   upsertGame(g) {
-    state.games[String(g.id)] = g;
+    const key = String(g.id);
+    const merged = mergeGameRecord(state.games[key], g);
+    deriveOutcomes(merged);
+    state.games[key] = merged;
     saveNow();
   },
   getAllGames() {

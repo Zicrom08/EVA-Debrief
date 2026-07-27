@@ -82,6 +82,7 @@ function isPveGame(g) {
 
 // Reconnaît les mêmes formats que l'ancien import côté navigateur :
 // - réponse GraphQL brute { data: { cursorAfterhGameHistory: { nodes } } }
+// - réponse GraphQL détail de partie { data: { getAfterhGameHistoryById } } (voir plus bas)
 // - réponse GraphQL profil { data: { getPlayerByUserId | getPublicPlayerByUsername } }
 // - export du collecteur { nodes: [...], playerStats: [...] }
 // - tableau nu de parties, ou tableau de réponses GraphQL
@@ -95,14 +96,35 @@ function extractFromPayload(payload) {
     if (data.cursorAfterhGameHistory && Array.isArray(data.cursorAfterhGameHistory.nodes)) {
       nodes = nodes.concat(data.cursorAfterhGameHistory.nodes);
     }
+    // Depuis juillet 2026, la liste d'historique par défaut du site a perdu score
+    // d'équipe/dégâts/équipe/rang/pseudo par joueur — seul le détail d'une partie précise
+    // (getAfterhGameHistoryById, déclenché en cliquant sur une partie côté EVA) les
+    // portait encore. Depuis le collecteur v8.0 (requête HistoryBa enrichie, voir
+    // eva_history_collector.user.js), la liste elle-même redemande tous ces champs et les
+    // renvoie donc déjà complets en un seul appel — le merge ci-dessous ne sert plus qu'à
+    // compléter les parties déjà stockées avec une capture plus ancienne/partielle
+    // (imports faits avec un collecteur antérieur à la v8.0, ou détail collé à la main).
+    // Envoyé dans le même tableau "nodes" que la liste : db.upsertGame() fusionne avec la
+    // partie déjà connue au lieu de l'écraser (voir mergeGameRecord dans db.js), pour ne
+    // perdre ni l'un ni l'autre.
+    if (data.getAfterhGameHistoryById && data.getAfterhGameHistoryById.id != null) {
+      nodes.push(data.getAfterhGameHistoryById);
+    }
     const stat = data.getPlayerByUserId || data.getPublicPlayerByUsername;
-    if (stat && stat.user && stat.user.id != null) {
+    // Depuis la refonte de la page de profil côté EVA (juillet 2026), certains fragments
+    // n'ont plus d'objet "user" du tout (juste un "id" directement dessus) — voir
+    // eva_history_collector.user.js pour le détail. Le collecteur fusionne déjà les
+    // fragments d'une même visite avant export, mais un import direct (JSON collé
+    // depuis les devtools) peut encore arriver ici sous forme d'un fragment isolé.
+    const uid = stat && ((stat.user && stat.user.id != null) ? stat.user.id : stat.id);
+    if (stat && uid != null) {
       playerStats.push({
         capturedAt: new Date().toISOString(),
-        user: { id: stat.user.id, username: stat.user.username, displayName: stat.user.displayName },
+        user: { id: uid, username: stat.user && stat.user.username, displayName: stat.user && stat.user.displayName },
         seasonPass: stat.seasonPass || null,
         experience: stat.experience || null,
         statistics: stat.statistics || null,
+        battleArenaStatistics: stat.battleArenaStatistics || null,
       });
     }
   }
