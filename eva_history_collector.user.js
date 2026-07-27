@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      9.0
+// @version      9.1
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        none
@@ -50,6 +50,13 @@
 // requêtes), ce script redeviendra incomplet de la même façon — utilise
 // eva_network_inspector.user.js pour diagnostiquer si ça se reproduit.
 //
+// PANNEAU RÉDUCTIBLE (v9.1)
+// Le script tourne sur tout le domaine EVA (voir HOST_HINT plus bas), pas seulement sur
+// les pages d'historique/profil — le panneau peut donc gêner ailleurs sur le site. Clique
+// sur son en-tête (ou le bouton "–"/"+") pour le réduire à un simple bandeau avec les
+// compteurs ; l'état réduit/déplié est mémorisé (même mécanisme que games/stats) et
+// survit aux rechargements de page, donc pas besoin de le refermer à chaque navigation.
+//
 // À PROPOS DE LA CAPTURE DE TON PROPRE PROFIL (getPlayerByUserId)
 // Une version précédente de ce script excluait volontairement la capture du
 // profil personnel authentifié suite à un bug de perte de données. C'est
@@ -89,6 +96,7 @@
 
   const GAMES_KEY = 'eva_history_collector_data';
   const STATS_KEY = 'eva_history_collector_playerstats';
+  const MINIMIZED_KEY = 'eva_history_collector_minimized';
   const MARKER_GAMES = 'cursorAfterhGameHistory';
   const MARKER_STATS_OWNED = 'getPlayerByUserId';
 
@@ -377,39 +385,52 @@
   };
 
   // ---------- panneau flottant ----------
-  let panel, gamesCountEl, statsCountEl, statusEl;
+  // Réductible : utile pour le laisser en place mais hors du chemin quand on navigue
+  // ailleurs sur le site (le script tourne sur tout le domaine, pas juste historique/profil —
+  // voir HOST_HINT plus haut). L'état réduit/déplié est mémorisé dans localStorage (même
+  // clé que games/stats, donc partagé entre onglets et persistant d'un rechargement à
+  // l'autre) pour ne pas avoir à re-réduire à chaque nouvelle page.
+  let panel, gamesCountEl, statsCountEl, statusEl, bodyEl, badgeEl, toggleBtn;
+  let minimized = loadJSON(MINIMIZED_KEY, false);
 
   function buildPanel() {
     panel = document.createElement('div');
     panel.style.cssText = `
       position:fixed; bottom:16px; right:16px; z-index:2147483647;
       background:#11151f; color:#e7ebf3; font-family:-apple-system,Segoe UI,Roboto,sans-serif;
-      font-size:13px; border:1px solid #2b3348; border-radius:10px; padding:12px 14px;
-      box-shadow:0 6px 24px rgba(0,0,0,.45); width:220px; user-select:none;
+      font-size:13px; border:1px solid #2b3348; border-radius:10px;
+      box-shadow:0 6px 24px rgba(0,0,0,.45); user-select:none;
     `;
     panel.innerHTML = `
-      <div style="font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:6px;">
-        <span>🎮</span><span>EVA Collector</span>
+      <div id="eva-collector-header" style="font-weight:700;padding:12px 14px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <span>🎮</span><span style="flex:1;">EVA Collector</span>
+        <span id="eva-collector-badge" style="display:none;color:#8892a6;font-weight:400;font-size:11px;white-space:nowrap;"></span>
+        <button id="eva-collector-toggle" title="Réduire" style="background:none;border:none;color:#8892a6;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">–</button>
       </div>
-      <div style="display:flex;gap:14px;margin-bottom:8px;">
-        <div>
-          <div id="eva-collector-games" style="font-size:22px;font-weight:700;line-height:1;">0</div>
-          <div style="color:#8892a6;font-size:11px;">parties</div>
+      <div id="eva-collector-body" style="padding:0 14px 14px;">
+        <div style="display:flex;gap:14px;margin-bottom:8px;">
+          <div>
+            <div id="eva-collector-games" style="font-size:22px;font-weight:700;line-height:1;">0</div>
+            <div style="color:#8892a6;font-size:11px;">parties</div>
+          </div>
+          <div>
+            <div id="eva-collector-stats" style="font-size:22px;font-weight:700;line-height:1;">0</div>
+            <div style="color:#8892a6;font-size:11px;">profils captés</div>
+          </div>
         </div>
-        <div>
-          <div id="eva-collector-stats" style="font-size:22px;font-weight:700;line-height:1;">0</div>
-          <div style="color:#8892a6;font-size:11px;">profils captés</div>
-        </div>
+        <div id="eva-collector-status" style="font-size:11px;color:#3ddc84;min-height:14px;margin-bottom:8px;"></div>
+        <button id="eva-collector-download" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#4f9dff;color:#0a0d14;font-weight:700;cursor:pointer;">Télécharger JSON</button>
+        <button id="eva-collector-copy" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">Copier le JSON</button>
+        <button id="eva-collector-clear" style="width:100%;padding:7px;border:none;border-radius:6px;background:#3a1c22;color:#ff9aa2;cursor:pointer;">Tout vider</button>
       </div>
-      <div id="eva-collector-status" style="font-size:11px;color:#3ddc84;min-height:14px;margin-bottom:8px;"></div>
-      <button id="eva-collector-download" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#4f9dff;color:#0a0d14;font-weight:700;cursor:pointer;">Télécharger JSON</button>
-      <button id="eva-collector-copy" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">Copier le JSON</button>
-      <button id="eva-collector-clear" style="width:100%;padding:7px;border:none;border-radius:6px;background:#3a1c22;color:#ff9aa2;cursor:pointer;">Tout vider</button>
     `;
     document.documentElement.appendChild(panel);
     gamesCountEl = panel.querySelector('#eva-collector-games');
     statsCountEl = panel.querySelector('#eva-collector-stats');
     statusEl = panel.querySelector('#eva-collector-status');
+    bodyEl = panel.querySelector('#eva-collector-body');
+    badgeEl = panel.querySelector('#eva-collector-badge');
+    toggleBtn = panel.querySelector('#eva-collector-toggle');
 
     panel.querySelector('#eva-collector-download').addEventListener('click', downloadJSON);
     panel.querySelector('#eva-collector-copy').addEventListener('click', copyJSON);
@@ -420,13 +441,37 @@
       updatePanel();
       flashPanel('Tout a été vidé');
     });
+    // Le header entier bascule l'état réduit (pas juste le petit bouton — plus facile à
+    // cliquer), sauf clic sur un bouton qu'il pourrait contenir un jour (stopPropagation
+    // pas nécessaire aujourd'hui vu qu'aucun bouton n'est dans le header, mais le
+    // toggle explicite reste le point d'entrée principal pour la lisibilité).
+    panel.querySelector('#eva-collector-header').addEventListener('click', () => setMinimized(!minimized));
+
+    applyMinimizedState();
+    updatePanel();
+  }
+
+  function setMinimized(value) {
+    minimized = value;
+    saveJSON(MINIMIZED_KEY, minimized);
+    applyMinimizedState();
+  }
+
+  function applyMinimizedState() {
+    if (!panel) return;
+    bodyEl.style.display = minimized ? 'none' : 'block';
+    toggleBtn.textContent = minimized ? '+' : '–';
+    toggleBtn.title = minimized ? 'Agrandir' : 'Réduire';
+    badgeEl.style.display = minimized ? 'inline' : 'none';
   }
 
   function updatePanel() {
     if (!gamesCountEl) return;
-    gamesCountEl.textContent = Object.keys(games).length;
+    const gameCount = Object.keys(games).length;
     const totalSnapshots = Object.values(stats).reduce((sum, arr) => sum + arr.length, 0);
+    gamesCountEl.textContent = gameCount;
     statsCountEl.textContent = totalSnapshots;
+    if (badgeEl) badgeEl.textContent = `${gameCount} · ${totalSnapshots}`;
   }
 
   function flashPanel(msg) {
@@ -465,8 +510,7 @@
   }
 
   function init() {
-    buildPanel();
-    updatePanel();
+    buildPanel(); // appelle déjà updatePanel() une fois le panneau construit
   }
 
   if (document.readyState === 'loading') {
