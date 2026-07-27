@@ -8,6 +8,22 @@ export function inDateRange(iso) {
   if (state.dateRangeEnd != null && t > state.dateRangeEnd) return false;
   return true;
 }
+// Vrai si cette partie appartient à la sélection de période/saison courante. Depuis le
+// collecteur v9.0, chaque partie porte directement son propre `seasonId` (attaché par le
+// collecteur à partir de la variable de la requête HistoryBa — l'API ne le renvoie jamais
+// dans la réponse elle-même, voir eva_history_collector.user.js). Quand une saison précise
+// est sélectionnée ET que la partie porte ce champ, on compare exactement plutôt que de
+// passer par l'approximation par date (bornes de saison déduites des captures de profil,
+// voir computeSeasons() dans seasons.js — toujours une approximation aux bords). On ne
+// retombe sur l'approximation par date que pour les parties importées sans `seasonId`
+// (importées avant ce changement) ou quand le filtre actif est une période libre plutôt
+// qu'une saison précise.
+export function gameInSelectedRange(g) {
+  if (state.selectedSeasonId != null && g.seasonId != null) {
+    return g.seasonId === state.selectedSeasonId;
+  }
+  return inDateRange(g.createdAt);
+}
 // Vrai si la carte de cette partie est dans la liste d'exclusion.
 export function isMapExcluded(g) {
   const name = g.map && g.map.name;
@@ -20,7 +36,7 @@ export function isModeExcluded(g) {
 }
 // Filtre global de l'app : toutes les parties respectant la période sélectionnée et les exclusions de cartes/modes.
 export function filteredGamesArray() {
-  return Object.values(state.gamesById).filter(g => inDateRange(g.createdAt) && !isMapExcluded(g) && !isModeExcluded(g));
+  return Object.values(state.gamesById).filter(g => gameInSelectedRange(g) && !isMapExcluded(g) && !isModeExcluded(g));
 }
 // Parties filtrées, restreintes au joueur sélectionné, triées de la plus récente à la plus ancienne (utilisé par l'Historique).
 export function sortedGames() {
