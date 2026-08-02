@@ -106,6 +106,8 @@
   const GAMES_KEY = 'eva_history_collector_data';
   const STATS_KEY = 'eva_history_collector_playerstats';
   const MINIMIZED_KEY = 'eva_history_collector_minimized';
+  const CLOSED_KEY = 'eva_history_collector_closed';
+  const POSITION_KEY = 'eva_history_collector_position';
   const MARKER_GAMES = 'cursorAfterhGameHistory';
   const MARKER_STATS_OWNED = 'getPlayerByUserId';
 
@@ -403,13 +405,16 @@
   };
 
   // ---------- panneau flottant ----------
-  // Réductible : utile pour le laisser en place mais hors du chemin quand on navigue
-  // ailleurs sur le site (le script tourne sur tout le domaine, pas juste historique/profil —
-  // voir HOST_HINT plus haut). L'état réduit/déplié est mémorisé dans localStorage (même
-  // clé que games/stats, donc partagé entre onglets et persistant d'un rechargement à
-  // l'autre) pour ne pas avoir à re-réduire à chaque nouvelle page.
-  let panel, gamesCountEl, statsCountEl, statusEl, bodyEl, badgeEl, toggleBtn;
+  // Réductible et déplaçable : utile pour le laisser en place mais hors du chemin quand on
+  // navigue ailleurs sur le site (le script tourne sur tout le domaine, pas juste
+  // historique/profil — voir HOST_HINT plus haut). L'état réduit/déplié, la position glissée
+  // et l'état fermé sont mémorisés dans localStorage (même clé que games/stats, donc partagés
+  // entre onglets et persistants d'un rechargement à l'autre) pour ne pas avoir à tout
+  // reconfigurer à chaque nouvelle page.
+  let panel, reopenBtn, gamesCountEl, statsCountEl, statusEl, bodyEl, badgeEl, toggleBtn, headerEl;
   let minimized = loadJSON(MINIMIZED_KEY, false);
+  let closed = loadJSON(CLOSED_KEY, false);
+  let position = loadJSON(POSITION_KEY, null); // {left, top} en px, null = position par défaut (bas-droite)
 
   function buildPanel() {
     panel = document.createElement('div');
@@ -420,10 +425,11 @@
       box-shadow:0 6px 24px rgba(0,0,0,.45); user-select:none;
     `;
     panel.innerHTML = `
-      <div id="eva-collector-header" style="font-weight:700;padding:12px 14px;display:flex;align-items:center;gap:6px;cursor:pointer;">
+      <div id="eva-collector-header" title="Glisser pour déplacer" style="font-weight:700;padding:12px 14px;display:flex;align-items:center;gap:6px;cursor:grab;">
         <span>🎮</span><span style="flex:1;">EVA Collector</span>
         <span id="eva-collector-badge" style="display:none;color:#8892a6;font-weight:400;font-size:11px;white-space:nowrap;"></span>
         <button id="eva-collector-toggle" title="Réduire" style="background:none;border:none;color:#8892a6;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">–</button>
+        <button id="eva-collector-close" title="Fermer" style="background:none;border:none;color:#8892a6;cursor:pointer;font-size:15px;line-height:1;padding:2px 4px;">✕</button>
       </div>
       <div id="eva-collector-body" style="padding:0 14px 14px;">
         <div style="display:flex;gap:14px;margin-bottom:8px;">
@@ -449,6 +455,9 @@
     bodyEl = panel.querySelector('#eva-collector-body');
     badgeEl = panel.querySelector('#eva-collector-badge');
     toggleBtn = panel.querySelector('#eva-collector-toggle');
+    headerEl = panel.querySelector('#eva-collector-header');
+
+    if (position) applyPosition(position);
 
     panel.querySelector('#eva-collector-download').addEventListener('click', downloadJSON);
     panel.querySelector('#eva-collector-copy').addEventListener('click', copyJSON);
@@ -459,14 +468,84 @@
       updatePanel();
       flashPanel('Tout a été vidé');
     });
+    // Fermer ne doit pas aussi basculer l'état réduit du header sous-jacent.
+    panel.querySelector('#eva-collector-close').addEventListener('click', (e) => {
+      e.stopPropagation();
+      setClosed(true);
+    });
     // Le header entier bascule l'état réduit (pas juste le petit bouton — plus facile à
-    // cliquer), sauf clic sur un bouton qu'il pourrait contenir un jour (stopPropagation
-    // pas nécessaire aujourd'hui vu qu'aucun bouton n'est dans le header, mais le
-    // toggle explicite reste le point d'entrée principal pour la lisibilité).
-    panel.querySelector('#eva-collector-header').addEventListener('click', () => setMinimized(!minimized));
+    // cliquer), sauf si le clic vient de terminer un glissé (voir wireDrag) ou d'un bouton
+    // qui gère déjà son propre clic (toggle bascule aussi via ce même listener par bubbling,
+    // fermer stoppe sa propagation ci-dessus).
+    headerEl.addEventListener('click', () => {
+      if (headerEl._justDragged) { headerEl._justDragged = false; return; }
+      setMinimized(!minimized);
+    });
+    wireDrag();
 
+    buildReopenBtn();
     applyMinimizedState();
+    applyClosedState();
     updatePanel();
+  }
+
+  function buildReopenBtn() {
+    reopenBtn = document.createElement('button');
+    reopenBtn.textContent = '🎮';
+    reopenBtn.title = 'Ouvrir EVA Collector';
+    reopenBtn.style.cssText = `
+      position:fixed; bottom:16px; right:16px; z-index:2147483647;
+      width:40px; height:40px; border-radius:50%; border:1px solid #2b3348;
+      background:#11151f; color:#e7ebf3; font-size:18px; cursor:pointer;
+      box-shadow:0 6px 24px rgba(0,0,0,.45); display:none; align-items:center; justify-content:center; padding:0;
+    `;
+    reopenBtn.addEventListener('click', () => setClosed(false));
+    document.documentElement.appendChild(reopenBtn);
+  }
+
+  // Glisser-déposer du panneau par son header. On bascule d'un positionnement bottom/right
+  // à left/top au premier déplacement (sinon le panneau "grandirait" depuis le coin fixe au
+  // lieu de suivre la souris), et on retient la position en pixels absolus pour la restaurer
+  // au prochain chargement de page.
+  function wireDrag() {
+    let drag = null;
+    headerEl.addEventListener('mousedown', (e) => {
+      if (e.target.closest('button')) return; // laisser les boutons gérer leur propre clic
+      const rect = panel.getBoundingClientRect();
+      drag = { startX: e.clientX, startY: e.clientY, startLeft: rect.left, startTop: rect.top, moved: false };
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e) => {
+      if (!drag) return;
+      const dx = e.clientX - drag.startX;
+      const dy = e.clientY - drag.startY;
+      if (!drag.moved && Math.abs(dx) < 4 && Math.abs(dy) < 4) return;
+      drag.moved = true;
+      headerEl.style.cursor = 'grabbing';
+      const maxLeft = Math.max(0, window.innerWidth - panel.offsetWidth);
+      const maxTop = Math.max(0, window.innerHeight - panel.offsetHeight);
+      const left = Math.min(Math.max(0, drag.startLeft + dx), maxLeft);
+      const top = Math.min(Math.max(0, drag.startTop + dy), maxTop);
+      applyPosition({ left, top });
+    });
+    document.addEventListener('mouseup', () => {
+      if (!drag) return;
+      headerEl.style.cursor = 'grab';
+      if (drag.moved) {
+        const rect = panel.getBoundingClientRect();
+        position = { left: rect.left, top: rect.top };
+        saveJSON(POSITION_KEY, position);
+        headerEl._justDragged = true;
+      }
+      drag = null;
+    });
+  }
+
+  function applyPosition(pos) {
+    panel.style.left = pos.left + 'px';
+    panel.style.top = pos.top + 'px';
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
   }
 
   function setMinimized(value) {
@@ -481,6 +560,18 @@
     toggleBtn.textContent = minimized ? '+' : '–';
     toggleBtn.title = minimized ? 'Agrandir' : 'Réduire';
     badgeEl.style.display = minimized ? 'inline' : 'none';
+  }
+
+  function setClosed(value) {
+    closed = value;
+    saveJSON(CLOSED_KEY, closed);
+    applyClosedState();
+  }
+
+  function applyClosedState() {
+    if (!panel || !reopenBtn) return;
+    panel.style.display = closed ? 'none' : 'block';
+    reopenBtn.style.display = closed ? 'flex' : 'none';
   }
 
   function updatePanel() {
