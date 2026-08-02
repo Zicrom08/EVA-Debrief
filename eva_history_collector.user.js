@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      9.1
+// @version      9.2
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        none
@@ -56,6 +56,15 @@
 // sur son en-tête (ou le bouton "–"/"+") pour le réduire à un simple bandeau avec les
 // compteurs ; l'état réduit/déplié est mémorisé (même mécanisme que games/stats) et
 // survit aux rechargements de page, donc pas besoin de le refermer à chaque navigation.
+//
+// THROTTLE PAR VARIABLES, PAS PAR OPÉRATION (v9.2)
+// Le garde-fou "5 secondes entre deux appels enrichis" était jusque-là indexé uniquement
+// sur le nom de l'opération (ex: "HistoryBa"), pas sur ses variables. Or HistoryBa est
+// rappelée une fois par page d'historique avec un cursor différent à chaque fois : si le
+// site tirait deux pages à moins de 5s d'intervalle (défilement rapide), la deuxième page
+// se faisait silencieusement absorber par le throttle et n'était donc jamais capturée
+// (la réponse d'origine, non enrichie, du site n'est de toute façon jamais lue — voir
+// plus bas). La clé de throttle inclut maintenant les variables de la requête.
 //
 // À PROPOS DE LA CAPTURE DE TON PROPRE PROFIL (getPlayerByUserId)
 // Une version précédente de ce script excluait volontairement la capture du
@@ -326,8 +335,8 @@
   // avec les mêmes URL/méthode/headers (donc la même authentification) mais notre requête
   // enrichie. Ce deuxième appel ne repasse jamais par le code du site : le site ne voit
   // jamais sa réponse et ne peut donc jamais boucler dessus.
-  const lastEnrichedAt = {}; // operationName -> timestamp (ms) du dernier appel enrichi
-  const ENRICH_THROTTLE_MS = 5000; // au moins 5 secondes entre deux appels enrichis pour une même opération
+  const lastEnrichedAt = {}; // "operationName|variables" -> timestamp (ms) du dernier appel enrichi
+  const ENRICH_THROTTLE_MS = 5000; // au moins 5 secondes entre deux appels enrichis identiques
 
   function tryFireEnriched(url, init) {
     if (!init || typeof init.body !== 'string') return;
@@ -340,9 +349,18 @@
     const opName = parsed && parsed.operationName;
     if (!opName || !QUERY_REPLACEMENTS[opName]) return;
 
+    // Le throttle sert à absorber les re-déclenchements répétés d'UNE MÊME requête (ex: la
+    // page de profil qui se rafraîchit en boucle avec les mêmes variables) — la clé DOIT donc
+    // inclure les variables, pas juste operationName. HistoryBa est rappelée une fois par page
+    // d'historique avec un "cursor" différent à chaque fois ; avec une clé basée sur le seul
+    // nom d'opération, deux pages tirées à moins de 5s d'intervalle (défilement rapide) se
+    // annulaient l'une l'autre et la seconde page n'était alors JAMAIS capturée — ni en
+    // version enrichie ni en version réduite, puisque la réponse d'origine du site n'est
+    // jamais lue (voir plus haut). C'est la cause la plus probable de parties manquantes.
+    const throttleKey = opName + '|' + JSON.stringify(parsed.variables || {});
     const now = Date.now();
-    if (lastEnrichedAt[opName] && (now - lastEnrichedAt[opName]) < ENRICH_THROTTLE_MS) return;
-    lastEnrichedAt[opName] = now;
+    if (lastEnrichedAt[throttleKey] && (now - lastEnrichedAt[throttleKey]) < ENRICH_THROTTLE_MS) return;
+    lastEnrichedAt[throttleKey] = now;
 
     const enrichedBody = Object.assign({}, parsed, { query: QUERY_REPLACEMENTS[opName] });
     const enrichedInit = Object.assign({}, init, { body: JSON.stringify(enrichedBody) });
