@@ -10,12 +10,8 @@ header{
 .brand{display:flex;align-items:center;gap:12px;}
 .brand .mark{
   width:34px;height:34px;border-radius:6px;
-  background:linear-gradient(135deg, var(--alliance), var(--rebels));
-  display:flex;align-items:center;justify-content:center;
-  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-weight:700;font-size:15px;color:#0a0d14;
-  transform:rotate(45deg);
+  display:block;flex-shrink:0;
 }
-.brand .mark span{transform:rotate(-45deg);}
 .brand h1{
   font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-weight:700;font-size:22px;
   letter-spacing:0.06em;margin:0;text-transform:uppercase;
