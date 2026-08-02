@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>EVA Debrief — Connexion</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
 <style>
   :root{
     --bg:#0a0d14; --panel:#11151f; --panel-2:#161b28; --line:#232a3a;
@@ -25,9 +26,8 @@
     padding:38px 34px; width:320px; box-shadow:0 20px 60px rgba(0,0,0,.45);
   }
   .mark{
+    display:block;
     width:44px; height:44px; border-radius:8px; margin:0 auto 18px;
-    background:linear-gradient(135deg, var(--alliance), var(--rebels));
-    transform:rotate(45deg);
   }
   h1{
     font-family:'Segoe UI',system-ui,sans-serif; font-weight:700; font-size:17px;
@@ -50,7 +50,7 @@
 </head>
 <body>
   <form class="card" id="loginForm">
-    <div class="mark"></div>
+    <img class="mark" src="/logo.svg" alt="EVA Debrief">
     <h1>EVA Debrief</h1>
     <p>Entre le mot de passe pour accéder au site</p>
     <input type="password" id="password" placeholder="Mot de passe" autofocus autocomplete="current-password">
