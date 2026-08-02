@@ -3,6 +3,52 @@ import { displaySeasonId, normalizeSnapshotStats, snapshotSeasonId } from '../se
 
 const NA = '<span style="color:var(--muted);">n/d</span>';
 
+// Les stats de saison repartent de 0 à chaque saison : le cumul de la DERNIÈRE capture
+// d'une saison représente donc le total de cette saison entière. Pour "Toutes les
+// saisons" (aucune saison sélectionnée, aucune période filtrée), `snaps` contient les
+// captures de TOUTES les saisons connues, pas une seule — on ne peut pas se contenter
+// de lire la dernière capture globale (ça ne montrerait que la saison en cours). On
+// regroupe donc par saison, on garde la dernière capture de chaque groupe (son total),
+// puis on additionne ces totaux entre saisons. `snaps` est trié asc par capturedAt (voir
+// api.js), donc un simple Map écrasé dans l'ordre suffit à garder le dernier par groupe.
+function latestPerSeason(snaps) {
+  const bySeason = new Map();
+  for (const s of snaps) {
+    const sid = snapshotSeasonId(s);
+    const key = sid != null ? `s:${sid}` : `u:${s.capturedAt}`;
+    bySeason.set(key, s);
+  }
+  return [...bySeason.values()];
+}
+
+// Additionne les compteurs cumulés de plusieurs saisons (chacune représentée par sa
+// dernière capture). bestKillStreak/bestInflictedDamage sont des records, pas des
+// sommes : on garde le max toutes saisons confondues plutôt que d'additionner.
+function sumSeasonTotals(seasonSnaps) {
+  const items = seasonSnaps.map(normalizeSnapshotStats).filter(Boolean);
+  const hasPlaytime = items.length > 0 && items.every(i => i.hasPlaytime);
+  const hasDamage = items.length > 0 && items.every(i => i.hasDamage);
+  return items.reduce((acc, it) => ({
+    gameCount: acc.gameCount + it.gameCount,
+    gameVictoryCount: acc.gameVictoryCount + it.gameVictoryCount,
+    gameDefeatCount: acc.gameDefeatCount + it.gameDefeatCount,
+    gameDrawCount: acc.gameDrawCount + it.gameDrawCount,
+    kills: acc.kills + it.kills,
+    deaths: acc.deaths + it.deaths,
+    assists: acc.assists + it.assists,
+    traveledDistance: acc.traveledDistance + it.traveledDistance,
+    gameTime: acc.gameTime + it.gameTime,
+    inflictedDamage: acc.inflictedDamage + it.inflictedDamage,
+    bestKillStreak: Math.max(acc.bestKillStreak, it.bestKillStreak),
+    bestInflictedDamage: Math.max(acc.bestInflictedDamage, it.bestInflictedDamage),
+    hasPlaytime, hasDamage,
+  }), {
+    gameCount: 0, gameVictoryCount: 0, gameDefeatCount: 0, gameDrawCount: 0,
+    kills: 0, deaths: 0, assists: 0, traveledDistance: 0, gameTime: 0, inflictedDamage: 0,
+    bestKillStreak: 0, bestInflictedDamage: 0, hasPlaytime, hasDamage,
+  });
+}
+
 // ================= PROFIL : carte de saison (depuis les snapshots getPlayerByUserId) =================
 // `baseline` (optionnel) est la dernière capture connue AVANT le début de la période
 // filtrée (voir seasonCardBaseline() dans seasons.js). Les stats de saison sont des
@@ -13,12 +59,18 @@ const NA = '<span style="color:var(--muted);">n/d</span>';
 export function renderSeasonCard(snaps, baseline) {
   const latest = snaps[snaps.length - 1];
   const exp = latest.experience || {};
-  const cur = normalizeSnapshotStats(latest) || {
+  const seasonIds = new Set(snaps.map(snapshotSeasonId));
+  // Pas de baseline (donc pas de fenêtre de date restreinte à une saison) et plusieurs
+  // saisons présentes dans la sélection = c'est le cas "Toutes les saisons" : agréger
+  // plutôt que ne montrer que la dernière capture (qui ne reflète que la saison en cours).
+  const isAllSeasons = !baseline && seasonIds.size > 1;
+
+  const cur = isAllSeasons ? sumSeasonTotals(latestPerSeason(snaps)) : (normalizeSnapshotStats(latest) || {
     gameCount: 0, gameVictoryCount: 0, gameDefeatCount: 0, gameDrawCount: 0,
     kills: 0, deaths: 0, assists: 0, bestKillStreak: 0, traveledDistance: 0,
     gameTime: 0, inflictedDamage: 0, bestInflictedDamage: 0, hasPlaytime: false, hasDamage: false,
-  };
-  const base = baseline ? normalizeSnapshotStats(baseline) : null;
+  });
+  const base = (!isAllSeasons && baseline) ? normalizeSnapshotStats(baseline) : null;
   // Le temps de jeu / les dégâts ne sont disponibles que si les DEUX bornes du delta
   // les ont (le nouveau format d'EVA, battleArenaStatistics, ne les fournit plus du tout).
   const hasPlaytime = cur.hasPlaytime && (!base || base.hasPlaytime);
@@ -52,10 +104,10 @@ export function renderSeasonCard(snaps, baseline) {
         <div>
           <div class="profile-name">${latest.user.displayName || latest.user.username || '?'}</div>
           <div class="profile-sub">
-            ${latest.user.username || ''} · Saison ${displaySeasonId(snapshotSeasonId(latest)) ?? '?'}
+            ${latest.user.username || ''} · ${isAllSeasons ? `Toutes les saisons (${seasonIds.size})` : `Saison ${displaySeasonId(snapshotSeasonId(latest)) ?? '?'}`}
             ${latest.seasonPass && latest.seasonPass.active ? ' · <span class="badge-pass">Pass actif</span>' : ''}
             ${base ? ' · <span style="color:var(--gold);">stats de la période sélectionnée</span>' : ''}
-            · capturé le ${fmtDate(latest.capturedAt)}
+            · ${isAllSeasons ? 'dernière capture le' : 'capturé le'} ${fmtDate(latest.capturedAt)}
           </div>
         </div>
         <div class="profile-level">
