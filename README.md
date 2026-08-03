@@ -198,6 +198,26 @@ Pour changer de port :
 PORT=8080 npm start
 ```
 
+### Fichier `.env` (éviter de répéter les variables à chaque lancement)
+
+Toutes les variables d'environnement du backend (`PORT`, `EVA_ADMIN_USERNAME`/
+`EVA_ADMIN_PASSWORD`, `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY`,
+`SSL_KEY_PATH`/`SSL_CERT_PATH`, `DATA_DIR`/`DATA_FILE`...) peuvent aussi être
+mises une bonne fois dans un fichier `.env` à la racine du repo, plutôt que
+préfixées devant chaque commande :
+
+```bash
+cp .env.example .env
+# puis édite .env avec tes valeurs
+npm start
+```
+
+`backend/server.js` le charge automatiquement s'il existe (`backend/env.js`,
+un petit parseur maison, pas de dépendance `dotenv` ajoutée). `.env` n'est
+jamais commité (voir `.gitignore`) — `.env.example` sert de modèle. Une
+variable déjà présente dans l'environnement réel (ex: `PORT=4000 npm start`)
+reste prioritaire sur celle du `.env`.
+
 **En développement** (rechargement à chaud du frontend) :
 
 ```bash
@@ -289,8 +309,41 @@ scripté, sans passer par l'écran de création) :
 EVA_ADMIN_USERNAME=admin EVA_ADMIN_PASSWORD=un-mot-de-passe-solide npm start
 ```
 
+(ou dans ton `.env`, voir [Installation](#installation) — évite de laisser un
+mot de passe traîner dans l'historique du shell.)
+
 Cette variable ne sert qu'au tout premier démarrage (si un compte existe déjà,
 elle est ignorée) — les comptes suivants se créent depuis l'onglet "Comptes".
+
+### Inscription publique (optionnelle)
+
+En plus de la création manuelle par un admin, une page d'inscription
+publique peut être activée — `/login.html` propose alors un lien "Pas de
+compte ? Crée-en un" en plus du formulaire de connexion. Elle demande
+username + email + mot de passe et est protégée par un captcha
+[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/) pour
+limiter les inscriptions automatisées par des bots. Un compte créé ainsi est
+toujours en rôle `readonly` (jamais choisi par la personne qui s'inscrit) —
+un admin le promeut ensuite manuellement depuis l'onglet "Comptes" si besoin.
+L'email n'est pas vérifié (pas d'email de confirmation envoyé) : il est
+seulement stocké sur le compte, visible par les admins dans l'onglet
+"Comptes".
+
+Désactivée par défaut — tant que les variables ci-dessous ne sont pas
+définies, le lien d'inscription n'apparaît nulle part et `/api/register`
+refuse tout :
+
+```bash
+TURNSTILE_SITE_KEY=xxxx TURNSTILE_SECRET_KEY=yyyy npm start
+```
+
+(ou dans ton `.env`, voir [Installation](#installation).)
+
+Pour obtenir ces clés : [dash.cloudflare.com](https://dash.cloudflare.com) →
+Turnstile → "Add site" → mode "Managed", en indiquant ton nom de domaine
+(`zicrom.ddns.net` par exemple). Ajoute aussi `localhost` à la liste des
+domaines autorisés du widget si tu veux tester l'inscription en développement
+(`npm run dev`).
 
 Comment ça marche techniquement : mots de passe hachés avec `crypto.scrypt`
 (sel aléatoire par compte, jamais stockés en clair) ; toute requête (page ou
@@ -339,6 +392,10 @@ Puis :
 ```bash
 sudo systemctl enable --now eva-debrief
 ```
+
+`Environment=PORT=3000` est facultatif si tu as déjà un `.env` à la racine du
+repo (voir [Installation](#installation)) — il est chargé automatiquement,
+quelle que soit la façon dont le process est démarré.
 
 ### Avec pm2 (alternative simple)
 
@@ -491,16 +548,23 @@ Même avec des comptes créés, garde en tête que :
     le mot de passe et le cookie de session circulent en clair.
   - Peut se combiner avec une protection supplémentaire côté reverse proxy
     (nginx `auth_basic`, restriction par IP) si tu veux une double barrière.
+- Si tu actives l'inscription publique (`TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY`),
+  n'importe qui peut se créer un compte `readonly` — le captcha limite les
+  bots, pas les humains malveillants. Vérifie de temps en temps l'onglet
+  "Comptes" et supprime les comptes suspects ; n'active pas l'inscription
+  publique si tu préfères garder un contrôle total sur qui a accès au site
+  (dans ce cas, crée les comptes toi-même depuis l'onglet "Comptes").
 
 ## API
 
 | Méthode | Route             | Auth requise | Description |
 |---------|-------------------|:---:|--------------|
-| GET     | `/api/auth-status`| non | `{ hasUsers }` — indique si le premier compte reste à créer |
+| GET     | `/api/auth-status`| non | `{ hasUsers, registrationEnabled, turnstileSiteKey }` |
 | POST    | `/api/setup`      | non | `{ username, password }` → crée le tout premier compte (admin), uniquement tant qu'aucun compte n'existe |
+| POST    | `/api/register`   | non | `{ username, email, password, turnstileToken }` → crée un compte `readonly`, uniquement si l'inscription publique est activée (voir [Inscription publique](#inscription-publique-optionnelle)) |
 | POST    | `/api/login`      | non | `{ username, password }` → crée une session (cookie) |
 | POST    | `/api/logout`     | non | Termine la session en cours |
-| GET     | `/api/me`         | oui | `{ id, username, role }` du compte connecté |
+| GET     | `/api/me`         | oui | `{ id, username, email, role }` du compte connecté |
 | GET     | `/api/state`      | oui | Renvoie tout : parties, profils, équipes |
 | GET     | `/api/health`     | oui | Statut + compteurs |
 | POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) |
@@ -511,7 +575,7 @@ Même avec des comptes créés, garde en tête que :
 | DELETE  | `/api/teams/:id`  | admin | Supprime une équipe |
 | DELETE  | `/api/reset`      | admin | Vide games/snapshots/teams (irréversible ; les comptes survivent) |
 | GET     | `/api/users`      | admin | Liste des comptes |
-| POST    | `/api/users`      | admin | Crée un compte `{ username, password, role }` |
+| POST    | `/api/users`      | admin | Crée un compte `{ username, email?, password, role }` |
 | PUT     | `/api/users/:id`  | admin | Modifie le rôle et/ou le mot de passe d'un compte |
 | DELETE  | `/api/users/:id`  | admin | Supprime un compte (jamais soi-même, jamais le dernier admin) |
 

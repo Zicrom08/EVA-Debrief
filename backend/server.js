@@ -14,8 +14,10 @@
 // `npm run build` a déjà été lancé au moins une fois.
 // ============================================================================
 
-const express = require('express');
 const path = require('path');
+require('./env').loadEnvFile(path.join(__dirname, '..', '.env'));
+
+const express = require('express');
 const db = require('./db');
 const auth = require('./auth');
 
@@ -32,6 +34,35 @@ app.use(express.json({ limit: '100mb' })); // les exports d'historique complets 
 // ---------------------------------------------------------------------------
 function isProtected() {
   return db.getAllUsers().length > 0;
+}
+
+// Inscription publique (voir /api/register plus bas) : désactivée par défaut,
+// n'existe que si ces deux variables sont définies (clé publique + secrète
+// d'un widget Cloudflare Turnstile — dash.cloudflare.com → Turnstile). Sans
+// elles, pas de lien "créer un compte" côté frontend et la route refuse tout.
+const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY;
+const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY;
+function isRegistrationEnabled() {
+  return Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY);
+}
+
+// Vérifie un jeton Turnstile auprès de Cloudflare — appel réseau serveur à
+// serveur, la clé secrète ne quitte jamais ce process.
+async function verifyTurnstile(token, remoteIp) {
+  if (!token) return false;
+  try {
+    const body = new URLSearchParams({ secret: TURNSTILE_SECRET_KEY, response: token });
+    if (remoteIp) body.set('remoteip', remoteIp);
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      body,
+    });
+    const data = await res.json();
+    return data.success === true;
+  } catch (e) {
+    console.error('[turnstile] Échec de la vérification :', e.message);
+    return false;
+  }
 }
 
 // Bootstrap optionnel : si aucun compte n'existe encore et que ces deux
@@ -54,10 +85,16 @@ app.use((req, res, next) => {
   next();
 });
 
-// Utilisé par login.html pour savoir s'il faut afficher "connexion" ou
-// "créer le premier compte admin" — public, ne révèle rien de sensible.
+// Utilisé par login.html pour savoir s'il faut afficher "connexion", "créer le
+// premier compte admin" ou proposer un lien d'inscription — public, ne révèle
+// rien de sensible (la clé Turnstile renvoyée est la clé PUBLIQUE du widget).
 app.get('/api/auth-status', (req, res) => {
-  res.json({ hasUsers: isProtected() });
+  const registrationEnabled = isRegistrationEnabled();
+  res.json({
+    hasUsers: isProtected(),
+    registrationEnabled,
+    turnstileSiteKey: registrationEnabled ? TURNSTILE_SITE_KEY : null,
+  });
 });
 
 // Crée le tout premier compte (rôle admin) — fermé dès qu'un compte existe déjà.
@@ -69,6 +106,34 @@ app.post('/api/setup', (req, res) => {
   }
   const { salt, hash } = auth.hashPassword(password);
   const user = db.createUser({ username: username.trim(), passwordSalt: salt, passwordHash: hash, role: 'admin' });
+  const token = auth.createSession(user.id, user.role);
+  res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
+  res.json({ ok: true });
+});
+
+// Inscription publique — toujours en rôle "readonly" (jamais choisi par le
+// client), un admin promeut ensuite manuellement depuis l'onglet Comptes si
+// besoin. Fermée si Turnstile n'est pas configuré (voir isRegistrationEnabled).
+app.post('/api/register', async (req, res) => {
+  if (!isRegistrationEnabled()) {
+    return res.status(403).json({ error: 'Inscription désactivée.' });
+  }
+  const { username, email, password, turnstileToken } = req.body || {};
+  if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
+    return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
+  }
+  if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return res.status(400).json({ error: 'Adresse email invalide.' });
+  }
+  const turnstileOk = await verifyTurnstile(turnstileToken, req.headers['x-forwarded-for'] || req.socket.remoteAddress);
+  if (!turnstileOk) {
+    return res.status(400).json({ error: 'Vérification anti-robot échouée, réessaie.' });
+  }
+  if (db.findUserByUsername(username)) {
+    return res.status(409).json({ error: 'Ce nom d\'utilisateur est déjà pris.' });
+  }
+  const { salt, hash } = auth.hashPassword(password);
+  const user = db.createUser({ username: username.trim(), email: email.trim(), passwordSalt: salt, passwordHash: hash, role: 'readonly' });
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
   res.json({ ok: true });
@@ -95,7 +160,7 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-const PUBLIC_PATHS = new Set(['/login.html', '/api/login', '/api/setup', '/api/auth-status']);
+const PUBLIC_PATHS = new Set(['/login.html', '/api/login', '/api/setup', '/api/auth-status', '/api/register']);
 app.use((req, res, next) => {
   if (!isProtected()) return next(); // aucun compte créé = accès libre (setup en cours)
   if (PUBLIC_PATHS.has(req.path)) return next();
@@ -111,7 +176,7 @@ app.use((req, res, next) => {
 app.get('/api/me', (req, res) => {
   const user = req.user ? db.getUserById(req.user.userId) : null;
   if (!user) return res.status(401).json({ error: 'Authentification requise.' });
-  res.json({ id: user.id, username: user.username, role: user.role });
+  res.json({ id: user.id, username: user.username, email: user.email || null, role: user.role });
 });
 
 // Autorise l'import de données aux rôles admin et contributor — seul readonly
@@ -135,11 +200,11 @@ function requireAdmin(req, res, next) {
 // Gestion des comptes (admin uniquement)
 // ---------------------------------------------------------------------------
 app.get('/api/users', requireAdmin, (req, res) => {
-  res.json(db.getAllUsers().map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt })));
+  res.json(db.getAllUsers().map(u => ({ id: u.id, username: u.username, email: u.email || null, role: u.role, createdAt: u.createdAt })));
 });
 
 app.post('/api/users', requireAdmin, (req, res) => {
-  const { username, password, role } = req.body || {};
+  const { username, email, password, role } = req.body || {};
   if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
     return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
   }
@@ -150,8 +215,8 @@ app.post('/api/users', requireAdmin, (req, res) => {
     return res.status(409).json({ error: 'Ce nom d\'utilisateur est déjà pris.' });
   }
   const { salt, hash } = auth.hashPassword(password);
-  const user = db.createUser({ username: username.trim(), passwordSalt: salt, passwordHash: hash, role });
-  res.json({ id: user.id, username: user.username, role: user.role, createdAt: user.createdAt });
+  const user = db.createUser({ username: username.trim(), email: email ? String(email).trim() : null, passwordSalt: salt, passwordHash: hash, role });
+  res.json({ id: user.id, username: user.username, email: user.email, role: user.role, createdAt: user.createdAt });
 });
 
 app.put('/api/users/:id', requireAdmin, (req, res) => {
@@ -176,7 +241,7 @@ app.put('/api/users/:id', requireAdmin, (req, res) => {
   }
   const updated = db.updateUser(user.id, patch);
   auth.destroySessionsForUser(user.id);
-  res.json({ id: updated.id, username: updated.username, role: updated.role, createdAt: updated.createdAt });
+  res.json({ id: updated.id, username: updated.username, email: updated.email || null, role: updated.role, createdAt: updated.createdAt });
 });
 
 app.delete('/api/users/:id', requireAdmin, (req, res) => {

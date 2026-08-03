@@ -22,6 +22,7 @@ function renderUserList() {
     return `
     <tr>
       <td class="name-cell">${u.username}${isSelf ? ' <span style="color:var(--muted);">(toi)</span>' : ''}</td>
+      <td style="color:var(--muted);">${u.email || '—'}</td>
       <td>
         <select data-role-select="${u.id}" ${isSelf || isLastAdmin ? 'disabled' : ''}>
           ${roleOptionsHtml(u.role)}
@@ -35,7 +36,7 @@ function renderUserList() {
   }).join('');
   return `
     <div class="table-scroll"><table class="roster">
-      <thead><tr><th>Compte</th><th>Rôle</th><th class="num">Actions</th></tr></thead>
+      <thead><tr><th>Compte</th><th>Email</th><th>Rôle</th><th class="num">Actions</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
 }
@@ -45,6 +46,7 @@ function renderCreateForm() {
     <div class="team-create-form">
       <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Créer un nouveau compte :</div>
       <input type="text" id="newUserName" placeholder="Nom d'utilisateur">
+      <input type="email" id="newUserEmail" placeholder="Adresse email (optionnel)">
       <input type="password" id="newUserPassword" placeholder="Mot de passe (8 caractères min.)">
       <select id="newUserRole">
         ${roleOptionsHtml('readonly')}
@@ -102,14 +104,16 @@ function wireUserManager() {
   if (createBtn) {
     createBtn.addEventListener('click', async () => {
       const nameInput = document.getElementById('newUserName');
+      const emailInput = document.getElementById('newUserEmail');
       const passwordInput = document.getElementById('newUserPassword');
       const roleSelect = document.getElementById('newUserRole');
       const username = nameInput.value.trim();
+      const email = emailInput.value.trim();
       const password = passwordInput.value;
       if (!username) { nameInput.focus(); return; }
       if (password.length < 8) { alert('Le mot de passe doit faire au moins 8 caractères.'); passwordInput.focus(); return; }
       try {
-        await apiSend('POST', '/api/users', { username, password, role: roleSelect.value });
+        await apiSend('POST', '/api/users', { username, email, password, role: roleSelect.value });
       } catch (e) {
         alert('Erreur lors de la création du compte : ' + e.message);
       }

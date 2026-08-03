@@ -34,11 +34,11 @@
     text-align:center; margin:0 0 4px; letter-spacing:0.05em; text-transform:uppercase;
   }
   p{color:var(--muted); font-size:12px; text-align:center; margin:0 0 24px;}
-  input[type=password],input[type=text]{
+  input[type=password],input[type=text],input[type=email]{
     width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
     color:var(--text); padding:11px 12px; font-size:14px; margin-bottom:14px;
   }
-  input[type=password]:focus,input[type=text]:focus{outline:none; border-color:var(--alliance);}
+  input[type=password]:focus,input[type=text]:focus,input[type=email]:focus{outline:none; border-color:var(--alliance);}
   button{
     width:100%; background:var(--alliance); color:#0a0d14; border:none; border-radius:8px;
     padding:11px; font-weight:700; font-size:14px; cursor:pointer;
@@ -46,6 +46,9 @@
   button:hover{filter:brightness(1.08);}
   button:disabled{opacity:0.6; cursor:default;}
   .error{color:var(--loss); font-size:12px; text-align:center; min-height:16px; margin-top:12px;}
+  #turnstileContainer{display:none; margin-bottom:14px; justify-content:center;}
+  .toggle-link{display:none; color:var(--alliance); font-size:12px; text-align:center; margin-top:16px; cursor:pointer;}
+  .toggle-link:hover{text-decoration:underline;}
 </style>
 </head>
 <body>
@@ -54,10 +57,13 @@
     <h1>EVA Debrief</h1>
     <p id="loginIntro">Connecte-toi pour accéder au site</p>
     <input type="text" id="username" placeholder="Nom d'utilisateur" autocomplete="username">
+    <input type="email" id="email" placeholder="Adresse email" autocomplete="email" style="display:none;">
     <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password">
     <input type="password" id="passwordConfirm" placeholder="Confirme le mot de passe" autocomplete="new-password" style="display:none;">
+    <div id="turnstileContainer"></div>
     <button type="submit" id="loginBtn">Se connecter</button>
     <div class="error" id="loginError"></div>
+    <div class="toggle-link" id="toggleModeLink"></div>
   </form>
 
   <script>
@@ -65,50 +71,126 @@
     const btn = document.getElementById('loginBtn');
     const errEl = document.getElementById('loginError');
     const introEl = document.getElementById('loginIntro');
+    const usernameInput = document.getElementById('username');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
     const confirmInput = document.getElementById('passwordConfirm');
-    let setupMode = false;
+    const turnstileContainer = document.getElementById('turnstileContainer');
+    const toggleLink = document.getElementById('toggleModeLink');
 
-    // Détermine s'il faut proposer la connexion classique ou la création du
-    // tout premier compte (aucun utilisateur en base) avant d'afficher le formulaire.
+    let mode = 'login'; // 'login' | 'setup' | 'register'
+    let registrationEnabled = false;
+    let turnstileSiteKey = null;
+    let turnstileWidgetId = null;
+    let turnstileScriptLoading = null;
+
+    // Charge le script Turnstile une seule fois, seulement quand on en a besoin
+    // (mode inscription) — inutile de l'imposer aux visiteurs qui se connectent.
+    function ensureTurnstileLoaded() {
+      if (window.turnstile) return Promise.resolve();
+      if (turnstileScriptLoading) return turnstileScriptLoading;
+      turnstileScriptLoading = new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
+        s.async = true; s.defer = true;
+        s.onload = () => resolve();
+        document.head.appendChild(s);
+      });
+      return turnstileScriptLoading;
+    }
+
+    function idleButtonText() {
+      if (mode === 'setup') return 'Créer le compte administrateur';
+      if (mode === 'register') return 'Créer mon compte';
+      return 'Se connecter';
+    }
+
+    // Affiche/masque les champs et le lien de bascule selon le mode courant.
+    function updateFieldsForMode() {
+      const isSetup = mode === 'setup';
+      const isRegister = mode === 'register';
+      introEl.textContent = isSetup
+        ? 'Aucun compte n\'existe encore — crée le compte administrateur'
+        : isRegister
+          ? 'Crée ton compte (accès en lecture seule au départ)'
+          : 'Connecte-toi pour accéder au site';
+      emailInput.style.display = isRegister ? 'block' : 'none';
+      confirmInput.style.display = (isSetup || isRegister) ? 'block' : 'none';
+      turnstileContainer.style.display = isRegister ? 'flex' : 'none';
+      passwordInput.setAttribute('autocomplete', (isSetup || isRegister) ? 'new-password' : 'current-password');
+      btn.textContent = idleButtonText();
+      if (!isSetup && registrationEnabled) {
+        toggleLink.style.display = 'block';
+        toggleLink.textContent = isRegister ? 'Déjà un compte ? Se connecter' : 'Pas de compte ? Crée-en un';
+      } else {
+        toggleLink.style.display = 'none';
+      }
+      if (isRegister) {
+        ensureTurnstileLoaded().then(() => {
+          if (turnstileWidgetId == null) {
+            turnstileWidgetId = turnstile.render(turnstileContainer, { sitekey: turnstileSiteKey });
+          }
+        });
+      }
+    }
+
+    toggleLink.addEventListener('click', () => {
+      mode = mode === 'register' ? 'login' : 'register';
+      errEl.textContent = '';
+      form.reset();
+      updateFieldsForMode();
+      usernameInput.focus();
+    });
+
+    // Détermine le mode initial : connexion classique, création du tout premier
+    // compte (aucun utilisateur en base), ou si l'inscription publique est ouverte
+    // (Turnstile configuré côté serveur — voir /api/auth-status).
     (async () => {
       try {
         const res = await fetch('/api/auth-status');
         const status = await res.json();
-        setupMode = !status.hasUsers;
+        registrationEnabled = !!status.registrationEnabled;
+        turnstileSiteKey = status.turnstileSiteKey || null;
+        mode = status.hasUsers ? 'login' : 'setup';
       } catch (e) { /* en cas d'échec, on part du principe qu'il faut se connecter */ }
-      if (setupMode) {
-        introEl.textContent = 'Aucun compte n\'existe encore — crée le compte administrateur';
-        document.getElementById('username').setAttribute('autocomplete', 'username');
-        document.getElementById('password').setAttribute('autocomplete', 'new-password');
-        confirmInput.style.display = 'block';
-        btn.textContent = 'Créer le compte administrateur';
-      }
+      updateFieldsForMode();
       form.style.display = 'block';
-      document.getElementById('username').focus();
+      usernameInput.focus();
     })();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errEl.textContent = '';
-      const username = document.getElementById('username').value.trim();
-      const password = document.getElementById('password').value;
-      if (setupMode && password !== confirmInput.value) {
+      const username = usernameInput.value.trim();
+      const password = passwordInput.value;
+      if ((mode === 'setup' || mode === 'register') && password !== confirmInput.value) {
         errEl.textContent = 'Les mots de passe ne correspondent pas.';
         return;
       }
+      const body = { username, password };
+      if (mode === 'register') {
+        body.email = emailInput.value.trim();
+        body.turnstileToken = (window.turnstile && turnstileWidgetId != null) ? turnstile.getResponse(turnstileWidgetId) : '';
+        if (!body.turnstileToken) {
+          errEl.textContent = 'Complète la vérification anti-robot.';
+          return;
+        }
+      }
+      const endpoint = mode === 'setup' ? '/api/setup' : mode === 'register' ? '/api/register' : '/api/login';
       btn.disabled = true;
-      btn.textContent = setupMode ? 'Création…' : 'Connexion…';
+      btn.textContent = mode === 'login' ? 'Connexion…' : 'Création…';
       try {
-        const res = await fetch(setupMode ? '/api/setup' : '/api/login', {
+        const res = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password }),
+          body: JSON.stringify(body),
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          errEl.textContent = j.error || 'Erreur de connexion.';
+          errEl.textContent = j.error || 'Erreur.';
           btn.disabled = false;
-          btn.textContent = setupMode ? 'Créer le compte administrateur' : 'Se connecter';
+          btn.textContent = idleButtonText();
+          if (mode === 'register' && window.turnstile && turnstileWidgetId != null) turnstile.reset(turnstileWidgetId);
           return;
         }
         // redirige vers la page demandée à l'origine si connue, sinon l'accueil
@@ -117,7 +199,7 @@
       } catch (err) {
         errEl.textContent = 'Erreur de connexion au serveur.';
         btn.disabled = false;
-        btn.textContent = setupMode ? 'Créer le compte administrateur' : 'Se connecter';
+        btn.textContent = idleButtonText();
       }
     });
   </script>
