@@ -24,6 +24,7 @@
     </div>
     <button class="btn" id="addMoreBtn">+ Importer</button>
     <button class="btn danger" id="resetBtn">Réinitialiser</button>
+    <span id="currentUserLabel" style="color:var(--muted);font-size:12px;"></span>
     <button class="btn" id="logoutBtn" title="Se déconnecter">Déconnexion</button>
   </div>
 </header>
@@ -36,6 +37,7 @@
   <button class="tab-btn" data-tab="profil">Profil</button>
   <button class="tab-btn" data-tab="comparatif">Comparatif</button>
   <button class="tab-btn" data-tab="equipes">Équipes</button>
+  <button class="tab-btn" id="comptesTabBtn" data-tab="comptes" style="display:none;">Comptes</button>
 </div>
 
 <div id="rangeBar" class="range-bar" style="display:none;">
@@ -69,6 +71,10 @@
 
 <div id="viewEquipes" class="view">
   <div class="profile-wrap" id="equipesContent"></div>
+</div>
+
+<div id="viewComptes" class="view">
+  <div class="profile-wrap" id="comptesContent"></div>
 </div>
 
 <div id="viewHistorique" class="view active">

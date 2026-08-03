@@ -13,6 +13,7 @@
 // (réassignation d'une propriété d'un objet importé, toujours légale).
 // ============================================================================
 export const state = {
+  currentUser: null,          // { id, username, role } — compte actuellement connecté (voir api.js getMe())
   gamesById: {},              // id -> game node
   players: {},                // userId -> aggregated stats (from game history)
   playerStatsSnapshots: {},   // userId -> [snapshot, ...] sorted asc by capturedAt

@@ -55,14 +55,26 @@ export function computeTeamAggregate(memberUids, games) {
 }
 
 // Construit le panneau de gestion des équipes (liste des équipes existantes + formulaire de création).
+// Seuls les comptes admin peuvent créer/supprimer une équipe côté serveur (voir
+// requireAdmin dans server.js — readonly ET contributor en sont exclus) — masqué
+// ici aussi pour éviter des actions vouées à échouer.
 function renderTeamManager() {
+  const canWrite = !state.currentUser || state.currentUser.role === 'admin';
   const teamList = Object.values(state.customTeams);
   const chips = teamList.map(t => `
     <div class="team-chip">
       <span class="team-chip-name">${t.name}</span>
       <span class="team-chip-count">${t.members.length} joueur(s)</span>
-      <button data-delete-team="${t.id}" title="Supprimer l'équipe">✕</button>
+      ${canWrite ? `<button data-delete-team="${t.id}" title="Supprimer l'équipe">✕</button>` : ''}
     </div>`).join('') || `<div style="color:var(--muted);font-size:13px;">Aucune équipe créée pour l'instant.</div>`;
+
+  if (!canWrite) {
+    return `
+      <div class="team-manager">
+        <div class="section-title">Équipes</div>
+        <div class="team-chip-row">${chips}</div>
+      </div>`;
+  }
 
   const knownPlayers = allKnownPlayers().sort((a, b) => b.games - a.games);
   const checklist = knownPlayers.map(p => `

@@ -1,5 +1,12 @@
 import { state } from './state.js';
 
+// Libellé affiché pour un rôle de compte (header + onglet Comptes) — doit
+// rester cohérent avec auth.ROLES côté backend.
+const ROLE_LABELS = { admin: 'Administrateur', contributor: 'Contributeur', readonly: 'Lecture seule' };
+export function roleLabel(role) {
+  return ROLE_LABELS[role] || role;
+}
+
 export function fmtDuration(sec){
   sec = sec || 0;
   const m = Math.floor(sec/60), s = sec%60;

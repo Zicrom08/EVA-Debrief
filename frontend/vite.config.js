@@ -15,9 +15,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // Configurable pour pouvoir lancer une deuxième instance de dev en parallèle
+    // (ex: PORT=3001 VITE_PORT=5174 npm run dev) sans modifier ce fichier —
+    // PORT est la même variable que lit backend/server.js, réutilisée ici pour
+    // que le proxy pointe automatiquement vers le bon backend.
+    port: Number(process.env.VITE_PORT) || 5173,
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      '/api': { target: `http://localhost:${process.env.PORT || 3000}`, changeOrigin: true },
     },
   },
 });
