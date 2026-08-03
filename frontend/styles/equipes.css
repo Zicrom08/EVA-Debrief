@@ -12,9 +12,9 @@
 }
 .team-chip button:hover{background:var(--line);color:var(--loss);}
 .team-create-form{border-top:1px solid var(--line);padding-top:14px;margin-top:4px;}
-.team-create-form input[type="text"]{
+.team-create-form input[type="text"],.team-create-form input[type="email"],.team-create-form input[type="password"],.team-create-form select{
   background:var(--panel-2);border:1px solid var(--line);border-radius:6px;color:var(--text);
-  padding:8px 10px;font-size:13px;width:220px;max-width:100%;margin-right:8px;
+  padding:8px 10px;font-size:13px;width:220px;max-width:100%;margin-right:8px;margin-bottom:8px;
 }
 .member-checklist{
   display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:6px 14px;

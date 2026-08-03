@@ -5,3 +5,4 @@ data.json.tmp
 *.bck
 CLAUDE.md
 frontend/dist/
+.env

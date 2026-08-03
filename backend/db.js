@@ -30,7 +30,7 @@ function emptyState() {
     games: {},               // gameId (string) -> game node complet (JSON brut)
     playerStatsSnapshots: {},// userId (string) -> [snapshot, ...] trié par capturedAt croissant
     teams: {},                // teamId -> { id, name, members: [userId,...] }
-    users: {},                // userId (interne, généré) -> { id, username, passwordSalt, passwordHash, role, createdAt }
+    users: {},                // userId (interne, généré) -> { id, username, email, passwordSalt, passwordHash, role, createdAt }
   };
 }
 
@@ -250,9 +250,9 @@ module.exports = {
   getUserById(id) {
     return state.users[String(id)] || null;
   },
-  createUser({ username, passwordSalt, passwordHash, role }) {
+  createUser({ username, email, passwordSalt, passwordHash, role }) {
     const id = genId('u');
-    const user = { id, username, passwordSalt, passwordHash, role, createdAt: new Date().toISOString() };
+    const user = { id, username, email: email || null, passwordSalt, passwordHash, role, createdAt: new Date().toISOString() };
     state.users[id] = user;
     saveNow();
     return user;
