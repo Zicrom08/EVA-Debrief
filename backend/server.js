@@ -160,7 +160,11 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-const PUBLIC_PATHS = new Set(['/login.html', '/api/login', '/api/setup', '/api/auth-status', '/api/register']);
+// /logo.svg est référencé par login.html (favicon + image) : doit rester
+// joignable même sans session, sinon le navigateur se voit rediriger la
+// requête d'image vers /login.html (du HTML, pas une image) et affiche un
+// logo cassé sur sa propre page de connexion.
+const PUBLIC_PATHS = new Set(['/login.html', '/logo.svg', '/api/login', '/api/setup', '/api/auth-status', '/api/register']);
 app.use((req, res, next) => {
   if (!isProtected()) return next(); // aucun compte créé = accès libre (setup en cours)
   if (PUBLIC_PATHS.has(req.path)) return next();
