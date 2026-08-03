@@ -24,6 +24,41 @@ const auth = require('./auth');
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend', 'dist');
 
 const app = express();
+
+// En-têtes de sécurité, posés sur TOUTE réponse (avant les routes) — API
+// comme pages HTML/assets statiques.
+//
+// - style-src garde 'unsafe-inline' : le frontend génère énormément de HTML
+//   via innerHTML avec des attributs style="..." (comptes.js, equipes.js,
+//   shell.js, profil/*...) — retirer 'unsafe-inline' casserait leur mise en
+//   forme. C'est un compromis assumé (l'injection de <style>/style="" est un
+//   risque bien moindre que l'exécution de script, seule à réellement
+//   permettre le vol de session/données — voir script-src ci-dessous, lui
+//   sans 'unsafe-inline').
+// - script-src/frame-src autorisent challenges.cloudflare.com : c'est le
+//   widget Turnstile de la page d'inscription (voir /api/register et
+//   frontend/src/login.js) — script + iframe qu'il charge lui-même.
+// - frame-ancestors 'none' + X-Frame-Options: DENY : ce site n'a jamais
+//   besoin d'être affiché dans une <iframe>, ni par lui-même ni ailleurs.
+const CSP = [
+  "default-src 'self'",
+  "script-src 'self' https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self'",
+  "connect-src 'self'",
+  "frame-src https://challenges.cloudflare.com",
+  "frame-ancestors 'none'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
+
+app.use((req, res, next) => {
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Content-Security-Policy', CSP);
+  next();
+});
+
 app.use(express.json({ limit: '100mb' })); // les exports d'historique complets peuvent être volumineux
 
 // ---------------------------------------------------------------------------
@@ -160,14 +195,21 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// /logo.svg est référencé par login.html (favicon + image) : doit rester
-// joignable même sans session, sinon le navigateur se voit rediriger la
-// requête d'image vers /login.html (du HTML, pas une image) et affiche un
-// logo cassé sur sa propre page de connexion.
+// /logo.svg est référencé par login.html (favicon + image), et le JS/CSS
+// buildé de login.html (frontend/src/login.js, extrait en module externe —
+// voir la CSP plus haut) vit sous /assets/ avec un nom haché qui change à
+// chaque build. Sans ces exceptions, le navigateur se voit rediriger ces
+// requêtes vers /login.html (du HTML, pas du JS/CSS/une image) — logo cassé
+// et script refusé ("Expected a JavaScript module but server responded with
+// text/html"). /assets/ ne contient que du code client sans rien de secret
+// (les clés Turnstile etc. viennent de l'API, jamais embarquées dans le
+// bundle) donc le rendre public entièrement est sans risque, et ça couvre
+// aussi bien le bundle de login.html que celui de l'app (qui, lui, ne sert
+// jamais à rien sans être authentifié pour les appels /api/* derrière).
 const PUBLIC_PATHS = new Set(['/login.html', '/logo.svg', '/api/login', '/api/setup', '/api/auth-status', '/api/register']);
 app.use((req, res, next) => {
   if (!isProtected()) return next(); // aucun compte créé = accès libre (setup en cours)
-  if (PUBLIC_PATHS.has(req.path)) return next();
+  if (PUBLIC_PATHS.has(req.path) || req.path.startsWith('/assets/')) return next();
   const session = auth.getSession(req.cookies[auth.SESSION_COOKIE]);
   if (session) { req.user = session; return next(); }
   if (req.path.startsWith('/api/')) {
