@@ -19,7 +19,7 @@ Node.js stocke et déduplique les données, un frontend en une seule page
 - [Structure du projet](#structure-du-projet)
 - [Installation](#installation)
 - [Où sont stockées les données](#où-sont-stockées-les-données)
-- [Authentification par mot de passe](#authentification-par-mot-de-passe)
+- [Comptes et rôles](#comptes-et-rôles)
 - [Garder le serveur actif en permanence](#garder-le-serveur-actif-en-permanence)
 - [HTTPS](#https)
 - [Sécurité — points à connaître](#️-sécurité--points-à-connaître)
@@ -78,8 +78,8 @@ appliqués de façon cohérente à tous les onglets ; le tableau d'évolution du
 Profil détecte aussi tout seul un changement de saison entre deux captures
 (les stats de saison repartent de 0 à chaque nouvelle saison) et signale la
 transition plutôt que de calculer un delta absurde ; déduplication fiable des
-imports (parties par id, profils par empreinte de contenu) ; authentification
-par mot de passe ; HTTPS ; interface responsive.
+imports (parties par id, profils par empreinte de contenu) ; comptes avec
+rôles (admin / lecture seule) ; HTTPS ; interface responsive.
 
 ## Aperçu
 
@@ -210,6 +210,24 @@ appels `/api/*` vers le port 3000). **Ouvre `http://localhost:5173`**, pas
 3000 — le port 3000 ne sert que l'API tant que `frontend/dist` n'a pas été
 buildé au moins une fois.
 
+#### Lancer une deuxième instance de dev en parallèle
+
+Utile pour tester une branche pendant que l'instance habituelle tourne encore.
+Change le port du backend (`PORT`) et celui du serveur de dev Vite
+(`VITE_PORT`) — `frontend/vite.config.js` fait automatiquement pointer son
+proxy `/api/*` vers le bon port backend :
+
+```bash
+PORT=3001 VITE_PORT=5174 npm run dev
+```
+
+Ouvre alors `http://localhost:5174`. Pense aussi à isoler les données de
+cette deuxième instance (sinon les deux écrivent dans le même `data.json`) :
+
+```bash
+PORT=3001 VITE_PORT=5174 DATA_FILE=data.dev.json npm run dev
+```
+
 ## Où sont stockées les données
 
 Dans `data.json`, à la racine du projet (`backend/db.js` y vit désormais,
@@ -240,42 +258,52 @@ une vraie base SQL plus tard (Postgres, MySQL, SQLite natif...), seul
 `backend/db.js` a besoin d'être réécrit — `backend/server.js` et le
 frontend n'ont pas à changer, tant que les mêmes fonctions sont exportées.
 
-## Authentification par mot de passe
+## Comptes et rôles
 
-Le site est protégé par un mot de passe unique (pas de comptes séparés — un
-mot de passe partagé, comme pour un accès privé personnel ou familial).
+Le site est protégé par de vrais comptes individuels (username + mot de
+passe), chacun avec un rôle :
 
-```bash
-EVA_PASSWORD=un-mot-de-passe-solide npm start
-```
+- **admin** — accès complet : import, gestion des équipes, reset de la base,
+  et gestion des comptes (onglet "Comptes", visible seulement pour ce rôle).
+- **contributor** — peut consulter et importer des données, mais ne peut ni
+  créer/modifier/supprimer une équipe, ni réinitialiser la base, ni gérer les
+  comptes.
+- **readonly** (lecture seule) — consultation uniquement : import, équipes,
+  reset et gestion des comptes sont tous bloqués.
 
-Sans cette variable, le serveur démarre quand même mais affiche un
-avertissement au démarrage et **reste accessible sans mot de passe** —
-pratique en développement local, à éviter en production.
+Ces restrictions sont appliquées côté serveur (pas seulement masquées dans
+l'interface) — voir `requireImportAccess`/`requireAdmin` dans
+`backend/server.js`.
 
-Comment ça marche : toute requête (page ou API) sans session valide est
-redirigée vers `/login.html` (ou reçoit une réponse `401` pour les appels API).
-Une fois le bon mot de passe saisi, une session est créée (cookie
-`HttpOnly`, 30 jours, marqué `Secure` automatiquement si servi en HTTPS) et
-stockée en mémoire côté serveur — un redémarrage du serveur déconnecte tout
-le monde, ce qui est acceptable pour cet usage. Le bouton "Déconnexion" en
-haut à droite de l'appli met fin à la session à tout moment.
+Tant qu'aucun compte n'existe, le site reste accessible sans connexion (avec
+un avertissement bien visible au démarrage) — dès qu'on ouvre `/login.html`,
+un formulaire propose de créer le premier compte (automatiquement en rôle
+admin). Il n'y a ensuite aucun moyen de repasser en mode "sans compte" : au
+moins un admin doit toujours exister (le dernier admin ne peut être ni
+supprimé ni rétrogradé).
 
-Pour le définir de façon permanente avec systemd, ajoute dans le fichier
-`.service` (section `[Service]`) :
-
-```ini
-Environment=EVA_PASSWORD=un-mot-de-passe-solide
-```
-
-Avec pm2 :
+Pour créer ce premier compte automatiquement au démarrage (déploiement
+scripté, sans passer par l'écran de création) :
 
 ```bash
-EVA_PASSWORD=un-mot-de-passe-solide pm2 start backend/server.js --name eva-debrief
-pm2 save
+EVA_ADMIN_USERNAME=admin EVA_ADMIN_PASSWORD=un-mot-de-passe-solide npm start
 ```
 
-⚠️ Ce mot de passe circule en clair entre le navigateur et le serveur au
+Cette variable ne sert qu'au tout premier démarrage (si un compte existe déjà,
+elle est ignorée) — les comptes suivants se créent depuis l'onglet "Comptes".
+
+Comment ça marche techniquement : mots de passe hachés avec `crypto.scrypt`
+(sel aléatoire par compte, jamais stockés en clair) ; toute requête (page ou
+API) sans session valide est redirigée vers `/login.html` (ou reçoit une
+réponse `401` pour les appels API) ; une fois connecté, une session est créée
+(cookie `HttpOnly`, 30 jours, marqué `Secure` automatiquement si servi en
+HTTPS) et stockée en mémoire côté serveur — un redémarrage du serveur
+déconnecte tout le monde (les comptes eux, stockés dans `data.json`, survivent
+au redémarrage). Le bouton "Déconnexion" en haut à droite de l'appli met fin à
+la session à tout moment. Changer le rôle ou le mot de passe d'un compte
+invalide immédiatement ses sessions ouvertes.
+
+⚠️ Le mot de passe circule en clair entre le navigateur et le serveur au
 moment de la connexion — **utilise toujours HTTPS en production** (voir la
 section [HTTPS](#https) plus bas) pour qu'il ne soit pas intercepté sur le
 réseau.
@@ -399,7 +427,6 @@ serveur Node lui-même :
 ```bash
 SSL_KEY_PATH=/chemin/vers/privkey.pem \
 SSL_CERT_PATH=/chemin/vers/cert.pem \
-EVA_PASSWORD=un-mot-de-passe-solide \
 npm start
 ```
 
@@ -447,11 +474,13 @@ SSL_KEY_PATH=./key.pem SSL_CERT_PATH=./cert.pem npm start
 
 ## ⚠️ Sécurité — points à connaître
 
-Même avec `EVA_PASSWORD` défini, garde en tête que :
+Même avec des comptes créés, garde en tête que :
 
-- Le mot de passe est unique et partagé — pas de comptes séparés, pas de
-  droits différenciés. Toute personne qui le connaît a un accès complet
-  (import, réinitialisation de toute la base comprise).
+- Un compte `readonly` ne peut ni importer ni réinitialiser ni gérer
+  équipes/comptes ; un compte `contributor` peut en plus importer, mais pas
+  gérer équipes/comptes ni réinitialiser (bloqué côté serveur dans les deux
+  cas, pas juste caché dans l'interface) — mais un compte `admin` a un accès
+  complet, donc distribue ce rôle avec parcimonie.
 - Les sessions vivent en mémoire côté serveur : elles disparaissent à
   chaque redémarrage, et rien n'est fait pour limiter les tentatives de
   connexion répétées (pas de rate-limiting). Pour un usage exposé sur
@@ -465,22 +494,32 @@ Même avec `EVA_PASSWORD` défini, garde en tête que :
 
 ## API
 
-| Méthode | Route            | Auth requise | Description |
-|---------|------------------|:---:|--------------|
-| POST    | `/api/login`     | non | `{ password }` → crée une session (cookie) |
-| POST    | `/api/logout`    | non | Termine la session en cours |
-| GET     | `/api/state`     | oui | Renvoie tout : parties, profils, équipes |
-| GET     | `/api/health`    | oui | Statut + compteurs |
-| POST    | `/api/import`    | oui | Importe un JSON (mêmes formats que l'ancien import du navigateur) |
-| GET     | `/api/export`    | oui | Export brut complet (sauvegarde) |
-| GET     | `/api/teams`     | oui | Liste des équipes |
-| POST    | `/api/teams`     | oui | Crée une équipe `{ name, members: [userId,...] }` |
-| PUT     | `/api/teams/:id` | oui | Modifie une équipe |
-| DELETE  | `/api/teams/:id` | oui | Supprime une équipe |
-| DELETE  | `/api/reset`     | oui | Vide toute la base (irréversible) |
+| Méthode | Route             | Auth requise | Description |
+|---------|-------------------|:---:|--------------|
+| GET     | `/api/auth-status`| non | `{ hasUsers }` — indique si le premier compte reste à créer |
+| POST    | `/api/setup`      | non | `{ username, password }` → crée le tout premier compte (admin), uniquement tant qu'aucun compte n'existe |
+| POST    | `/api/login`      | non | `{ username, password }` → crée une session (cookie) |
+| POST    | `/api/logout`     | non | Termine la session en cours |
+| GET     | `/api/me`         | oui | `{ id, username, role }` du compte connecté |
+| GET     | `/api/state`      | oui | Renvoie tout : parties, profils, équipes |
+| GET     | `/api/health`     | oui | Statut + compteurs |
+| POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) |
+| GET     | `/api/export`     | oui | Export brut complet (sauvegarde) |
+| GET     | `/api/teams`      | oui | Liste des équipes |
+| POST    | `/api/teams`      | admin | Crée une équipe `{ name, members: [userId,...] }` |
+| PUT     | `/api/teams/:id`  | admin | Modifie une équipe |
+| DELETE  | `/api/teams/:id`  | admin | Supprime une équipe |
+| DELETE  | `/api/reset`      | admin | Vide games/snapshots/teams (irréversible ; les comptes survivent) |
+| GET     | `/api/users`      | admin | Liste des comptes |
+| POST    | `/api/users`      | admin | Crée un compte `{ username, password, role }` |
+| PUT     | `/api/users/:id`  | admin | Modifie le rôle et/ou le mot de passe d'un compte |
+| DELETE  | `/api/users/:id`  | admin | Supprime un compte (jamais soi-même, jamais le dernier admin) |
 
-("Auth requise" ne s'applique que si `EVA_PASSWORD` est défini — sinon tout
-est ouvert, voir la section [Authentification](#authentification-par-mot-de-passe).)
+("Auth requise" ne s'applique que si au moins un compte existe — sinon tout
+est ouvert le temps de créer le premier, voir [Comptes et rôles](#comptes-et-rôles).
+"admin/contributor" signifie : accessible à ces deux rôles, bloqué pour un
+compte `readonly`. Les routes marquées "admin" seul sont bloquées pour
+`contributor` comme pour `readonly`.)
 
 ## Collecteur de données
 

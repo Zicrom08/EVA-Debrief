@@ -34,11 +34,11 @@
     text-align:center; margin:0 0 4px; letter-spacing:0.05em; text-transform:uppercase;
   }
   p{color:var(--muted); font-size:12px; text-align:center; margin:0 0 24px;}
-  input[type=password]{
+  input[type=password],input[type=text]{
     width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
     color:var(--text); padding:11px 12px; font-size:14px; margin-bottom:14px;
   }
-  input[type=password]:focus{outline:none; border-color:var(--alliance);}
+  input[type=password]:focus,input[type=text]:focus{outline:none; border-color:var(--alliance);}
   button{
     width:100%; background:var(--alliance); color:#0a0d14; border:none; border-radius:8px;
     padding:11px; font-weight:700; font-size:14px; cursor:pointer;
@@ -49,11 +49,13 @@
 </style>
 </head>
 <body>
-  <form class="card" id="loginForm">
+  <form class="card" id="loginForm" style="display:none;">
     <img class="mark" src="/logo.svg" alt="EVA Debrief">
     <h1>EVA Debrief</h1>
-    <p>Entre le mot de passe pour accéder au site</p>
-    <input type="password" id="password" placeholder="Mot de passe" autofocus autocomplete="current-password">
+    <p id="loginIntro">Connecte-toi pour accéder au site</p>
+    <input type="text" id="username" placeholder="Nom d'utilisateur" autocomplete="username">
+    <input type="password" id="password" placeholder="Mot de passe" autocomplete="current-password">
+    <input type="password" id="passwordConfirm" placeholder="Confirme le mot de passe" autocomplete="new-password" style="display:none;">
     <button type="submit" id="loginBtn">Se connecter</button>
     <div class="error" id="loginError"></div>
   </form>
@@ -62,24 +64,51 @@
     const form = document.getElementById('loginForm');
     const btn = document.getElementById('loginBtn');
     const errEl = document.getElementById('loginError');
+    const introEl = document.getElementById('loginIntro');
+    const confirmInput = document.getElementById('passwordConfirm');
+    let setupMode = false;
+
+    // Détermine s'il faut proposer la connexion classique ou la création du
+    // tout premier compte (aucun utilisateur en base) avant d'afficher le formulaire.
+    (async () => {
+      try {
+        const res = await fetch('/api/auth-status');
+        const status = await res.json();
+        setupMode = !status.hasUsers;
+      } catch (e) { /* en cas d'échec, on part du principe qu'il faut se connecter */ }
+      if (setupMode) {
+        introEl.textContent = 'Aucun compte n\'existe encore — crée le compte administrateur';
+        document.getElementById('username').setAttribute('autocomplete', 'username');
+        document.getElementById('password').setAttribute('autocomplete', 'new-password');
+        confirmInput.style.display = 'block';
+        btn.textContent = 'Créer le compte administrateur';
+      }
+      form.style.display = 'block';
+      document.getElementById('username').focus();
+    })();
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       errEl.textContent = '';
-      btn.disabled = true;
-      btn.textContent = 'Connexion…';
+      const username = document.getElementById('username').value.trim();
       const password = document.getElementById('password').value;
+      if (setupMode && password !== confirmInput.value) {
+        errEl.textContent = 'Les mots de passe ne correspondent pas.';
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = setupMode ? 'Création…' : 'Connexion…';
       try {
-        const res = await fetch('/api/login', {
+        const res = await fetch(setupMode ? '/api/setup' : '/api/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password }),
+          body: JSON.stringify({ username, password }),
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          errEl.textContent = j.error || 'Mot de passe incorrect.';
+          errEl.textContent = j.error || 'Erreur de connexion.';
           btn.disabled = false;
-          btn.textContent = 'Se connecter';
+          btn.textContent = setupMode ? 'Créer le compte administrateur' : 'Se connecter';
           return;
         }
         // redirige vers la page demandée à l'origine si connue, sinon l'accueil
@@ -88,7 +117,7 @@
       } catch (err) {
         errEl.textContent = 'Erreur de connexion au serveur.';
         btn.disabled = false;
-        btn.textContent = 'Se connecter';
+        btn.textContent = setupMode ? 'Créer le compte administrateur' : 'Se connecter';
       }
     });
   </script>

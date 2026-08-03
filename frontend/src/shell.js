@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { findPlayerInGame } from './format.js';
+import { findPlayerInGame, roleLabel } from './format.js';
 import { apiSend } from './api.js';
 import { clearUiPrefs } from './ui-prefs.js';
 import { filteredGamesArray } from './game-filters.js';
@@ -20,6 +20,7 @@ export function showApp() {
   const storageNote = '🗄️ stocké sur le serveur';
   document.getElementById('brandSub').textContent =
     `${gCount} partie(s) · ${sCount} profil(s) capturé(s) · ${storageNote}`;
+  applyRolePermissions();
   renderPlayerPicker();
   renderMapFilterOptions();
   renderMapExcludePanel();
@@ -30,6 +31,23 @@ export function showApp() {
   state.activeGameId = null;
   document.getElementById('detail').innerHTML =
     '<div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>';
+}
+
+// Affiche le compte connecté et adapte l'UI à son rôle :
+// - "readonly" ne peut ni importer ni réinitialiser ni gérer équipes/comptes ;
+// - "contributor" peut en plus importer, mais pas réinitialiser ni gérer équipes/comptes ;
+// - "admin" a accès à tout.
+// Ces règles sont aussi appliquées côté serveur (voir requireImportAccess/requireAdmin
+// dans server.js) — ce masquage n'est que du confort d'affichage.
+function applyRolePermissions() {
+  const user = state.currentUser;
+  const label = document.getElementById('currentUserLabel');
+  if (label) label.textContent = user ? `${user.username} (${roleLabel(user.role)})` : '';
+  const isReadonly = user && user.role === 'readonly';
+  const isAdmin = user && user.role === 'admin';
+  document.getElementById('addMoreBtn').style.display = isReadonly ? 'none' : '';
+  document.getElementById('resetBtn').style.display = isAdmin ? '' : 'none';
+  document.getElementById('comptesTabBtn').style.display = isAdmin ? '' : 'none';
 }
 
 // ================= SUMMARY =================

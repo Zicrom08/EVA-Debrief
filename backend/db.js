@@ -30,6 +30,7 @@ function emptyState() {
     games: {},               // gameId (string) -> game node complet (JSON brut)
     playerStatsSnapshots: {},// userId (string) -> [snapshot, ...] trié par capturedAt croissant
     teams: {},                // teamId -> { id, name, members: [userId,...] }
+    users: {},                // userId (interne, généré) -> { id, username, passwordSalt, passwordHash, role, createdAt }
   };
 }
 
@@ -46,6 +47,7 @@ function loadState() {
       games: parsed.games || {},
       playerStatsSnapshots: parsed.playerStatsSnapshots || {},
       teams: parsed.teams || {},
+      users: parsed.users || {},
     };
   } catch (e) {
     console.error('[db] Impossible de lire', DATA_FILE, '— démarrage avec une base vide.', e.message);
@@ -234,9 +236,48 @@ module.exports = {
     saveNow();
   },
 
+  // ---------------- Users (comptes + rôles) ----------------
+  // Volontairement pas dans emptyState()/resetAll() côté "vidage" : resetAll() ne
+  // touche jamais aux comptes, seulement aux données de jeu (games/snapshots/teams) —
+  // sinon un reset déconnecterait/supprimerait tout le monde par surprise.
+  getAllUsers() {
+    return Object.values(state.users);
+  },
+  findUserByUsername(username) {
+    const needle = String(username || '').toLowerCase();
+    return Object.values(state.users).find(u => u.username.toLowerCase() === needle) || null;
+  },
+  getUserById(id) {
+    return state.users[String(id)] || null;
+  },
+  createUser({ username, passwordSalt, passwordHash, role }) {
+    const id = genId('u');
+    const user = { id, username, passwordSalt, passwordHash, role, createdAt: new Date().toISOString() };
+    state.users[id] = user;
+    saveNow();
+    return user;
+  },
+  updateUser(id, patch) {
+    const user = state.users[String(id)];
+    if (!user) return null;
+    if (patch.passwordSalt != null) user.passwordSalt = patch.passwordSalt;
+    if (patch.passwordHash != null) user.passwordHash = patch.passwordHash;
+    if (patch.role != null) user.role = patch.role;
+    saveNow();
+    return user;
+  },
+  deleteUser(id) {
+    delete state.users[String(id)];
+    saveNow();
+  },
+  countAdmins() {
+    return Object.values(state.users).filter(u => u.role === 'admin').length;
+  },
+
   // ---------------- Admin ----------------
   resetAll() {
-    state = emptyState();
+    const keepUsers = state.users;
+    state = Object.assign(emptyState(), { users: keepUsers });
     saveNow();
   },
   stats() {
@@ -244,6 +285,7 @@ module.exports = {
       games: Object.keys(state.games).length,
       snapshots: Object.values(state.playerStatsSnapshots).reduce((s, l) => s + l.length, 0),
       teams: Object.keys(state.teams).length,
+      users: Object.keys(state.users).length,
       dataFile: DATA_FILE,
     };
   },

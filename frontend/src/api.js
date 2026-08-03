@@ -28,6 +28,11 @@ export async function apiSend(method, path, body) {
   return res.json();
 }
 
+// Compte courant (username + rôle) — utilisé pour adapter l'UI selon le rôle.
+export async function getMe() {
+  return apiGet('/api/me');
+}
+
 // Recharge state.gamesById / state.playerStatsSnapshots / state.customTeams depuis le serveur.
 // C'est la SEULE source de vérité pour ces données — après un import, on ne fusionne
 // jamais localement : on redemande l'état complet au serveur pour être sûr d'avoir

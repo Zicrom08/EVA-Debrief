@@ -3,6 +3,7 @@ import { renderTrends } from './tendances.js';
 import { renderProfil } from './profil/index.js';
 import { renderComparatif } from './comparatif.js';
 import { renderEquipes } from './equipes.js';
+import { renderComptes } from './comptes.js';
 
 // ================= TABS =================
 document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -16,6 +17,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     if (tab === 'profil') renderProfil();
     if (tab === 'comparatif') renderComparatif();
     if (tab === 'equipes') renderEquipes();
+    if (tab === 'comptes') renderComptes();
   });
 });
 

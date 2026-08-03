@@ -30,7 +30,7 @@
 
 import { state } from './state.js';
 import { restoreUiPrefs, persistUiPrefs } from './ui-prefs.js';
-import { loadFromServer } from './api.js';
+import { loadFromServer, getMe } from './api.js';
 import { ensureModeDefaults } from './game-filters.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
@@ -43,6 +43,7 @@ import './import.js';
   restoreUiPrefs(); // petites préférences d'affichage (joueur sélectionné, filtres...), sans enjeu
   try {
     await loadFromServer();
+    state.currentUser = await getMe();
   } catch (e) {
     if (e.message === 'session expirée') return; // redirection vers /login.html déjà déclenchée
     const help = document.querySelector('.import-help');

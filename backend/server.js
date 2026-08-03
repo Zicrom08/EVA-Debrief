@@ -25,14 +25,28 @@ const app = express();
 app.use(express.json({ limit: '100mb' })); // les exports d'historique complets peuvent être volumineux
 
 // ---------------------------------------------------------------------------
-// Authentification par mot de passe partagé (voir auth.js).
+// Authentification par comptes individuels avec rôles (voir auth.js + db.js).
 // Placée tout en haut : tout ce qui suit (API + fichiers statiques) passe
-// par cette porte, sauf la page de connexion elle-même et l'endpoint de login.
+// par cette porte, sauf la page de connexion elle-même et les quelques
+// endpoints publics nécessaires avant toute session (auth-status, setup, login).
 // ---------------------------------------------------------------------------
-if (!auth.isProtected()) {
-  console.warn('\n⚠️  ATTENTION : aucune variable d\'environnement EVA_PASSWORD définie.');
-  console.warn('   Le site est actuellement accessible SANS mot de passe.');
-  console.warn('   Pour le protéger : EVA_PASSWORD=un-mot-de-passe-solide npm start\n');
+function isProtected() {
+  return db.getAllUsers().length > 0;
+}
+
+// Bootstrap optionnel : si aucun compte n'existe encore et que ces deux
+// variables sont définies, on crée directement le premier compte admin (utile
+// pour un déploiement scripté, sans passer par l'écran de création manuel).
+if (db.getAllUsers().length === 0 && process.env.EVA_ADMIN_USERNAME && process.env.EVA_ADMIN_PASSWORD) {
+  const { salt, hash } = auth.hashPassword(process.env.EVA_ADMIN_PASSWORD);
+  db.createUser({ username: process.env.EVA_ADMIN_USERNAME, passwordSalt: salt, passwordHash: hash, role: 'admin' });
+  console.log(`✅ Compte admin "${process.env.EVA_ADMIN_USERNAME}" créé depuis EVA_ADMIN_USERNAME/EVA_ADMIN_PASSWORD.`);
+}
+
+if (!isProtected()) {
+  console.warn('\n⚠️  ATTENTION : aucun compte n\'a encore été créé.');
+  console.warn('   Le site est actuellement accessible SANS connexion.');
+  console.warn('   Rends-toi sur /login.html pour créer le premier compte administrateur.\n');
 }
 
 app.use((req, res, next) => {
@@ -40,13 +54,36 @@ app.use((req, res, next) => {
   next();
 });
 
-// Vérifie le mot de passe et ouvre une session (cookie signé, voir auth.js).
-app.post('/api/login', (req, res) => {
-  const { password } = req.body || {};
-  if (!auth.checkPassword(password)) {
-    return res.status(401).json({ error: 'Mot de passe incorrect.' });
+// Utilisé par login.html pour savoir s'il faut afficher "connexion" ou
+// "créer le premier compte admin" — public, ne révèle rien de sensible.
+app.get('/api/auth-status', (req, res) => {
+  res.json({ hasUsers: isProtected() });
+});
+
+// Crée le tout premier compte (rôle admin) — fermé dès qu'un compte existe déjà.
+app.post('/api/setup', (req, res) => {
+  if (isProtected()) return res.status(409).json({ error: 'Un compte existe déjà.' });
+  const { username, password } = req.body || {};
+  if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
+    return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
   }
-  const token = auth.createSession();
+  const { salt, hash } = auth.hashPassword(password);
+  const user = db.createUser({ username: username.trim(), passwordSalt: salt, passwordHash: hash, role: 'admin' });
+  const token = auth.createSession(user.id, user.role);
+  res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
+  res.json({ ok: true });
+});
+
+// Vérifie les identifiants et ouvre une session (cookie signé, voir auth.js).
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body || {};
+  const user = username ? db.findUserByUsername(username) : null;
+  // Message générique volontaire : ne pas révéler si c'est le username ou le
+  // mot de passe qui est incorrect.
+  if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    return res.status(401).json({ error: 'Identifiants incorrects.' });
+  }
+  const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
   res.json({ ok: true });
 });
@@ -58,14 +95,102 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
+const PUBLIC_PATHS = new Set(['/login.html', '/api/login', '/api/setup', '/api/auth-status']);
 app.use((req, res, next) => {
-  if (!auth.isProtected()) return next(); // pas de mot de passe configuré = accès libre
-  if (req.path === '/login.html' || req.path === '/api/login') return next();
-  if (auth.isValidSession(req.cookies[auth.SESSION_COOKIE])) return next();
+  if (!isProtected()) return next(); // aucun compte créé = accès libre (setup en cours)
+  if (PUBLIC_PATHS.has(req.path)) return next();
+  const session = auth.getSession(req.cookies[auth.SESSION_COOKIE]);
+  if (session) { req.user = session; return next(); }
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentification requise.' });
   }
   return res.redirect('/login.html?next=' + encodeURIComponent(req.originalUrl));
+});
+
+// Compte courant (username + rôle) — utilisé par le frontend pour adapter l'UI.
+app.get('/api/me', (req, res) => {
+  const user = req.user ? db.getUserById(req.user.userId) : null;
+  if (!user) return res.status(401).json({ error: 'Authentification requise.' });
+  res.json({ id: user.id, username: user.username, role: user.role });
+});
+
+// Autorise l'import de données aux rôles admin et contributor — seul readonly
+// est bloqué ici (contrairement aux équipes/reset, réservés à admin seul).
+function requireImportAccess(req, res, next) {
+  if (req.user && req.user.role === 'readonly') {
+    return res.status(403).json({ error: 'Compte en lecture seule : action non autorisée.' });
+  }
+  next();
+}
+
+// Réservé aux comptes admin (gestion des utilisateurs, des équipes, et reset).
+function requireAdmin(req, res, next) {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Réservé aux administrateurs.' });
+  }
+  next();
+}
+
+// ---------------------------------------------------------------------------
+// Gestion des comptes (admin uniquement)
+// ---------------------------------------------------------------------------
+app.get('/api/users', requireAdmin, (req, res) => {
+  res.json(db.getAllUsers().map(u => ({ id: u.id, username: u.username, role: u.role, createdAt: u.createdAt })));
+});
+
+app.post('/api/users', requireAdmin, (req, res) => {
+  const { username, password, role } = req.body || {};
+  if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
+    return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
+  }
+  if (!auth.ROLES.includes(role)) {
+    return res.status(400).json({ error: `Rôle invalide (attendu : ${auth.ROLES.join(' ou ')}).` });
+  }
+  if (db.findUserByUsername(username)) {
+    return res.status(409).json({ error: 'Ce nom d\'utilisateur est déjà pris.' });
+  }
+  const { salt, hash } = auth.hashPassword(password);
+  const user = db.createUser({ username: username.trim(), passwordSalt: salt, passwordHash: hash, role });
+  res.json({ id: user.id, username: user.username, role: user.role, createdAt: user.createdAt });
+});
+
+app.put('/api/users/:id', requireAdmin, (req, res) => {
+  const user = db.getUserById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'Compte introuvable.' });
+  const { password, role } = req.body || {};
+  const patch = {};
+  if (role != null) {
+    if (!auth.ROLES.includes(role)) {
+      return res.status(400).json({ error: `Rôle invalide (attendu : ${auth.ROLES.join(' ou ')}).` });
+    }
+    if (user.role === 'admin' && role !== 'admin' && db.countAdmins() <= 1) {
+      return res.status(400).json({ error: 'Impossible de rétrograder le dernier compte administrateur.' });
+    }
+    patch.role = role;
+  }
+  if (password != null) {
+    if (String(password).length < 8) return res.status(400).json({ error: 'Mot de passe d\'au moins 8 caractères.' });
+    const { salt, hash } = auth.hashPassword(password);
+    patch.passwordSalt = salt;
+    patch.passwordHash = hash;
+  }
+  const updated = db.updateUser(user.id, patch);
+  auth.destroySessionsForUser(user.id);
+  res.json({ id: updated.id, username: updated.username, role: updated.role, createdAt: updated.createdAt });
+});
+
+app.delete('/api/users/:id', requireAdmin, (req, res) => {
+  const user = db.getUserById(req.params.id);
+  if (!user) return res.json({ ok: true }); // suppression idempotente
+  if (req.user.userId === user.id) {
+    return res.status(400).json({ error: 'Impossible de supprimer son propre compte.' });
+  }
+  if (user.role === 'admin' && db.countAdmins() <= 1) {
+    return res.status(400).json({ error: 'Impossible de supprimer le dernier compte administrateur.' });
+  }
+  db.deleteUser(user.id);
+  auth.destroySessionsForUser(user.id);
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -170,7 +295,7 @@ app.get('/api/health', (req, res) => {
 // Import : accepte le JSON collé/déposé tel quel depuis la visionneuse (ou
 // directement depuis le collecteur réseau). Déduplique les parties par id
 // (upsert) et les profils par empreinte de contenu, retire les parties PvE.
-app.post('/api/import', (req, res) => {
+app.post('/api/import', requireImportAccess, (req, res) => {
   const { nodes, playerStats } = extractFromPayload(req.body);
 
   let addedGames = 0, updatedGames = 0, skippedPve = 0, skippedInvalid = 0;
@@ -209,7 +334,7 @@ app.get('/api/teams', (req, res) => {
   res.json(db.getAllTeams());
 });
 // Crée une équipe ; renvoie 400 si le nom ou la liste de membres est absente/vide.
-app.post('/api/teams', (req, res) => {
+app.post('/api/teams', requireAdmin, (req, res) => {
   const { name, members } = req.body || {};
   if (!name || typeof name !== 'string' || !Array.isArray(members) || members.length === 0) {
     return res.status(400).json({ error: 'Champs requis : name (texte) et members (liste non vide).' });
@@ -217,20 +342,20 @@ app.post('/api/teams', (req, res) => {
   res.json(db.createTeam(name.trim(), members));
 });
 // Renomme une équipe et/ou remplace sa liste de membres.
-app.put('/api/teams/:id', (req, res) => {
+app.put('/api/teams/:id', requireAdmin, (req, res) => {
   const { name, members } = req.body || {};
   const team = db.updateTeam(req.params.id, name, members);
   if (!team) return res.status(404).json({ error: 'Équipe introuvable.' });
   res.json(team);
 });
 // Suppression idempotente (pas d'erreur si l'équipe n'existe déjà plus).
-app.delete('/api/teams/:id', (req, res) => {
+app.delete('/api/teams/:id', requireAdmin, (req, res) => {
   db.deleteTeam(req.params.id);
   res.json({ ok: true });
 });
 
 // Réinitialisation complète (vide games + snapshots + teams)
-app.delete('/api/reset', (req, res) => {
+app.delete('/api/reset', requireAdmin, (req, res) => {
   db.resetAll();
   res.json({ ok: true });
 });
