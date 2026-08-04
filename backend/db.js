@@ -9,6 +9,13 @@
 // un fichier JSON avec écriture atomique est largement suffisant et beaucoup
 // plus simple à sauvegarder (un seul fichier à copier).
 //
+// Deux fichiers séparés plutôt qu'un seul : data.json (parties, profils,
+// équipes) et users.json (comptes) — pour pouvoir sauvegarder/versionner les
+// données de jeu indépendamment des comptes (identifiants, mots de passe
+// hachés), sur un support différent si besoin. Les anciennes installations
+// (comptes stockés dans data.json lui-même) sont migrées automatiquement au
+// démarrage, voir plus bas.
+//
 // Si tu préfères une vraie base SQL plus tard (Postgres, SQLite natif...),
 // l'interface exportée ci-dessous (getAllGames, upsertGame, etc.) est conçue
 // pour être remplacée sans toucher au reste du serveur.
@@ -24,77 +31,90 @@ const crypto = require('crypto');
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..');
 const DATA_FILE = path.join(DATA_DIR, process.env.DATA_FILE || 'data.json');
 
-// Forme initiale de la base quand data.json n'existe pas encore (premier lancement).
-function emptyState() {
+// USERS_DATA_DIR retombe sur DATA_DIR par défaut (même dossier, fichier différent)
+// mais peut pointer ailleurs si tu veux stocker/sauvegarder les comptes séparément
+// des données de jeu (ex: support de sauvegarde différent, fréquence différente).
+const USERS_DATA_DIR = process.env.USERS_DATA_DIR || DATA_DIR;
+const USERS_DATA_FILE = path.join(USERS_DATA_DIR, process.env.USERS_DATA_FILE || 'users.json');
+
+function emptyGameState() {
   return {
     games: {},               // gameId (string) -> game node complet (JSON brut)
     playerStatsSnapshots: {},// userId (string) -> [snapshot, ...] trié par capturedAt croissant
     teams: {},                // teamId -> { id, name, members: [userId,...] }
+  };
+}
+function emptyUsersState() {
+  return {
     users: {},                // userId (interne, généré) -> { id, username, email, passwordSalt, passwordHash, role, createdAt }
   };
 }
 
-// Charge data.json au démarrage du process. Un fichier absent ou vide donne une
-// base vide (premier lancement) ; un fichier illisible/corrompu est mis de côté
-// (renommé) plutôt qu'écrasé silencieusement, pour ne jamais perdre de données.
-function loadState() {
+// Lit et parse un fichier JSON ; renvoie null si absent/vide/illisible. Un fichier
+// illisible/corrompu est mis de côté (renommé) plutôt qu'écrasé silencieusement,
+// pour ne jamais perdre de données.
+function readJsonFile(filePath) {
   try {
-    if (!fs.existsSync(DATA_FILE)) return emptyState();
-    const raw = fs.readFileSync(DATA_FILE, 'utf-8');
-    if (!raw.trim()) return emptyState();
-    const parsed = JSON.parse(raw);
-    return {
-      games: parsed.games || {},
-      playerStatsSnapshots: parsed.playerStatsSnapshots || {},
-      teams: parsed.teams || {},
-      users: parsed.users || {},
-    };
+    if (!fs.existsSync(filePath)) return null;
+    const raw = fs.readFileSync(filePath, 'utf-8');
+    if (!raw.trim()) return null;
+    return JSON.parse(raw);
   } catch (e) {
-    console.error('[db] Impossible de lire', DATA_FILE, '— démarrage avec une base vide.', e.message);
-    // on ne écrase jamais un fichier illisible : on le renomme pour investigation
+    console.error('[db] Impossible de lire', filePath, '—', e.message);
     try {
-      if (fs.existsSync(DATA_FILE)) {
-        fs.renameSync(DATA_FILE, DATA_FILE + '.corrupted-' + Date.now());
-      }
+      if (fs.existsSync(filePath)) fs.renameSync(filePath, filePath + '.corrupted-' + Date.now());
     } catch (e2) { /* ignore */ }
-    return emptyState();
+    return null;
   }
 }
 
-let state = loadState();
-
-// Écriture atomique : on écrit dans un fichier temporaire puis on renomme,
-// pour ne jamais laisser data.json dans un état à moitié écrit si le process
-// est interrompu pendant l'écriture (coupure serveur, kill -9, etc.).
-let writeQueued = false;
-let writeTimer = null;
-function scheduleSave() {
-  writeQueued = true;
-  if (writeTimer) return;
-  writeTimer = setTimeout(() => {
-    writeTimer = null;
-    if (!writeQueued) return;
-    writeQueued = false;
-    const tmpFile = DATA_FILE + '.tmp';
-    try {
-      fs.writeFileSync(tmpFile, JSON.stringify(state));
-      fs.renameSync(tmpFile, DATA_FILE);
-    } catch (e) {
-      console.error('[db] Échec de sauvegarde sur disque :', e.message);
-    }
-  }, 50); // petit debounce pour regrouper les écritures d'un import massif
-}
-function saveNow() {
-  // sauvegarde synchrone immédiate (utilisée avant de répondre à une requête HTTP
-  // pour garantir que les données sont bien sur disque avant de dire "OK" au client)
-  writeQueued = false;
-  if (writeTimer) { clearTimeout(writeTimer); writeTimer = null; }
-  const tmpFile = DATA_FILE + '.tmp';
-  fs.writeFileSync(tmpFile, JSON.stringify(state));
-  fs.renameSync(tmpFile, DATA_FILE);
+// Écriture atomique : on écrit dans un fichier temporaire puis on renomme, pour ne
+// jamais laisser le fichier dans un état à moitié écrit si le process est interrompu
+// pendant l'écriture (coupure serveur, kill -9, etc.). Une instance par fichier
+// (games et users se sauvegardent indépendamment l'un de l'autre).
+function makePersister(filePath, getState) {
+  return {
+    saveNow() {
+      const tmpFile = filePath + '.tmp';
+      fs.writeFileSync(tmpFile, JSON.stringify(getState()));
+      fs.renameSync(tmpFile, filePath);
+    },
+  };
 }
 
-// Identifiant court et suffisamment unique pour une équipe (pas besoin d'UUID ici).
+// --- Données de jeu (data.json) ---
+// legacyDataFile est aussi relu pour la migration des comptes ci-dessous, avant
+// qu'une éventuelle prochaine sauvegarde de `state` (qui ne porte plus la clé
+// "users") ne les efface silencieusement de data.json.
+const legacyDataFile = readJsonFile(DATA_FILE);
+let state = {
+  games: (legacyDataFile && legacyDataFile.games) || {},
+  playerStatsSnapshots: (legacyDataFile && legacyDataFile.playerStatsSnapshots) || {},
+  teams: (legacyDataFile && legacyDataFile.teams) || {},
+};
+const gamePersister = makePersister(DATA_FILE, () => state);
+
+// --- Comptes (users.json, séparé de data.json) ---
+// Migration automatique et unique : les installations d'avant cette séparation
+// avaient les comptes dans data.json lui-même (clé "users") — repris ici si
+// users.json n'existe pas encore, puis persistés tout de suite dans leur propre
+// fichier (indispensable : sans cette écriture immédiate, ils ne vivraient qu'en
+// mémoire tant qu'aucun compte n'est modifié, et la prochaine sauvegarde des
+// données de jeu ne les réécrirait plus dans data.json — perte de données).
+const usersFileContent = readJsonFile(USERS_DATA_FILE);
+let usersState;
+if (usersFileContent) {
+  usersState = { users: usersFileContent.users || {} };
+} else if (legacyDataFile && legacyDataFile.users && Object.keys(legacyDataFile.users).length) {
+  usersState = { users: legacyDataFile.users };
+  console.log(`[db] Migration : comptes trouvés dans ${DATA_FILE}, déplacés vers ${USERS_DATA_FILE}.`);
+} else {
+  usersState = emptyUsersState();
+}
+const usersPersister = makePersister(USERS_DATA_FILE, () => usersState);
+if (!usersFileContent) usersPersister.saveNow();
+
+// Identifiant court et suffisamment unique pour une équipe/un compte (pas besoin d'UUID ici).
 function genId(prefix) {
   return (prefix || 't') + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
@@ -175,13 +195,20 @@ module.exports = {
     const merged = mergeGameRecord(state.games[key], g);
     deriveOutcomes(merged);
     state.games[key] = merged;
-    saveNow();
+    gamePersister.saveNow();
   },
   getAllGames() {
     return Object.values(state.games).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
   gameCount() {
     return Object.keys(state.games).length;
+  },
+  // Suppression idempotente d'une partie précise (typiquement pour corriger un import
+  // buggé : supprimer puis réimporter le fichier corrigé) — pas d'erreur si elle
+  // n'existe déjà plus.
+  deleteGame(id) {
+    delete state.games[String(id)];
+    gamePersister.saveNow();
   },
 
   // ---------------- Player stat snapshots ----------------
@@ -198,7 +225,7 @@ module.exports = {
     const withHash = Object.assign({}, snap, { __hash: hash });
     state.playerStatsSnapshots[uid].push(withHash);
     state.playerStatsSnapshots[uid].sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
-    saveNow();
+    gamePersister.saveNow();
   },
   getAllSnapshots() {
     const all = [];
@@ -220,7 +247,7 @@ module.exports = {
     const id = genId('t');
     const team = { id, name, members: (members || []).map(String) };
     state.teams[id] = team;
-    saveNow();
+    gamePersister.saveNow();
     return team;
   },
   updateTeam(id, name, members) {
@@ -228,65 +255,65 @@ module.exports = {
     if (!team) return null;
     if (name != null) team.name = name;
     if (Array.isArray(members)) team.members = members.map(String);
-    saveNow();
+    gamePersister.saveNow();
     return team;
   },
   deleteTeam(id) {
     delete state.teams[id];
-    saveNow();
+    gamePersister.saveNow();
   },
 
-  // ---------------- Users (comptes + rôles) ----------------
-  // Volontairement pas dans emptyState()/resetAll() côté "vidage" : resetAll() ne
-  // touche jamais aux comptes, seulement aux données de jeu (games/snapshots/teams) —
-  // sinon un reset déconnecterait/supprimerait tout le monde par surprise.
+  // ---------------- Users (comptes + rôles) — fichier séparé, voir users.json ----------------
+  // Volontairement pas dans resetAll() : le reset ne touche jamais aux comptes, seulement
+  // aux données de jeu (games/snapshots/teams) — sinon un reset déconnecterait/supprimerait
+  // tout le monde par surprise. Ça tombe bien avec la séparation en deux fichiers.
   getAllUsers() {
-    return Object.values(state.users);
+    return Object.values(usersState.users);
   },
   findUserByUsername(username) {
     const needle = String(username || '').toLowerCase();
-    return Object.values(state.users).find(u => u.username.toLowerCase() === needle) || null;
+    return Object.values(usersState.users).find(u => u.username.toLowerCase() === needle) || null;
   },
   getUserById(id) {
-    return state.users[String(id)] || null;
+    return usersState.users[String(id)] || null;
   },
   createUser({ username, email, passwordSalt, passwordHash, role }) {
     const id = genId('u');
     const user = { id, username, email: email || null, passwordSalt, passwordHash, role, createdAt: new Date().toISOString() };
-    state.users[id] = user;
-    saveNow();
+    usersState.users[id] = user;
+    usersPersister.saveNow();
     return user;
   },
   updateUser(id, patch) {
-    const user = state.users[String(id)];
+    const user = usersState.users[String(id)];
     if (!user) return null;
     if (patch.passwordSalt != null) user.passwordSalt = patch.passwordSalt;
     if (patch.passwordHash != null) user.passwordHash = patch.passwordHash;
     if (patch.role != null) user.role = patch.role;
-    saveNow();
+    usersPersister.saveNow();
     return user;
   },
   deleteUser(id) {
-    delete state.users[String(id)];
-    saveNow();
+    delete usersState.users[String(id)];
+    usersPersister.saveNow();
   },
   countAdmins() {
-    return Object.values(state.users).filter(u => u.role === 'admin').length;
+    return Object.values(usersState.users).filter(u => u.role === 'admin').length;
   },
 
   // ---------------- Admin ----------------
   resetAll() {
-    const keepUsers = state.users;
-    state = Object.assign(emptyState(), { users: keepUsers });
-    saveNow();
+    state = emptyGameState();
+    gamePersister.saveNow();
   },
   stats() {
     return {
       games: Object.keys(state.games).length,
       snapshots: Object.values(state.playerStatsSnapshots).reduce((s, l) => s + l.length, 0),
       teams: Object.keys(state.teams).length,
-      users: Object.keys(state.users).length,
+      users: Object.keys(usersState.users).length,
       dataFile: DATA_FILE,
+      usersFile: USERS_DATA_FILE,
     };
   },
 

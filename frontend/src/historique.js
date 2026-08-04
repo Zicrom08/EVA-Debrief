@@ -1,6 +1,9 @@
 import { state } from './state.js';
 import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData } from './format.js';
 import { sortedGames } from './game-filters.js';
+import { apiSend, loadFromServer } from './api.js';
+import { rebuildPlayerIndex } from './player-index.js';
+import { showApp } from './shell.js';
 
 // ================= HISTORIQUE (list + detail) =================
 export function renderList(){
@@ -101,6 +104,35 @@ export function renderMatchRosterTable(teamPlayers, teamKey){
     </table></div>`;
 }
 
+// Bouton de suppression d'une partie — admin uniquement (voir requireAdmin côté
+// serveur, ce masquage n'est que du confort d'affichage). Utile pour corriger un
+// import buggé : supprimer la partie puis réimporter le fichier corrigé.
+function deleteButtonHtml() {
+  if (!state.currentUser || state.currentUser.role !== 'admin') return '';
+  return `<button class="btn small danger" id="deleteGameBtn" title="Supprimer cette partie (tu pourras la réimporter ensuite)">🗑 Supprimer</button>`;
+}
+
+// Supprime la partie côté serveur puis recharge tout l'état (même logique qu'après
+// un import, voir import.js) — pas de fusion locale, on redemande la vérité au serveur.
+async function deleteGame(g) {
+  const label = `${(g.map && g.map.name) || '?'} · ${fmtDate(g.createdAt)}`;
+  if (!confirm(`Supprimer définitivement cette partie (${label}) de la base ? Tu pourras la réimporter ensuite si besoin.`)) return;
+  try {
+    await apiSend('DELETE', `/api/games/${g.id}`);
+  } catch (e) {
+    alert('Erreur lors de la suppression de la partie : ' + e.message);
+    return;
+  }
+  await loadFromServer();
+  rebuildPlayerIndex();
+  showApp();
+}
+
+function wireDeleteButton(g) {
+  const btn = document.getElementById('deleteGameBtn');
+  if (btn) btn.addEventListener('click', () => deleteGame(g));
+}
+
 // Construit une vue détail réduite pour les parties qui n'ont plus que outcome/K/D/A
 // par joueur (nouveau format d'historique EVA, juillet 2026 — plus de score d'équipe,
 // dégâts, précision ni assignation Alliance/Rebels). Un seul classement plutôt que deux
@@ -130,7 +162,10 @@ function renderSimpleMatchDetail(g, self) {
         <h2>${(g.map && g.map.name) || '?'}</h2>
         <div class="tags"><span>${(g.mode && g.mode.identifier) || ''}</span></div>
       </div>
-      <div class="date">${fmtDate(g.createdAt)}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="date">${fmtDate(g.createdAt)}</div>
+        ${deleteButtonHtml()}
+      </div>
     </div>
 
     <div class="evolution-hint" style="margin-bottom:16px;">
@@ -152,18 +187,40 @@ function renderSimpleMatchDetail(g, self) {
     </table></div>`;
 }
 
+// Nom affiché pour une équipe : jolie casse pour le cas standard ALLIANCE/REBELS,
+// tel quel pour un nom d'équipe personnalisé (parties privées type clan war, ex:
+// "HASHIRAS"/"ARISE" vus dans un import).
+const KNOWN_TEAM_NAMES = { ALLIANCE: 'Alliance', REBELS: 'Rebels' };
+function teamDisplayName(key) {
+  if (key == null) return '?';
+  return KNOWN_TEAM_NAMES[String(key).toUpperCase()] || key;
+}
+
 // Affiche le détail complet d'une partie (bandeau de score, blocs d'équipe colorés, tableaux) —
 // ou une vue réduite (renderSimpleMatchDetail) si cette partie n'a plus ces infos (voir hasFullMatchData).
 export function renderDetail(g){
   const self = findSelf(g);
   if (!hasFullMatchData(g)) {
     document.getElementById('detail').innerHTML = renderSimpleMatchDetail(g, self);
+    wireDeleteButton(g);
     return;
   }
 
-  const alliance = (g.players||[]).filter(p=>p.data.team === 'ALLIANCE');
-  const rebels = (g.players||[]).filter(p=>p.data.team === 'REBELS');
   const gd = g.data || {}; // certaines parties importées n'ont pas (encore) de résumé de match complet
+  // Les deux "clés" d'équipe utilisées pour regrouper les joueurs : normalement
+  // gd.teamOne.name/gd.teamTwo.name valent "ALLIANCE"/"REBELS", mais certaines
+  // captures les ont à null (bug ponctuel du collecteur), et une partie privée peut
+  // porter un nom d'équipe personnalisé (ex: "HASHIRAS"/"ARISE") — jamais de valeur
+  // supposée en dur, toujours dérivée de ce que la partie porte réellement.
+  let teamAKey = gd.teamOne && gd.teamOne.name;
+  let teamBKey = gd.teamTwo && gd.teamTwo.name;
+  if (teamAKey == null || teamBKey == null) {
+    const distinctTeams = Array.from(new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null)));
+    teamAKey = distinctTeams[0] ?? null;
+    teamBKey = distinctTeams[1] ?? null;
+  }
+  const alliance = (g.players||[]).filter(p=>p.data.team === teamAKey);
+  const rebels = (g.players||[]).filter(p=>p.data.team === teamBKey);
   const t1 = (gd.teamOne && gd.teamOne.score) || 0;
   const t2 = (gd.teamTwo && gd.teamTwo.score) || 0;
   const total = (t1 + t2) || 1;
@@ -180,17 +237,20 @@ export function renderDetail(g){
           <span>${fmtDuration(gd.duration)}</span>
         </div>
       </div>
-      <div class="date">${fmtDate(g.createdAt)}</div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div class="date">${fmtDate(g.createdAt)}</div>
+        ${deleteButtonHtml()}
+      </div>
     </div>
 
     <div class="scoreboard">
       <div class="team-score alliance">
-        <div class="name">Alliance</div>
+        <div class="name">${teamDisplayName(teamAKey)}</div>
         <div class="pts">${t1}</div>
       </div>
       <div class="vs">VS</div>
       <div class="team-score rebels">
-        <div class="name">Rebels</div>
+        <div class="name">${teamDisplayName(teamBKey)}</div>
         <div class="pts">${t2}</div>
       </div>
     </div>
@@ -202,12 +262,13 @@ export function renderDetail(g){
       </div>` : ''}
 
     <div class="match-team-block alliance">
-      <div class="match-team-header"><span class="dot"></span>Alliance<span class="count">${alliance.length} joueur(s)</span></div>
+      <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamAKey)}<span class="count">${alliance.length} joueur(s)</span></div>
       ${renderMatchRosterTable(alliance, 'alliance')}
     </div>
     <div class="match-team-block rebels">
-      <div class="match-team-header"><span class="dot"></span>Rebels<span class="count">${rebels.length} joueur(s)</span></div>
+      <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamBKey)}<span class="count">${rebels.length} joueur(s)</span></div>
       ${renderMatchRosterTable(rebels, 'rebels')}
     </div>
   `;
+  wireDeleteButton(g);
 }

@@ -104,7 +104,8 @@ flowchart LR
         AUTH["auth.js<br/>(sessions par cookie)"]
         DB["db.js<br/>(store JSON, écriture atomique)"]
     end
-    FILE[("data.json")]
+    FILE[("data.json<br/>(parties/profils/équipes)")]
+    UFILE[("users.json<br/>(comptes)")]
     EVA["Site EVA"]
     TM["eva_history_collector.user.js<br/>(script Tampermonkey)"]
 
@@ -114,6 +115,7 @@ flowchart LR
     SRV --> AUTH
     SRV --> DB
     DB <--> FILE
+    DB <--> UFILE
 ```
 
 Le frontend ne fait aucun calcul de persistance : à chaque import, il poste
@@ -150,23 +152,27 @@ production : `npm run build` compile le frontend en fichiers statiques
 ```
 eva-debrief/
 ├── package.json                     # Orchestrateur racine (workspaces npm, scripts dev/build/start)
-├── data.json                        # Données (généré au runtime, gitignored)
+├── data.json                        # Parties/profils/équipes (généré au runtime, gitignored)
+├── users.json                       # Comptes (généré au runtime, gitignored, séparé de data.json)
+├── .env.example                     # Modèle de fichier .env (voir Installation)
 ├── backend/
 │   ├── package.json                 # dependencies: express
 │   ├── server.js                    # Point d'entrée : routes API + fichiers statiques buildés + HTTP(S)
-│   ├── db.js                        # Couche de stockage (data.json, dédup, requêtes)
-│   └── auth.js                      # Sessions par cookie, comparaison de mot de passe
+│   ├── db.js                        # Couche de stockage (data.json + users.json, dédup, requêtes)
+│   ├── auth.js                      # Sessions par cookie, hachage de mot de passe, rôles
+│   └── env.js                       # Chargeur .env minimal (pas de dépendance dotenv)
 ├── frontend/
 │   ├── package.json                 # devDependencies: vite
 │   ├── vite.config.js                # Config Vite (multipage, proxy /api en dev)
 │   ├── index.html                    # Squelette HTML de la SPA
-│   ├── login.html                    # Page de connexion
+│   ├── login.html                    # Page de connexion / inscription / création du 1er admin
 │   ├── styles.css, styles/*.css       # CSS, un fichier par domaine
 │   ├── src/
 │   │   ├── main.js                    # Point d'entrée JS (bootstrap)
+│   │   ├── login.js                   # Logique de login.html (module externe, voir CSP)
 │   │   ├── state.js                   # État partagé
 │   │   ├── format.js, api.js, ui-prefs.js, game-filters.js
-│   │   ├── historique.js, tendances.js, comparatif.js, equipes.js
+│   │   ├── historique.js, tendances.js, comparatif.js, equipes.js, comptes.js
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
 │   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
@@ -250,20 +256,37 @@ PORT=3001 VITE_PORT=5174 DATA_FILE=data.dev.json npm run dev
 
 ## Où sont stockées les données
 
-Dans `data.json`, à la racine du projet (`backend/db.js` y vit désormais,
-mais son `DATA_DIR` par défaut remonte volontairement d'un niveau pour que
-`data.json` reste au même endroit qu'avant ce déplacement). Pour changer son
-emplacement :
+Dans **deux fichiers séparés** à la racine du projet, pour pouvoir les
+sauvegarder/versionner indépendamment :
+
+- `data.json` — parties, profils de saison, équipes.
+- `users.json` — comptes (identifiants, mots de passe hachés, rôles). Séparé
+  exprès de `data.json` : ce sont des données sensibles, pas les mêmes
+  enjeux de sauvegarde (tu voudras peut-être versionner `data.json` souvent
+  et `users.json` plus rarement, ou les stocker sur des supports différents).
+
+Pour changer leur emplacement :
 
 ```bash
 DATA_DIR=/var/lib/eva-debrief npm start
-# ou
+# ou individuellement :
 DATA_FILE=mes-donnees.json npm start
+USERS_DATA_DIR=/chemin/plus/restreint USERS_DATA_FILE=comptes.json npm start
 ```
 
-**Sauvegarde :** ce fichier unique contient tout (parties, profils,
-équipes). Le copier suffit à faire une sauvegarde complète. Tu peux aussi
-récupérer un export complet à tout moment via `GET /api/export`.
+`USERS_DATA_DIR` retombe sur `DATA_DIR` par défaut (même dossier, fichier
+différent) si tu ne le précises pas.
+
+**Migration automatique :** si tu avais déjà des comptes créés avant cette
+séparation (ils vivaient alors dans `data.json` lui-même), ils sont détectés
+et déplacés vers `users.json` tout seuls au premier démarrage après mise à
+jour — rien à faire, aucune donnée perdue. Un message dans les logs du
+serveur confirme la migration (`[db] Migration : comptes trouvés dans...`).
+
+**Sauvegarde :** copier ces deux fichiers suffit à faire une sauvegarde
+complète (un seul suffit si tu ne veux sauvegarder que l'un des deux). Tu
+peux aussi récupérer un export complet des données de jeu à tout moment via
+`GET /api/export` (les comptes n'y figurent pas, par sécurité).
 
 **Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `backend/db.js`
 stocke tout avec une écriture atomique (jamais de fichier à moitié écrit
@@ -351,8 +374,8 @@ API) sans session valide est redirigée vers `/login.html` (ou reçoit une
 réponse `401` pour les appels API) ; une fois connecté, une session est créée
 (cookie `HttpOnly`, 30 jours, marqué `Secure` automatiquement si servi en
 HTTPS) et stockée en mémoire côté serveur — un redémarrage du serveur
-déconnecte tout le monde (les comptes eux, stockés dans `data.json`, survivent
-au redémarrage). Le bouton "Déconnexion" en haut à droite de l'appli met fin à
+déconnecte tout le monde (les comptes eux, stockés dans `users.json`, survivent
+au redémarrage — voir [Où sont stockées les données](#où-sont-stockées-les-données)). Le bouton "Déconnexion" en haut à droite de l'appli met fin à
 la session à tout moment. Changer le rôle ou le mot de passe d'un compte
 invalide immédiatement ses sessions ouvertes.
 
@@ -569,6 +592,7 @@ Même avec des comptes créés, garde en tête que :
 | GET     | `/api/health`     | oui | Statut + compteurs |
 | POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) |
 | GET     | `/api/export`     | oui | Export brut complet (sauvegarde) |
+| DELETE  | `/api/games/:id`  | admin | Supprime une partie précise (pour la réimporter après correction d'un bug d'import) |
 | GET     | `/api/teams`      | oui | Liste des équipes |
 | POST    | `/api/teams`      | admin | Crée une équipe `{ name, members: [userId,...] }` |
 | PUT     | `/api/teams/:id`  | admin | Modifie une équipe |

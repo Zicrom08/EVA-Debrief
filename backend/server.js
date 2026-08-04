@@ -440,6 +440,13 @@ app.get('/api/export', (req, res) => {
   res.json({ nodes: db.getAllGames(), playerStats: db.getAllSnapshots() });
 });
 
+// Supprime une partie précise (ex: import buggé à corriger en la réimportant après coup).
+// Admin uniquement, comme le reset complet — suppression idempotente.
+app.delete('/api/games/:id', requireAdmin, (req, res) => {
+  db.deleteGame(req.params.id);
+  res.json({ ok: true });
+});
+
 // Équipes
 app.get('/api/teams', (req, res) => {
   res.json(db.getAllTeams());
@@ -517,7 +524,8 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 
   https.createServer(options, app).listen(PORT, () => {
     console.log(`EVA Debrief (HTTPS) prêt sur https://localhost:${PORT}`);
-    console.log(`Données stockées dans : ${db.stats().dataFile}`);
+    console.log(`Données de jeu stockées dans : ${db.stats().dataFile}`);
+    console.log(`Comptes stockés dans : ${db.stats().usersFile}`);
   });
 
   // Redirection HTTP -> HTTPS optionnelle, sur un port séparé (ex: 80 vers 443).
@@ -536,7 +544,8 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 } else {
   app.listen(PORT, () => {
     console.log(`EVA Debrief prêt sur http://localhost:${PORT}`);
-    console.log(`Données stockées dans : ${db.stats().dataFile}`);
+    console.log(`Données de jeu stockées dans : ${db.stats().dataFile}`);
+    console.log(`Comptes stockés dans : ${db.stats().usersFile}`);
     console.log('ℹ️  Ceci tourne en HTTP simple. Voir le README pour activer HTTPS (SSL_KEY_PATH / SSL_CERT_PATH ou reverse proxy).');
   });
 }
