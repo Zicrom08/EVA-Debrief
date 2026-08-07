@@ -1,4 +1,4 @@
-import { fmtDate, fmtDateShort, fmtDelta, fmtHM } from '../format.js';
+import { findPlayerInGame, fmtDate, fmtDateShort, fmtDelta, fmtHM } from '../format.js';
 import { displaySeasonId, normalizeSnapshotStats, snapshotSeasonId } from '../seasons.js';
 
 const NA = '<span style="color:var(--muted);">n/d</span>';
@@ -49,6 +49,26 @@ function sumSeasonTotals(seasonSnaps) {
   });
 }
 
+// Dégâts infligés/meilleure partie resommés depuis l'historique de parties importé (déjà
+// filtré par saison/période/exclusions par l'appelant, voir profil/index.js), utilisé en
+// repli quand battleArenaStatistics ne fournit plus du tout ces champs (voir plus bas).
+// Approximatif si l'historique de parties n'est pas complet pour la période (certaines
+// parties de la saison n'ont pas été importées) — mais bien plus utile qu'un "n/d" sec, et
+// la seule source qui les ait encore : `null` si aucune des parties fournies n'a la donnée
+// (ex: parties list-only pré-v8.0, voir CLAUDE.md), pour ne pas afficher un faux total nul.
+function damageFromGames(games, uid) {
+  if (!games || !games.length) return null;
+  let total = 0, best = 0, any = false;
+  games.forEach((g) => {
+    const p = findPlayerInGame(g, uid);
+    if (!p || !p.data || p.data.inflictedDamage == null) return;
+    any = true;
+    total += p.data.inflictedDamage;
+    if (p.data.inflictedDamage > best) best = p.data.inflictedDamage;
+  });
+  return any ? { total, best } : null;
+}
+
 // ================= PROFIL : carte de saison (depuis les snapshots getPlayerByUserId) =================
 // `baseline` (optionnel) est la dernière capture connue AVANT le début de la période
 // filtrée (voir seasonCardBaseline() dans seasons.js). Les stats de saison sont des
@@ -56,7 +76,10 @@ function sumSeasonTotals(seasonSnaps) {
 // "7 derniers jours" n'aurait presque aucun effet visible ici (le cumul depuis le
 // début de la saison resterait affiché tel quel). Quand baseline est fourni, la carte
 // affiche donc "ce qui a été gagné pendant la période", pas le cumul brut.
-export function renderSeasonCard(snaps, baseline) {
+// `games` (optionnel) est l'historique de parties déjà filtré du même joueur (mêmes
+// filtres saison/période/exclusions que le reste de l'app, voir gamesForPlayerSorted) —
+// utilisé pour reconstituer les dégâts quand battleArenaStatistics ne les fournit plus.
+export function renderSeasonCard(snaps, baseline, games) {
   const latest = snaps[snaps.length - 1];
   const exp = latest.experience || {};
   const seasonIds = new Set(snaps.map(snapshotSeasonId));
@@ -85,12 +108,27 @@ export function renderSeasonCard(snaps, baseline) {
   const assists = cur.assists - (base ? base.assists : 0);
   const traveledDistance = cur.traveledDistance - (base ? base.traveledDistance : 0);
   const gameTime = hasPlaytime ? cur.gameTime - (base ? base.gameTime : 0) : null;
-  const inflictedDamage = hasDamage ? cur.inflictedDamage - (base ? base.inflictedDamage : 0) : null;
+  let inflictedDamage = hasDamage ? cur.inflictedDamage - (base ? base.inflictedDamage : 0) : null;
   // bestKillStreak/bestInflictedDamage sont des records cumulés (max depuis le début
   // de la saison), pas des sommes : leur "delta" est le record BATTU pendant la
   // période (0 si aucun nouveau record n'a été établi durant la fenêtre filtrée).
   const bestKillStreak = Math.max(0, cur.bestKillStreak - (base ? base.bestKillStreak : 0));
-  const bestInflictedDamage = hasDamage ? Math.max(0, cur.bestInflictedDamage - (base ? base.bestInflictedDamage : 0)) : null;
+  let bestInflictedDamage = hasDamage ? Math.max(0, cur.bestInflictedDamage - (base ? base.bestInflictedDamage : 0)) : null;
+  // Repli : battleArenaStatistics ne fournit plus les dégâts du tout (voir plus haut) — on
+  // les resomme depuis l'historique de parties importé de ce joueur pour la même sélection
+  // saison/période, plutôt que d'afficher "n/d" alors que la donnée existe ailleurs. Pas de
+  // logique de baseline à soustraire ici : `games` est déjà la liste filtrée par la période
+  // actuelle (contrairement aux compteurs cumulés des snapshots), donc une simple somme
+  // directe donne déjà "ce qui a été infligé pendant la période".
+  let dmgFromGames = false;
+  if (inflictedDamage == null) {
+    const fromGames = damageFromGames(games, latest.user && latest.user.id);
+    if (fromGames) {
+      inflictedDamage = fromGames.total;
+      bestInflictedDamage = fromGames.best;
+      dmgFromGames = true;
+    }
+  }
 
   const winrate = gameCount ? Math.round((gameVictoryCount / gameCount) * 100) : 0;
   const hours = gameTime != null ? (gameTime / 3600).toFixed(1) : null;
@@ -126,15 +164,21 @@ export function renderSeasonCard(snaps, baseline) {
         <div class="cell"><div class="label">Kills / Morts / Assists</div><div class="value" style="font-size:16px;">${kills} / ${deaths} / ${assists}</div></div>
         <div class="cell"><div class="label">Ratio K/D</div><div class="value">${kd}</div></div>
         <div class="cell"><div class="label">${base ? 'Record battu (série de kills)' : 'Meilleure série de kills'}</div><div class="value">${bestKillStreak}</div></div>
-        <div class="cell"><div class="label">Dégâts totaux infligés</div><div class="value">${inflictedDamage != null ? inflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
+        <div class="cell"><div class="label">Dégâts totaux infligés${dmgFromGames ? ' *' : ''}</div><div class="value">${inflictedDamage != null ? inflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
 
-        <div class="cell"><div class="label">${base ? 'Record battu (dégâts, 1 partie)' : 'Meilleurs dégâts (1 partie)'}</div><div class="value">${bestInflictedDamage != null ? bestInflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
+        <div class="cell"><div class="label">${base ? 'Record battu (dégâts, 1 partie)' : 'Meilleurs dégâts (1 partie)'}${dmgFromGames ? ' *' : ''}</div><div class="value">${bestInflictedDamage != null ? bestInflictedDamage.toLocaleString('fr-FR') : NA}</div></div>
         <div class="cell"><div class="label">Distance parcourue</div><div class="value">${distanceKm} km</div></div>
         <div class="cell"><div class="label">Distance moy. / partie</div><div class="value">${avgDistance} m</div></div>
         <div class="cell"><div class="label">Snapshots capturés</div><div class="value">${snaps.length}</div></div>
       </div>
-      ${!hasDamage || !hasPlaytime ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
-        Temps de jeu et dégâts ne sont plus renvoyés par le profil EVA depuis son dernier changement d'API — non disponibles tant qu'EVA ne les republie pas.
+      ${dmgFromGames ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+        * Dégâts recalculés depuis l'historique de parties importé pour cette sélection (EVA ne les renvoie plus dans l'agrégat de saison) — incomplet si toutes les parties de la période n'ont pas été importées.
+      </div>` : ''}
+      ${!hasDamage && !dmgFromGames ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+        Dégâts non disponibles : ni renvoyés par le profil EVA, ni reconstituables depuis l'historique de parties importé pour cette sélection.
+      </div>` : ''}
+      ${!hasPlaytime ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+        Temps de jeu non disponible : plus renvoyé par le profil EVA depuis son dernier changement d'API.
       </div>` : ''}
     </div>`;
 }

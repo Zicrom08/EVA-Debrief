@@ -173,10 +173,13 @@ export function normalizeSnapshotStats(snap) {
       assists: ba.assists || 0,
       bestKillStreak: ba.bestKillStreak || 0,
       traveledDistance: ba.traveledDistance || 0,
-      gameTime: 0,
+      // "gameTime" est en fait toujours présent dans battleArenaStatistics.data (confirmé
+      // par capture réseau août 2026, cf. eva_history_collector.user.js v9.3) — seuls
+      // inflictedDamage/bestInflictedDamage manquent réellement de ce bloc réduit.
+      gameTime: ba.gameTime || 0,
       inflictedDamage: 0,
       bestInflictedDamage: 0,
-      hasPlaytime: false,
+      hasPlaytime: ba.gameTime != null,
       hasDamage: false,
     };
   }
