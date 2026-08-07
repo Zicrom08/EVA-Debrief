@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      9.2
+// @version      9.3
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        none
@@ -56,6 +56,30 @@
 // sur son en-tête (ou le bouton "–"/"+") pour le réduire à un simple bandeau avec les
 // compteurs ; l'état réduit/déplié est mémorisé (même mécanisme que games/stats) et
 // survit aux rechargements de page, donc pas besoin de le refermer à chaque navigation.
+//
+// LE CHAMP "statistics" A DISPARU DU SCHÉMA (v9.3) — PLUS AUCUN PROFIL CAPTÉ
+// Constaté via eva_network_inspector.user.js : la requête enrichie ci-dessous, qui
+// redemandait `statistics(seasonId: $seasonId)`, se prend maintenant un 400 avec
+// "Cannot query field \"statistics\" on type \"Player\"." — ce n'est plus un jeu de
+// champs réduit comme lors du changement de juillet 2026 (voir plus haut), le champ
+// est intégralement retiré du schéma GraphQL, la requête est rejetée à la validation.
+// Cet échec passait totalement inaperçu : handleText() n'affiche/ne journalise rien
+// pour une réponse qui ne contient ni "cursorAfterhGameHistory" ni "getPlayerByUserId"
+// + "statistics" (un corps d'erreur `{"errors":[...]}` ne contient aucun des deux —
+// le nom de champ dans le message est échappé en `\"statistics\"`, pas le littéral
+// `"statistics"`) — d'où l'absence totale de capture de profil, sans aucune erreur
+// visible dans le panneau. Les vraies stats de saison transitent maintenant par
+// `battleArenaStatistics(seasonId: $seasonId)` (vu fonctionner sur l'opération
+// DashboardOverviewOwned du site, avec `$seasonId: Int!` non-nullable — c'est
+// d'ailleurs pour ça que le type de la variable ci-dessous est passé de `Int` à
+// `Int!`, un simple `Int` s'y ferait rejeter à la validation). UseProfileUserOwned
+// redemande donc ce bloc à la place de "statistics" ; extractPlayerStats/
+// mergePlayerStat/handleText ont été mis à jour en conséquence. La forme stockée
+// (`snapshot.battleArenaStatistics`) est déjà comprise par normalizeSnapshotStats()
+// côté visionneuse (frontend/src/seasons.js), qui la traitait déjà comme le format
+// "réduit" pour les anciennes captures — gameTime et les champs de dégâts restent
+// donc marqués absents (hasPlaytime/hasDamage à false) même si ce champ précis en
+// renvoie un (gameTime) : non exploité pour l'instant, cf. seasons.js.
 //
 // THROTTLE PAR VARIABLES, PAS PAR OPÉRATION (v9.2)
 // Le garde-fou "5 secondes entre deux appels enrichis" était jusque-là indexé uniquement
@@ -158,9 +182,12 @@
       }
     }`,
 
-    // Profil personnel — redemande le bloc "statistics" complet (dégâts,
-    // distance parcourue, meilleure série...) disparu de la requête par défaut.
-    UseProfileUserOwned: `query UseProfileUserOwned($userId: Int!, $seasonId: Int) {
+    // Profil personnel — redemande le bloc de stats de bataille disparu de la requête
+    // par défaut. "statistics" n'existe plus du tout dans le schéma (voir note v9.3
+    // plus haut) : on redemande "battleArenaStatistics" à la place, seul bloc dont on
+    // a confirmé qu'il fonctionne encore (vu sur DashboardOverviewOwned). Son argument
+    // seasonId est non-nullable côté serveur, d'où "$seasonId: Int!" ci-dessous.
+    UseProfileUserOwned: `query UseProfileUserOwned($userId: Int!, $seasonId: Int!) {
       getPlayerByUserId(userId: $userId) {
         user { id username displayName __typename }
         experience(seasonId: $seasonId) {
@@ -171,23 +198,20 @@
           __typename
         }
         seasonPass { active __typename }
-        statistics(seasonId: $seasonId) {
+        battleArenaStatistics(seasonId: $seasonId) {
           data {
-            gameCount
             gameTime
-            gameVictoryCount
-            gameDefeatCount
-            gameDrawCount
-            inflictedDamage
-            bestInflictedDamage
+            winRate
+            killDeathRatio
+            gameCount
+            killsAverage
             kills
             deaths
             assists
-            killDeathRatio
-            killsByDeaths
-            traveledDistance
-            traveledDistanceAverage
             bestKillStreak
+            mvpCount
+            traveledDistance
+            __typename
           }
           __typename
         }
@@ -260,11 +284,13 @@
       let all = [];
       list.forEach((item) => {
         const d = item && item.data ? item.data : null;
-        // On exige la présence du bloc "statistics" : d'autres requêtes du site (ex:
-        // getPlayerExperience, DashboardOverviewOwned) utilisent aussi getPlayerByUserId
-        // mais sans les stats complètes — on ne veut pas les capturer comme un "profil".
+        // On exige la présence d'un bloc de stats ("battleArenaStatistics" désormais —
+        // "statistics" n'existe plus, voir note v9.3 — gardé en fallback si jamais une
+        // capture plus ancienne/manuelle le renvoie encore) : d'autres requêtes du site
+        // (ex: getPlayerExperience) utilisent aussi getPlayerByUserId mais sans stats
+        // complètes — on ne veut pas les capturer comme un "profil".
         const p = d ? d.getPlayerByUserId : null;
-        if (p && p.user && p.user.id != null && p.statistics) all.push(p);
+        if (p && p.user && p.user.id != null && (p.battleArenaStatistics || p.statistics)) all.push(p);
       });
       return all.length ? all : null;
     } catch (e) {
@@ -281,18 +307,19 @@
       seasonPass: raw.seasonPass || null,
       experience: raw.experience || null,
       statistics: raw.statistics || null,
+      battleArenaStatistics: raw.battleArenaStatistics || null,
     };
     if (!stats[uid]) stats[uid] = [];
     const list = stats[uid];
     // Le seasonId fait partie de l'empreinte : au tout début d'une nouvelle saison, les
     // stats peuvent momentanément ressembler à une capture déjà vue (ex: 0 partie partout),
     // sans le seasonId dans la signature ce serait pris à tort pour un doublon et ignoré.
-    const sig = seasonId + '|' + JSON.stringify(snapshot.statistics) + JSON.stringify(snapshot.experience);
+    const sig = seasonId + '|' + JSON.stringify(snapshot.statistics) + JSON.stringify(snapshot.battleArenaStatistics) + JSON.stringify(snapshot.experience);
     // On compare à TOUTES les captures déjà stockées, pas juste la dernière — la page de
     // profil EVA alterne entre plusieurs variantes de requête (saison en cours / toutes
     // saisons confondues) qui reviennent en boucle très rapidement, et une comparaison
     // "à la dernière seulement" laisse passer ce cas A-B-A-B-A-B sans jamais rien filtrer.
-    const alreadyExists = list.some((s) => ((s.seasonId != null ? s.seasonId : null) + '|' + JSON.stringify(s.statistics) + JSON.stringify(s.experience)) === sig);
+    const alreadyExists = list.some((s) => ((s.seasonId != null ? s.seasonId : null) + '|' + JSON.stringify(s.statistics) + JSON.stringify(s.battleArenaStatistics) + JSON.stringify(s.experience)) === sig);
     if (alreadyExists) return false;
     list.push(snapshot);
     list.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
@@ -305,8 +332,14 @@
     if (!text) return;
     meta = meta || { allowStats: true, seasonId: null };
     const hasGames = text.indexOf(MARKER_GAMES) !== -1;
+    // "statistics" n'existe plus dans le schéma (voir note v9.3 plus haut) : une réponse
+    // qui le redemande encore se prend un 400 (corps `{"errors":[...]}`, sans le marqueur
+    // "getPlayerByUserId") et ne matche donc de toute façon aucun des deux littéraux — ce
+    // n'est pas ce test-ci qui doit filtrer ce cas, gardé seulement en fallback pour une
+    // capture manuelle/ancienne qui renverrait encore l'ancien format.
     const hasStats = meta.allowStats !== false
-      && text.indexOf(MARKER_STATS_OWNED) !== -1 && text.indexOf('"statistics"') !== -1;
+      && text.indexOf(MARKER_STATS_OWNED) !== -1
+      && (text.indexOf('"battleArenaStatistics"') !== -1 || text.indexOf('"statistics"') !== -1);
     if (!hasGames && !hasStats) return;
     let json;
     try {
