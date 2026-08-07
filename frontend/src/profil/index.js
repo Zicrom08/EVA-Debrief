@@ -32,7 +32,7 @@ export function renderProfilMain(uid) {
   let html = '';
 
   if (snaps && snaps.length) {
-    html += renderSeasonCard(snaps, baseline);
+    html += renderSeasonCard(snaps, baseline, games);
     if (snaps.length > 1) {
       html += renderEvolutionTable(snaps);
     } else {
