@@ -8,3 +8,5 @@ users.json.tmp
 CLAUDE.md
 frontend/dist/
 .env
+.venv
+.venv/*
