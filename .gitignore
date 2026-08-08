@@ -10,3 +10,10 @@ frontend/dist/
 .env
 .venv
 .venv/*
+
+# graphify knowledge graph (regenerate with `graphify update .`)
+graphify-out/
+
+# Claude Code local settings (machine-specific hooks/paths)
+.claude/settings.json
+.claude/settings.local.json
