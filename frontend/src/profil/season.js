@@ -185,7 +185,7 @@ export function renderSeasonCard(snaps, baseline, games) {
 
 // Construit le tableau d'évolution entre chaque capture successive du profil (toutes les stats de saison, dont la distance parcourue).
 export function renderEvolutionTable(snaps) {
-  let rows = '';
+  const rowsArr = [];
   for (let i = 1; i < snaps.length; i++) {
     const prevExp = snaps[i-1].experience || {};
     const curExp = snaps[i].experience || {};
@@ -197,13 +197,13 @@ export function renderEvolutionTable(snaps) {
     // absurdes (compteurs remis à zéro) plutôt qu'une vraie régression. On le signale
     // explicitement au lieu de calculer une évolution qui n'a pas de sens ici.
     if (prevSid != null && curSid != null && prevSid !== curSid) {
-      rows += `
+      rowsArr.push(`
       <tr>
         <td class="name-cell">${fmtDateShort(snaps[i-1].capturedAt)} → ${fmtDateShort(snaps[i].capturedAt)}</td>
         <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
           Nouvelle saison (${displaySeasonId(prevSid)} → ${displaySeasonId(curSid)}) — compteurs remis à zéro, pas de delta calculé.
         </td>
-      </tr>`;
+      </tr>`);
       continue;
     }
 
@@ -233,7 +233,7 @@ export function renderEvolutionTable(snaps) {
     const wr = dGames > 0 ? Math.round((dWins/dGames)*100) : 0;
     const kd = dDeaths > 0 ? (dKills/dDeaths).toFixed(2) : dKills.toFixed(2);
 
-    rows += `
+    rowsArr.push(`
       <tr>
         <td class="name-cell">${fmtDateShort(snaps[i-1].capturedAt)} → ${fmtDateShort(snaps[i].capturedAt)}</td>
         <td class="num">${fmtDelta(dGames)}</td>
@@ -250,8 +250,9 @@ export function renderEvolutionTable(snaps) {
         <td class="num">${fmtDelta(dXp)}</td>
         <td class="num">${dBestStreak>0 ? fmtDelta(dBestStreak) : '—'}</td>
         <td class="num">${dBestDmg==null ? NA : (dBestDmg>0 ? fmtDelta(dBestDmg) : '—')}</td>
-      </tr>`;
+      </tr>`);
   }
+  const rows = rowsArr.reverse().join('');
   return `
     <div style="color:var(--muted);font-size:12px;margin-top:22px;margin-bottom:8px;">
       Évolution entre chaque capture successive du profil de ce joueur — toutes les stats de la saison, dont la distance parcourue.
