@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend Express de EVA Debrief : API + stockage JSON + auth par cookie signé.",
   "main": "server.js",
+  "scripts": {
+    "test": "node --test test/"
+  },
   "dependencies": {
     "express": "^5.0.0"
   },
