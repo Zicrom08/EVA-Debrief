@@ -12,7 +12,8 @@
     "dev:backend": "node --watch backend/server.js",
     "dev:frontend": "npm run dev --workspace frontend",
     "build": "npm run build --workspace frontend",
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "test": "npm run test --workspace backend && npm run test --workspace frontend"
   },
   "keywords": ["eva", "gaming-stats", "self-hosted", "express", "dashboard"],
   "engines": {

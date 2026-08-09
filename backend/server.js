@@ -508,6 +508,11 @@ const PORT = process.env.PORT || 3000;
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
 const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 
+// Le require.main check évite de lancer un vrai serveur (bind de port) quand ce
+// fichier est require() plutôt qu'exécuté directement — nécessaire pour pouvoir
+// tester isPveGame()/extractFromPayload() (voir backend/test/server.test.js) sans
+// démarrer le serveur à chaque run de la suite de tests.
+if (require.main === module) {
 if (SSL_KEY_PATH && SSL_CERT_PATH) {
   let options;
   try {
@@ -549,3 +554,8 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
     console.log('ℹ️  Ceci tourne en HTTP simple. Voir le README pour activer HTTPS (SSL_KEY_PATH / SSL_CERT_PATH ou reverse proxy).');
   });
 }
+}
+
+// Exposés pour la suite de tests (voir backend/test/server.test.js) — le reste du
+// module (routes, démarrage du serveur) n'a pas besoin d'être importable ailleurs.
+module.exports = { isPveGame, extractFromPayload };
