@@ -43,6 +43,7 @@ export function aggregateGames(games, uid) {
     n, wins, losses,
     winrate: n ? Math.round((wins/n)*100) : 0,
     kd: deaths ? (kills/deaths).toFixed(2) : kills.toFixed(2),
+    kda: deaths ? ((kills+assists)/deaths).toFixed(2) : (kills+assists).toFixed(2),
     avgDmg: n ? Math.round(dmg/n) : 0,
     avgScore: n ? Math.round(score/n) : 0,
     kills, deaths, assists,

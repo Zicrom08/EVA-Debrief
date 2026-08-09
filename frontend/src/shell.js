@@ -67,7 +67,7 @@ export function renderSummary(){
     <div class="cell"><div class="label">Victoires / Défaites</div>
       <div class="value"><span class="win">${agg.wins}</span> <span style="color:var(--muted)">/</span> <span class="loss">${agg.losses}</span></div></div>
     <div class="cell"><div class="label">Taux de victoire</div><div class="value">${agg.winrate}%</div></div>
-    <div class="cell"><div class="label">Ratio K/D</div><div class="value">${agg.kd}</div>
+    <div class="cell"><div class="label">KDA</div><div class="value">${agg.kda}</div>
       <div class="sub">${agg.kills} kills · ${agg.deaths} morts · ${agg.assists} assists</div></div>
     <div class="cell"><div class="label">Score moyen</div><div class="value">${agg.avgScore}</div></div>
     <div class="cell"><div class="label">Dégâts moyens</div><div class="value">${agg.avgDmg}</div></div>
