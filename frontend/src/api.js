@@ -33,7 +33,7 @@ export async function getMe() {
   return apiGet('/api/me');
 }
 
-// Recharge state.gamesById / state.playerStatsSnapshots / state.customTeams / state.playerLinks depuis le serveur.
+// Recharge state.gamesById / state.playerStatsSnapshots / state.customTeams / state.playerLinks / state.playerNames depuis le serveur.
 // C'est la SEULE source de vérité pour ces données — après un import, on ne fusionne
 // jamais localement : on redemande l'état complet au serveur pour être sûr d'avoir
 // exactement ce qui est en base (déduplication comprise).
@@ -59,5 +59,10 @@ export async function loadFromServer() {
   state.playerLinks = {};
   (serverState.playerLinks || []).forEach(l => {
     if (l && l.aliasUserId != null) state.playerLinks[l.aliasUserId] = l.primaryUserId;
+  });
+
+  state.playerNames = {};
+  (serverState.playerNames || []).forEach(n => {
+    if (n && n.uid != null) state.playerNames[n.uid] = n.name;
   });
 }

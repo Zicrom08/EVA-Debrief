@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { mostCommonName } from './format.js';
 import { canonicalUid } from './player-links.js';
+import { applyPlayerNameOverrides } from './player-names.js';
 import { persistUiPrefs } from './ui-prefs.js';
 import { renderSummary } from './shell.js';
 import { renderList } from './historique.js';
@@ -44,6 +45,10 @@ export function rebuildPlayerIndex() {
       };
     }
   });
+  // Renommages manuels (voir player-names.js) : appliqués en dernier, après agrégation
+  // complète des parties et des snapshots ci-dessus, pour toujours l'emporter.
+  applyPlayerNameOverrides(state.players);
+
   const sorted = Object.entries(state.players).sort((a,b)=>b[1].games-a[1].games);
   if (!state.currentUid || !state.players[state.currentUid]) {
     state.currentUid = sorted.length ? sorted[0][0] : null;

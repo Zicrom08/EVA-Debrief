@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { apiGet, apiSend, loadFromServer } from './api.js';
 import { roleLabel, resolvePlayerName } from './format.js';
 import { linkPlayers, unlinkPlayer } from './player-links.js';
+import { setPlayerName, clearPlayerName } from './player-names.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -186,11 +187,11 @@ function renderPlayerLinkForm() {
     </div>`;
 }
 
-// Une fusion/défusion change l'identité canonique de potentiellement tous les joueurs —
-// on recharge tout depuis le serveur et on re-rend l'app entière (même logique que la
-// suppression d'une partie, voir historique.js deleteGame()), plutôt que de tenter un
-// rafraîchissement partiel forcément incomplet.
-async function reloadAfterPlayerLinkChange() {
+// Une fusion/défusion/renommage change l'identité ou le nom affiché de potentiellement
+// tous les joueurs — on recharge tout depuis le serveur et on re-rend l'app entière (même
+// logique que la suppression d'une partie, voir historique.js deleteGame()), plutôt que de
+// tenter un rafraîchissement partiel forcément incomplet.
+async function reloadAfterPlayerIdentityChange() {
   await loadFromServer();
   rebuildPlayerIndex();
   renderComptes();
@@ -208,7 +209,7 @@ function wirePlayerLinksManager() {
         alert('Erreur lors de la défusion : ' + e.message);
         return;
       }
-      await reloadAfterPlayerLinkChange();
+      await reloadAfterPlayerIdentityChange();
     });
   });
 
@@ -225,7 +226,81 @@ function wirePlayerLinksManager() {
         alert('Erreur lors de la fusion : ' + e.message);
         return;
       }
-      await reloadAfterPlayerLinkChange();
+      await reloadAfterPlayerIdentityChange();
+    });
+  }
+}
+
+// ================= RENOMMAGE MANUEL DE JOUEUR (admin) =================
+// Force le nom affiché d'un joueur — utile quand il a changé de pseudo en jeu et que
+// l'ancien reste "le plus fréquent" statistiquement (voir player-names.js). N'affecte
+// aucune donnée de partie, toujours réversible.
+function renderPlayerNamesList() {
+  const entries = Object.entries(state.playerNames);
+  if (!entries.length) return `<div style="color:var(--muted);font-size:13px;">Aucun renommage manuel.</div>`;
+  const rows = entries.map(([uid, name]) => `
+    <tr>
+      <td class="name-cell">${name} <span style="color:var(--muted);font-size:11px;">(#${uid})</span></td>
+      <td class="num"><button class="btn small danger" data-reset-player-name="${uid}">Réinitialiser</button></td>
+    </tr>`).join('');
+  return `
+    <div class="table-scroll"><table class="roster">
+      <thead><tr><th>Joueur renommé</th><th class="num">Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function renderPlayerNameForm() {
+  const players = Object.entries(state.players)
+    .map(([uid, rec]) => ({ uid, name: resolvePlayerName(uid), games: rec.games }))
+    .sort((a, b) => b.games - a.games);
+
+  if (!players.length) {
+    return `<div style="color:var(--muted);font-size:12px;margin-top:10px;">Importe d'abord des parties ou des profils pour pouvoir renommer un joueur.</div>`;
+  }
+
+  return `
+    <div class="team-create-form">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Renommer un joueur (après un changement de pseudo en jeu, par exemple) :</div>
+      <select id="renamePlayerSelect">
+        <option value="">— choisir un joueur —</option>
+        ${players.map(p => `<option value="${p.uid}">${p.name} (#${p.uid})</option>`).join('')}
+      </select>
+      <input type="text" id="renamePlayerInput" placeholder="Nouveau nom affiché">
+      <button class="btn primary small" id="renamePlayerBtn">Renommer</button>
+    </div>`;
+}
+
+function wirePlayerNamesManager() {
+  document.querySelectorAll('[data-reset-player-name]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const uid = btn.dataset.resetPlayerName;
+      if (!confirm('Revenir au pseudo auto-détecté pour ce joueur ?')) return;
+      try {
+        await clearPlayerName(uid);
+      } catch (e) {
+        alert('Erreur lors de la réinitialisation du nom : ' + e.message);
+        return;
+      }
+      await reloadAfterPlayerIdentityChange();
+    });
+  });
+
+  const renameBtn = document.getElementById('renamePlayerBtn');
+  if (renameBtn) {
+    renameBtn.addEventListener('click', async () => {
+      const uid = document.getElementById('renamePlayerSelect').value;
+      const nameInput = document.getElementById('renamePlayerInput');
+      const name = nameInput.value.trim();
+      if (!uid) return;
+      if (!name) { nameInput.focus(); return; }
+      try {
+        await setPlayerName(uid, name);
+      } catch (e) {
+        alert('Erreur lors du renommage : ' + e.message);
+        return;
+      }
+      await reloadAfterPlayerIdentityChange();
     });
   }
 }
@@ -253,7 +328,18 @@ export async function renderComptes() {
       </div>
       ${renderPlayerLinksList()}
       ${renderPlayerLinkForm()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Renommer un joueur</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Force le nom affiché d'un joueur (utile s'il a changé de pseudo en jeu et que
+        l'ancien reste "le plus fréquent" statistiquement). N'affecte aucune donnée de
+        partie, toujours réversible.
+      </div>
+      ${renderPlayerNamesList()}
+      ${renderPlayerNameForm()}
     </div>`;
   wireUserManager();
   wirePlayerLinksManager();
+  wirePlayerNamesManager();
 }

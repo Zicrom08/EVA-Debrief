@@ -43,6 +43,7 @@ function emptyGameState() {
     playerStatsSnapshots: {},// userId (string) -> [snapshot, ...] trié par capturedAt croissant
     teams: {},                // teamId -> { id, name, members: [userId,...] }
     playerLinks: {},          // aliasUserId (string) -> primaryUserId (string) — fusion de comptes joueurs (smurfs), voir linkPlayer()
+    playerNames: {},          // userId canonique (string) -> nom personnalisé — renommage manuel, voir setPlayerName()
   };
 }
 function emptyUsersState() {
@@ -93,6 +94,7 @@ let state = {
   playerStatsSnapshots: (legacyDataFile && legacyDataFile.playerStatsSnapshots) || {},
   teams: (legacyDataFile && legacyDataFile.teams) || {},
   playerLinks: (legacyDataFile && legacyDataFile.playerLinks) || {},
+  playerNames: (legacyDataFile && legacyDataFile.playerNames) || {},
 };
 const gamePersister = makePersister(DATA_FILE, () => state);
 
@@ -345,6 +347,28 @@ module.exports = {
   // ses parties/captures n'ont jamais bougé.
   unlinkPlayer(aliasUserId) {
     delete state.playerLinks[String(aliasUserId)];
+    gamePersister.saveNow();
+  },
+
+  // ---------------- Player names (renommage manuel, admin) ----------------
+  // Un joueur qui change de pseudo en jeu voit son ancien tag rester "le plus fréquent"
+  // (voir mostCommonName() côté frontend) tant qu'il n'a pas rejoué assez de parties sous
+  // le nouveau — ce nom personnalisé force l'affichage sans attendre. Indexé par userId
+  // CANONIQUE (voir playerLinks ci-dessus) : le frontend le réapplique après résolution
+  // d'alias (voir applyPlayerNameOverrides() dans frontend/src/player-names.js), donc un
+  // renommage suit son compte même si celui-ci est fusionné avec un autre par la suite.
+  getAllPlayerNames() {
+    return Object.entries(state.playerNames).map(([uid, name]) => ({ uid, name }));
+  },
+  setPlayerName(uid, name) {
+    const key = String(uid);
+    state.playerNames[key] = name;
+    gamePersister.saveNow();
+    return { uid: key, name };
+  },
+  // Idempotent : revient au nom auto-détecté (le plus fréquent des pseudos vus en jeu).
+  clearPlayerName(uid) {
+    delete state.playerNames[String(uid)];
     gamePersister.saveNow();
   },
 
