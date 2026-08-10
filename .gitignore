@@ -10,7 +10,7 @@ frontend/dist/
 .env
 .venv
 .venv/*
-
+backups/
 # graphify knowledge graph (regenerate with `graphify update .`)
 graphify-out/
 
