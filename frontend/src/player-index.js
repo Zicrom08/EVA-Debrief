@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { mostCommonName } from './format.js';
+import { latestNiceName } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { applyPlayerNameOverrides } from './player-names.js';
 import { persistUiPrefs } from './ui-prefs.js';
@@ -23,7 +23,13 @@ export function rebuildPlayerIndex() {
       };
       const rec = state.players[uid];
       const name = p.data.niceName || '???';
-      rec.niceNames[name] = (rec.niceNames[name]||0)+1;
+      // Poids = horodatage de la partie, pas un compteur d'occurrences : latestNiceName()
+      // (format.js) doit refléter le pseudo le PLUS RÉCENT vu en jeu, pas le plus fréquent
+      // historiquement — un joueur qui change de tag doit être affiché sous son nouveau
+      // pseudo dès la partie suivante, pas seulement une fois qu'il a assez rejoué sous ce
+      // nouveau tag pour qu'il devienne statistiquement majoritaire.
+      const ts = new Date(g.createdAt).getTime();
+      if (!rec.niceNames[name] || ts > rec.niceNames[name]) rec.niceNames[name] = ts;
       rec.games++;
       if (p.data.outcome === "Victory") rec.wins++;
       else if (p.data.outcome === "Defeat") rec.losses++;
@@ -39,8 +45,11 @@ export function rebuildPlayerIndex() {
     const canon = canonicalUid(uid);
     if (!state.players[canon] && snaps.length) {
       const last = snaps[snaps.length-1];
+      // Poids = horodatage de la capture (même logique que ci-dessus), pas une constante
+      // arbitraire : si ce joueur obtient des parties par la suite, leur pseudo (plus
+      // récent) doit pouvoir légitimement l'emporter sur ce nom de secours.
       state.players[canon] = {
-        niceNames: { [last.user.displayName || last.user.username || canon]: 1 },
+        niceNames: { [last.user.displayName || last.user.username || canon]: new Date(last.capturedAt).getTime() },
         games:0, wins:0, losses:0, kills:0, deaths:0, assists:0, dmg:0, score:0
       };
     }
@@ -63,7 +72,7 @@ export function renderPlayerPicker() {
   sorted.forEach(([uid, rec])=>{
     const opt = document.createElement('option');
     opt.value = uid;
-    const label = rec.games > 0 ? `${mostCommonName(rec)} (${rec.games} parties)` : `${mostCommonName(rec)} (profil seul)`;
+    const label = rec.games > 0 ? `${latestNiceName(rec)} (${rec.games} parties)` : `${latestNiceName(rec)} (profil seul)`;
     opt.textContent = label;
     picker.appendChild(opt);
   });

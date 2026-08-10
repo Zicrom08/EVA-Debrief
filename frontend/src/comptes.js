@@ -3,6 +3,7 @@ import { apiGet, apiSend, loadFromServer } from './api.js';
 import { roleLabel, resolvePlayerName } from './format.js';
 import { linkPlayers, unlinkPlayer } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
+import { detectTeamsFromNicknames } from './team-detect.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -187,11 +188,11 @@ function renderPlayerLinkForm() {
     </div>`;
 }
 
-// Une fusion/défusion/renommage change l'identité ou le nom affiché de potentiellement
-// tous les joueurs — on recharge tout depuis le serveur et on re-rend l'app entière (même
-// logique que la suppression d'une partie, voir historique.js deleteGame()), plutôt que de
-// tenter un rafraîchissement partiel forcément incomplet.
-async function reloadAfterPlayerIdentityChange() {
+// Une fusion/défusion/renommage/création d'équipe change l'identité, le nom affiché ou le
+// roster de potentiellement tous les joueurs — on recharge tout depuis le serveur et on
+// re-rend l'app entière (même logique que la suppression d'une partie, voir historique.js
+// deleteGame()), plutôt que de tenter un rafraîchissement partiel forcément incomplet.
+async function reloadAndRerenderApp() {
   await loadFromServer();
   rebuildPlayerIndex();
   renderComptes();
@@ -209,7 +210,7 @@ function wirePlayerLinksManager() {
         alert('Erreur lors de la défusion : ' + e.message);
         return;
       }
-      await reloadAfterPlayerIdentityChange();
+      await reloadAndRerenderApp();
     });
   });
 
@@ -226,14 +227,15 @@ function wirePlayerLinksManager() {
         alert('Erreur lors de la fusion : ' + e.message);
         return;
       }
-      await reloadAfterPlayerIdentityChange();
+      await reloadAndRerenderApp();
     });
   }
 }
 
 // ================= RENOMMAGE MANUEL DE JOUEUR (admin) =================
-// Force le nom affiché d'un joueur — utile quand il a changé de pseudo en jeu et que
-// l'ancien reste "le plus fréquent" statistiquement (voir player-names.js). N'affecte
+// Le pseudo affiché suit déjà automatiquement le plus récent vu en jeu (voir
+// latestNiceName() dans format.js) — ce renommage forcé sert quand l'admin veut un nom
+// différent de ce que le jeu renvoie littéralement (voir player-names.js). N'affecte
 // aucune donnée de partie, toujours réversible.
 function renderPlayerNamesList() {
   const entries = Object.entries(state.playerNames);
@@ -282,7 +284,7 @@ function wirePlayerNamesManager() {
         alert('Erreur lors de la réinitialisation du nom : ' + e.message);
         return;
       }
-      await reloadAfterPlayerIdentityChange();
+      await reloadAndRerenderApp();
     });
   });
 
@@ -300,7 +302,115 @@ function wirePlayerNamesManager() {
         alert('Erreur lors du renommage : ' + e.message);
         return;
       }
-      await reloadAfterPlayerIdentityChange();
+      await reloadAndRerenderApp();
+    });
+  }
+}
+
+// ================= DÉTECTION AUTOMATIQUE D'ÉQUIPES PAR PSEUDO (admin) =================
+// Voir team-detect.js pour la logique de détection elle-même (regex "TAGxPseudo", seuil de
+// 2 membres minimum). Réutilise les routes /api/teams existantes (déjà réservées aux
+// admins côté serveur, voir requireAdmin dans server.js) — aucune route dédiée nécessaire.
+function findExistingTeamForTag(tag) {
+  return Object.values(state.customTeams).find(t => t.name.toLowerCase() === tag.toLowerCase()) || null;
+}
+
+// Membres du candidat pas encore dans l'équipe existante (comparaison sur des uids déjà
+// canoniques des deux côtés — voir player-links.js).
+function newMembersFor(candidate, existingTeam) {
+  if (!existingTeam) return candidate.members.map(m => m.uid);
+  return candidate.members.map(m => m.uid).filter(uid => !existingTeam.members.includes(uid));
+}
+
+function renderTeamDetectionPanel() {
+  const candidates = detectTeamsFromNicknames();
+  if (!candidates.length) {
+    return `<div style="color:var(--muted);font-size:13px;">
+      Aucune équipe détectée dans les pseudos pour l'instant (motif attendu : "TAGxPseudo",
+      au moins 2 joueurs partageant le même tag).
+    </div>`;
+  }
+
+  const rows = candidates.map(c => {
+    const existing = findExistingTeamForTag(c.tag);
+    const newUids = newMembersFor(c, existing);
+    const memberNames = c.members.map(m => resolvePlayerName(m.uid)).join(', ');
+
+    let status, actionHtml;
+    if (!existing) {
+      status = `Nouvelle équipe (${c.members.length} joueur(s))`;
+      actionHtml = `<button class="btn small primary" data-create-detected-team="${c.tag}">Créer</button>`;
+    } else if (newUids.length) {
+      status = `Équipe "${existing.name}" existante — ${newUids.length} nouveau(x) membre(s)`;
+      actionHtml = `<button class="btn small primary" data-update-detected-team="${c.tag}">Ajouter</button>`;
+    } else {
+      status = `Équipe "${existing.name}" déjà à jour`;
+      actionHtml = '';
+    }
+
+    return `
+      <tr>
+        <td class="name-cell">${c.tag}</td>
+        <td style="color:var(--muted);font-size:12px;">${memberNames}</td>
+        <td>${status}</td>
+        <td class="num">${actionHtml}</td>
+      </tr>`;
+  }).join('');
+
+  const hasActionable = candidates.some(c => {
+    const existing = findExistingTeamForTag(c.tag);
+    return !existing || newMembersFor(c, existing).length;
+  });
+
+  return `
+    <div class="table-scroll"><table class="roster">
+      <thead><tr><th>Tag détecté</th><th>Joueurs</th><th>Statut</th><th class="num">Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    ${hasActionable ? `<button class="btn small" id="applyAllDetectedTeamsBtn" style="margin-top:10px;">Tout créer / mettre à jour</button>` : ''}`;
+}
+
+// Crée l'équipe si elle n'existe pas encore, sinon lui ajoute les membres détectés
+// manquants. Utilisé à la fois par les boutons par ligne et par "Tout créer / mettre à jour".
+async function applyDetectedTeam(tag) {
+  const candidate = detectTeamsFromNicknames().find(c => c.tag === tag);
+  if (!candidate) return;
+  const existing = findExistingTeamForTag(tag);
+  if (!existing) {
+    await apiSend('POST', '/api/teams', { name: candidate.tag, members: candidate.members.map(m => m.uid) });
+    return;
+  }
+  const newUids = newMembersFor(candidate, existing);
+  if (newUids.length) {
+    await apiSend('PUT', `/api/teams/${existing.id}`, { members: [...existing.members, ...newUids] });
+  }
+}
+
+function wireTeamDetectionManager() {
+  document.querySelectorAll('[data-create-detected-team], [data-update-detected-team]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const tag = btn.dataset.createDetectedTeam || btn.dataset.updateDetectedTeam;
+      try {
+        await applyDetectedTeam(tag);
+      } catch (e) {
+        alert("Erreur lors de la création/mise à jour de l'équipe : " + e.message);
+        return;
+      }
+      await reloadAndRerenderApp();
+    });
+  });
+
+  const applyAllBtn = document.getElementById('applyAllDetectedTeamsBtn');
+  if (applyAllBtn) {
+    applyAllBtn.addEventListener('click', async () => {
+      const tags = detectTeamsFromNicknames().map(c => c.tag);
+      try {
+        for (const tag of tags) await applyDetectedTeam(tag);
+      } catch (e) {
+        alert("Erreur lors de la création/mise à jour des équipes : " + e.message);
+        return;
+      }
+      await reloadAndRerenderApp();
     });
   }
 }
@@ -332,14 +442,23 @@ export async function renderComptes() {
     <div class="team-manager">
       <div class="section-title">Renommer un joueur</div>
       <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
-        Force le nom affiché d'un joueur (utile s'il a changé de pseudo en jeu et que
-        l'ancien reste "le plus fréquent" statistiquement). N'affecte aucune donnée de
-        partie, toujours réversible.
+        Le nom affiché suit déjà automatiquement le pseudo le plus récent vu en jeu — force
+        ici un nom différent si besoin (ex: retirer un tag d'équipe de l'affichage).
+        N'affecte aucune donnée de partie, toujours réversible.
       </div>
       ${renderPlayerNamesList()}
       ${renderPlayerNameForm()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Détection automatique d'équipes par pseudo</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Détecte les équipes à partir des pseudos au format "TAGxJoueur" (ex: "BABOxViclegrand7")
+        et propose de créer l'équipe correspondante ou d'y ajouter les nouveaux membres détectés.
+      </div>
+      ${renderTeamDetectionPanel()}
     </div>`;
   wireUserManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
+  wireTeamDetectionManager();
 }

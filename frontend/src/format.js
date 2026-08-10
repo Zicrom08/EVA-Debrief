@@ -35,8 +35,13 @@ export function findPlayerInGame(g, uid){
 // Raccourci pour retrouver le joueur actuellement sélectionné (state.currentUid) dans une partie.
 export function findSelf(g){ return findPlayerInGame(g, state.currentUid); }
 
-// Renvoie le pseudo le plus fréquent d'un joueur (gère les changements de tag/pseudo au fil du temps).
-export function mostCommonName(rec){
+// Renvoie le pseudo le plus À JOUR d'un joueur — rec.niceNames associe chaque pseudo vu en
+// jeu au poids le plus élevé qui lui a été attribué (voir rebuildPlayerIndex() dans
+// player-index.js) : un horodatage de partie pour un pseudo auto-détecté (le plus récent
+// gagne, pour qu'un changement de tag soit reflété dès la partie suivante plutôt que
+// seulement une fois qu'il devient majoritaire), ou Infinity pour un renommage forcé par un
+// admin (voir player-names.js), qui l'emporte toujours sur n'importe quel pseudo auto-détecté.
+export function latestNiceName(rec){
   return Object.entries(rec.niceNames).sort((a,b)=>b[1]-a[1])[0][0];
 }
 
@@ -53,7 +58,7 @@ export function mostCommonName(rec){
 export function resolvePlayerName(uid) {
   const canon = canonicalUid(uid);
   const rec = state.players[canon];
-  if (rec && rec.niceNames && Object.keys(rec.niceNames).length) return mostCommonName(rec);
+  if (rec && rec.niceNames && Object.keys(rec.niceNames).length) return latestNiceName(rec);
   for (const candidate of [canon, ...aliasesOf(canon)]) {
     const snaps = state.playerStatsSnapshots[candidate];
     if (snaps && snaps.length) {

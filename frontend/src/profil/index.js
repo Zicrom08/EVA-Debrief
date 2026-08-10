@@ -1,5 +1,5 @@
 import { state } from '../state.js';
-import { mostCommonName } from '../format.js';
+import { latestNiceName } from '../format.js';
 import { gamesForPlayerSorted } from '../game-filters.js';
 import { filteredSnapshotsForUser, seasonCardBaseline } from '../seasons.js';
 import { aggregateGames } from '../tendances.js';
@@ -80,7 +80,7 @@ export function renderProfilComparePanel(uid) {
       <select id="profileCompareSelect" class="compare-select">
         <option value="">— choisir un joueur —</option>
         ${otherCandidates.map(([pid, rec]) =>
-          `<option value="${pid}" ${state.profileCompareUid == pid ? 'selected' : ''}>${mostCommonName(rec)}</option>`
+          `<option value="${pid}" ${state.profileCompareUid == pid ? 'selected' : ''}>${latestNiceName(rec)}</option>`
         ).join('')}
       </select>
     </div>`;
@@ -95,8 +95,8 @@ export function renderProfilComparePanel(uid) {
     return html;
   }
 
-  const nameA = mostCommonName(state.players[uid]);
-  const nameB = mostCommonName(state.players[state.profileCompareUid]);
+  const nameA = latestNiceName(state.players[uid]);
+  const nameB = latestNiceName(state.players[state.profileCompareUid]);
   const gamesA = gamesForPlayerSorted(uid);
   const gamesB = gamesForPlayerSorted(state.profileCompareUid);
 

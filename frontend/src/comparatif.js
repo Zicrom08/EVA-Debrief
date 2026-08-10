@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { findPlayerInGame, mostCommonName } from './format.js';
+import { findPlayerInGame, latestNiceName } from './format.js';
 import { filteredGamesArray } from './game-filters.js';
 import { aggregateGames } from './tendances.js';
 import { computeImpactScore } from './profil/compute.js';
@@ -36,7 +36,7 @@ export function renderComparatif() {
     const impact = computeImpactScore(uGames, uid);
     const rec = state.players[uid];
     const sample = findPlayerInGame(uGames[uGames.length - 1], uid);
-    const name = rec ? mostCommonName(rec) : (sample ? sample.data.niceName : '?');
+    const name = rec ? latestNiceName(rec) : (sample ? sample.data.niceName : '?');
     return { uid, name, ...agg, impactScore: impact.score };
   }).filter(Boolean);
 
