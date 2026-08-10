@@ -1,11 +1,14 @@
 import { state } from '../state.js';
-import { latestNiceName } from '../format.js';
-import { gamesForPlayerSorted } from '../game-filters.js';
+import { latestNiceName, fmtDelta } from '../format.js';
+import { gamesForPlayerSorted, filteredGamesArray } from '../game-filters.js';
 import { filteredSnapshotsForUser, seasonCardBaseline } from '../seasons.js';
 import { aggregateGames } from '../tendances.js';
 import { compareRow } from '../equipes.js';
 import { persistUiPrefs } from '../ui-prefs.js';
-import { computeEfficiencyStats, computeRankStats, computeStreaks } from './compute.js';
+import {
+  computeEfficiencyStats, computeRankStats, computeStreaks,
+  computeImpactScore, computeDamageTeamStats, computeRatingBaseline, computeRating,
+} from './compute.js';
 import { renderSeasonCard, renderEvolutionTable } from './season.js';
 import { renderGameAnalytics, attachProfileMetricButtons } from './analytics-view.js';
 
@@ -16,7 +19,7 @@ export function renderProfil() {
   container.innerHTML = `
     <div class="profile-layout">
       <div class="profile-main">${renderProfilMain(uid)}</div>
-      <div class="profile-compare">${renderProfilComparePanel(uid)}</div>
+      <div class="profile-compare">${renderProfilComparePicker(uid)}${renderProfilCompareDetails(uid)}</div>
     </div>
   `;
   attachProfileMetricButtons();
@@ -66,8 +69,11 @@ export function renderProfilMain(uid) {
   return html;
 }
 
-// ================= PROFIL : panneau de comparaison avec un second joueur =================
-export function renderProfilComparePanel(uid) {
+// ================= PROFIL : sélecteur du second joueur (reste dans la colonne étroite) =================
+// Le comparatif détaillé lui-même (renderProfilCompareDetails ci-dessous) s'affiche en
+// pleine largeur sous les deux colonnes, pas ici : trop de statistiques pour tenir dans
+// une barre latérale de 380px (voir renderProfil()).
+export function renderProfilComparePicker(uid) {
   if (!uid || !state.players[uid]) return '';
 
   const otherCandidates = Object.entries(state.players)
@@ -87,13 +93,24 @@ export function renderProfilComparePanel(uid) {
 
   if (!otherCandidates.length) {
     html += `<div class="evolution-hint" style="margin-top:16px;">Importe l'historique d'au moins un autre joueur pour pouvoir comparer.</div>`;
-    return html;
+  } else if (!state.profileCompareUid || !state.players[state.profileCompareUid]) {
+    html += `<div class="evolution-hint" style="margin-top:16px;">Choisis un joueur ci-dessus pour voir un comparatif détaillé, calculé sur la même période et les mêmes filtres que le profil principal.</div>`;
   }
+  return html;
+}
 
-  if (!state.profileCompareUid || !state.players[state.profileCompareUid]) {
-    html += `<div class="evolution-hint" style="margin-top:16px;">Choisis un joueur ci-dessus pour voir un comparatif détaillé, calculé sur la même période et les mêmes filtres que le profil de gauche.</div>`;
-    return html;
-  }
+// ================= PROFIL : comparatif détaillé (colonne de droite, sous le sélecteur) =================
+// Toutes les statistiques scalaires déjà calculées ailleurs pour un profil (agrégats de
+// base, efficacité, rating façon HLTV, score d'impact, contribution d'équipe, séries) —
+// pas les graphiques/distributions (cartes, modes, jour/heure, duo-némésis...), qui n'ont
+// pas de sens à "diffé" ligne à ligne. Joueur principal (uid) toujours à gauche, comparé
+// à droite (voir compareRow() dans equipes.js) ; écart (droite - gauche) affiché au
+// centre de chaque ligne. Reste dans la colonne étroite `.profile-compare` (voir
+// renderProfil()) — police réduite (compare-grid-narrow) pour que les 18 lignes restent
+// lisibles à cette largeur.
+export function renderProfilCompareDetails(uid) {
+  if (!uid || !state.players[uid]) return '';
+  if (!state.profileCompareUid || !state.players[state.profileCompareUid]) return '';
 
   const nameA = latestNiceName(state.players[uid]);
   const nameB = latestNiceName(state.players[state.profileCompareUid]);
@@ -101,10 +118,9 @@ export function renderProfilComparePanel(uid) {
   const gamesB = gamesForPlayerSorted(state.profileCompareUid);
 
   if (!gamesA.length || !gamesB.length) {
-    html += `<div class="evolution-hint" style="margin-top:16px;">
+    return `<div class="evolution-hint" style="margin-top:16px;">
       ${!gamesA.length ? nameA : nameB} n'a aucune partie importée sur la période/filtres actuels — le comparatif a besoin de parties des deux côtés.
     </div>`;
-    return html;
   }
 
   const aggA = aggregateGames(gamesA, uid);
@@ -115,29 +131,59 @@ export function renderProfilComparePanel(uid) {
   const rankB = computeRankStats(gamesB, state.profileCompareUid);
   const streaksA = computeStreaks(gamesA, uid);
   const streaksB = computeStreaks(gamesB, state.profileCompareUid);
+  const impactA = computeImpactScore(gamesA, uid);
+  const impactB = computeImpactScore(gamesB, state.profileCompareUid);
+  const dmgTeamA = computeDamageTeamStats(gamesA, uid);
+  const dmgTeamB = computeDamageTeamStats(gamesB, state.profileCompareUid);
+  // Même population de référence pour les deux joueurs (toutes les parties filtrées de la
+  // période, pas seulement les leurs) — voir computeRatingBaseline, même principe que le
+  // classement du Comparatif.
+  const ratingBaseline = computeRatingBaseline(filteredGamesArray());
+  const ratingA = computeRating(gamesA, uid, ratingBaseline);
+  const ratingB = computeRating(gamesB, state.profileCompareUid, ratingBaseline);
 
-  html += `
-    <div class="team-vs-header" style="margin-top:20px;">
-      <span class="team-name" style="color:var(--alliance);font-size:15px;">${nameA}</span>
-      <span class="vs" style="font-size:12px;">VS</span>
-      <span class="team-name" style="color:var(--rebels);font-size:15px;">${nameB}</span>
-    </div>
-    <div class="compare-grid compare-grid-narrow">
-      ${compareRow('Parties (période)', aggA.n, aggB.n, v => v)}
-      ${compareRow('Taux de victoire', aggA.winrate + '%', aggB.winrate + '%', v => v)}
-      ${compareRow('Ratio K/D', aggA.kd, aggB.kd, v => v)}
-      ${compareRow('KDA', effA.kda, effB.kda, v => v)}
-      ${compareRow('Dégâts moyens', aggA.avgDmg, aggB.avgDmg, v => Number(v).toLocaleString('fr-FR'))}
-      ${compareRow('Dégâts par mort', effA.dmgPerDeath, effB.dmgPerDeath, v => Number(v).toLocaleString('fr-FR'))}
-      ${compareRow('Score moyen', aggA.avgScore, aggB.avgScore, v => Number(v).toLocaleString('fr-FR'))}
-      ${compareRow('Précision moyenne', effA.avgAccuracy + '%', effB.avgAccuracy + '%', v => v)}
-      ${compareRow('Assists / partie', effA.avgAssists, effB.avgAssists, v => v)}
-      ${compareRow('Taux de MVP', rankA.mvpRate + '%', rankB.mvpRate + '%', v => v)}
-      ${compareRow('Meilleure série V', streaksA.bestWin, streaksB.bestWin, v => v)}
-      ${compareRow('Pire série D', streaksA.worstLoss, streaksB.worstLoss, v => v, false)}
+  const pct = v => v; // valeurs déjà formatées en chaîne "12%" au point d'appel
+  const num = v => Number(v).toLocaleString('fr-FR');
+  const pctDiff = d => fmtDelta(d, 0) + '%';
+  const intDiff = d => fmtDelta(d, 0);
+  const decDiff = d => fmtDelta(d, 2);
+
+  return `
+    <div class="compare-panel-card" style="margin-top:16px;">
+      <div class="team-vs-header">
+        <span class="team-name" style="color:var(--alliance);font-size:15px;">${nameA}</span>
+        <span class="vs" style="font-size:12px;">VS</span>
+        <span class="team-name" style="color:var(--rebels);font-size:15px;">${nameB}</span>
+      </div>
+      <div class="compare-grid compare-grid-narrow">
+        <div class="metric-label" style="grid-column:1/-1;margin-top:0;">Général</div>
+        ${compareRow('Parties (période)', aggA.n, aggB.n, num, true, intDiff)}
+        ${compareRow('Victoires', aggA.wins, aggB.wins, num, true, intDiff)}
+        ${compareRow('Défaites', aggA.losses, aggB.losses, num, false, intDiff)}
+        ${compareRow('Taux de victoire', aggA.winrate + '%', aggB.winrate + '%', pct, true, pctDiff)}
+
+        <div class="metric-label">Performance</div>
+        ${compareRow('Ratio K/D', aggA.kd, aggB.kd, pct, true, decDiff)}
+        ${compareRow('KDA', effA.kda, effB.kda, pct, true, decDiff)}
+        ${compareRow('Kills / partie', (aggA.kills / aggA.n).toFixed(1), (aggB.kills / aggB.n).toFixed(1), pct, true, decDiff)}
+        ${compareRow('Morts / partie', (aggA.deaths / aggA.n).toFixed(1), (aggB.deaths / aggB.n).toFixed(1), pct, false, decDiff)}
+        ${compareRow('Assists / partie', effA.avgAssists, effB.avgAssists, pct, true, decDiff)}
+        ${compareRow('Dégâts moyens', aggA.avgDmg, aggB.avgDmg, num, true, intDiff)}
+        ${compareRow('Dégâts par mort', effA.dmgPerDeath, effB.dmgPerDeath, num, true, intDiff)}
+        ${compareRow('Score moyen', aggA.avgScore, aggB.avgScore, num, true, intDiff)}
+        ${compareRow('Précision moyenne', effA.avgAccuracy + '%', effB.avgAccuracy + '%', pct, true, pctDiff)}
+
+        <div class="metric-label">Indices composites</div>
+        ${ratingA.rating != null && ratingB.rating != null ? compareRow('Rating (façon HLTV)', ratingA.rating, ratingB.rating, pct, true, decDiff) : ''}
+        ${compareRow("Score d'impact", impactA.score, impactB.score, num, true, intDiff)}
+        ${compareRow('Contribution dégâts équipe', dmgTeamA.avgContribPct + '%', dmgTeamB.avgContribPct + '%', pct, true, pctDiff)}
+        ${compareRow('Taux de MVP', rankA.mvpRate + '%', rankB.mvpRate + '%', pct, true, pctDiff)}
+
+        <div class="metric-label">Séries</div>
+        ${compareRow('Meilleure série de victoires', streaksA.bestWin, streaksB.bestWin, num, true, intDiff)}
+        ${compareRow('Pire série de défaites', streaksA.worstLoss, streaksB.worstLoss, num, false, intDiff)}
+      </div>
     </div>`;
-
-  return html;
 }
 
 // Branche l'évènement du sélecteur de comparaison du Profil.
