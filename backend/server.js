@@ -515,6 +515,30 @@ app.delete('/api/player-names/:uid', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------------------------------------------------------------------------
+// Sauvegardes automatiques (admin) — voir db.js : startAutoBackup()/runBackupNow().
+// Copies horodatées de data.json/users.json dans un dossier séparé (BACKUP_DIR),
+// purgées automatiquement au-delà de BACKUP_RETENTION sauvegardes. Pas de route de
+// restauration automatique : restaurer une sauvegarde reste un geste manuel conscient
+// (remplacer data.json/users.json par les fichiers voulus, puis redémarrer le serveur) —
+// trop dangereux pour l'exposer comme un simple bouton qui écraserait les données en place.
+// ---------------------------------------------------------------------------
+app.get('/api/backups', requireAdmin, (req, res) => {
+  const s = db.stats();
+  res.json({ intervalHours: s.backupIntervalHours, retention: s.backupRetention, sets: db.listBackups() });
+});
+app.post('/api/backups', requireAdmin, (req, res) => {
+  res.json(db.runBackupNow());
+});
+// :filename est validé strictement par db.backupFilePath() (format exact qu'on génère
+// nous-mêmes) avant toute jointure de chemin — voir sa doc pour le détail de la garde
+// contre une traversée de chemin.
+app.get('/api/backups/:filename', requireAdmin, (req, res) => {
+  const filePath = db.backupFilePath(req.params.filename);
+  if (!filePath) return res.status(404).json({ error: 'Sauvegarde introuvable.' });
+  res.download(filePath, req.params.filename);
+});
+
 // Réinitialisation complète (vide games + snapshots + teams)
 app.delete('/api/reset', requireAdmin, (req, res) => {
   db.resetAll();
@@ -556,6 +580,7 @@ const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 // tester isPveGame()/extractFromPayload() (voir backend/test/server.test.js) sans
 // démarrer le serveur à chaque run de la suite de tests.
 if (require.main === module) {
+db.startAutoBackup();
 if (SSL_KEY_PATH && SSL_CERT_PATH) {
   let options;
   try {

@@ -37,6 +37,15 @@ const DATA_FILE = path.join(DATA_DIR, process.env.DATA_FILE || 'data.json');
 const USERS_DATA_DIR = process.env.USERS_DATA_DIR || DATA_DIR;
 const USERS_DATA_FILE = path.join(USERS_DATA_DIR, process.env.USERS_DATA_FILE || 'users.json');
 
+// Sauvegardes automatiques (voir la section dédiée plus bas) : copies horodatées de
+// data.json/users.json, dans un dossier séparé pour ne jamais se mélanger aux fichiers
+// vivants. BACKUP_RETENTION = nombre de sauvegardes conservées (les plus anciennes au-delà
+// sont supprimées automatiquement). BACKUP_INTERVAL_HOURS = fréquence ; 0 désactive
+// complètement la sauvegarde automatique (une sauvegarde manuelle via l'API reste possible).
+const BACKUP_DIR = process.env.BACKUP_DIR || path.join(DATA_DIR, 'backups');
+const BACKUP_RETENTION = Number(process.env.BACKUP_RETENTION) || 30;
+const BACKUP_INTERVAL_HOURS = process.env.BACKUP_INTERVAL_HOURS != null ? Number(process.env.BACKUP_INTERVAL_HOURS) : 24;
+
 function emptyGameState() {
   return {
     games: {},               // gameId (string) -> game node complet (JSON brut)
@@ -203,6 +212,117 @@ function resolvePrimary(uid) {
   return cur;
 }
 
+// ============================================================================
+// Sauvegardes automatiques — copies horodatées de data.json/users.json dans
+// BACKUP_DIR (voir les constantes en haut du fichier), indépendantes de l'état en
+// mémoire : on copie directement les fichiers sur disque, toujours dans un état
+// cohérent grâce à l'écriture atomique de makePersister() (jamais de fichier à
+// moitié écrit à copier). Chaque sauvegarde est un "set" nommé par un horodatage
+// partagé entre data-<ts>.json et users-<ts>.json, pour pouvoir les regrouper et
+// les purger ensemble.
+// ============================================================================
+function ensureBackupDir() {
+  if (!fs.existsSync(BACKUP_DIR)) fs.mkdirSync(BACKUP_DIR, { recursive: true });
+}
+
+// Horodatage sûr pour un nom de fichier (":"/"." remplacés), rendu unique si un appel
+// précédent a déjà produit exactement le même (arrive si "Sauvegarder maintenant" est
+// cliqué plusieurs fois très rapidement) — sinon la seconde sauvegarde écraserait
+// silencieusement la première au lieu d'en créer une nouvelle.
+function uniqueBackupTimestamp() {
+  const base = new Date().toISOString().replace(/[:.]/g, '-');
+  let ts = base;
+  let n = 1;
+  while (fs.existsSync(path.join(BACKUP_DIR, `data-${ts}.json`)) || fs.existsSync(path.join(BACKUP_DIR, `users-${ts}.json`))) {
+    n++;
+    ts = `${base}-${n}`;
+  }
+  return ts;
+}
+
+function listBackups() {
+  ensureBackupDir();
+  const sets = {}; // horodatage -> { timestamp, createdAt, files: [{kind, name, size}] }
+  fs.readdirSync(BACKUP_DIR).forEach(name => {
+    const m = /^(data|users)-(.+)\.json$/.exec(name);
+    if (!m) return;
+    const [, kind, ts] = m;
+    const stat = fs.statSync(path.join(BACKUP_DIR, name));
+    const createdAt = stat.mtime.toISOString();
+    if (!sets[ts]) sets[ts] = { timestamp: ts, createdAt, files: [] };
+    else if (createdAt < sets[ts].createdAt) sets[ts].createdAt = createdAt;
+    sets[ts].files.push({ kind, name, size: stat.size });
+  });
+  // Tri par createdAt (mtime réel), pas par la chaîne `timestamp` : pour des sauvegardes
+  // normales (toutes au format ISO généré par uniqueBackupTimestamp()) les deux ordres
+  // coïncident, mais createdAt reste la source de vérité si jamais `timestamp` ne suit pas
+  // cet ordre (fichier renommé/copié à la main, restauration partielle...).
+  return Object.values(sets).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+// Ne garde que les BACKUP_RETENTION sets les plus récents (listBackups() les renvoie déjà
+// triés du plus récent au plus ancien) — supprime les fichiers des autres.
+function pruneOldBackups() {
+  listBackups().slice(BACKUP_RETENTION).forEach(set => {
+    set.files.forEach(f => {
+      try { fs.unlinkSync(path.join(BACKUP_DIR, f.name)); } catch (e) { /* déjà supprimé, tant pis */ }
+    });
+  });
+}
+
+// Copie data.json et/ou users.json (seulement ceux qui existent déjà sur disque — un
+// serveur tout juste démarré sans aucune partie importée n'a pas encore de data.json) vers
+// BACKUP_DIR, puis purge les sauvegardes excédentaires.
+function runBackupNow() {
+  ensureBackupDir();
+  const ts = uniqueBackupTimestamp();
+  const files = [];
+  [[DATA_FILE, 'data'], [USERS_DATA_FILE, 'users']].forEach(([src, kind]) => {
+    if (!fs.existsSync(src)) return;
+    const name = `${kind}-${ts}.json`;
+    fs.copyFileSync(src, path.join(BACKUP_DIR, name));
+    files.push(name);
+  });
+  pruneOldBackups();
+  return { timestamp: ts, files };
+}
+
+// Résout un nom de fichier de sauvegarde vers son chemin complet, en le validant
+// strictement contre le format qu'on génère nous-mêmes (défense en profondeur contre une
+// traversée de chemin ("../../etc/passwd") si jamais ce nom vient directement d'une requête
+// HTTP — voir GET /api/backups/:filename dans server.js) — renvoie null si le format ne
+// correspond pas, ou si le fichier n'existe pas.
+function backupFilePath(filename) {
+  if (!/^(data|users)-[0-9A-Za-z-]+\.json$/.test(String(filename))) return null;
+  const p = path.join(BACKUP_DIR, filename);
+  return fs.existsSync(p) ? p : null;
+}
+
+let backupTimer = null;
+
+// Démarre la sauvegarde périodique (appelé uniquement par server.js au vrai démarrage du
+// serveur, jamais depuis les tests — voir le require.main guard dans server.js). Si aucune
+// sauvegarde récente n'existe (première installation, ou serveur resté éteint plus
+// longtemps que l'intervalle), en prend une immédiatement plutôt que d'attendre le premier
+// intervalle complet. `.unref()` : ce minuteur ne doit jamais, à lui seul, empêcher le
+// process de s'arrêter proprement.
+function startAutoBackup() {
+  if (BACKUP_INTERVAL_HOURS <= 0 || backupTimer) return;
+  const intervalMs = BACKUP_INTERVAL_HOURS * 60 * 60 * 1000;
+  const run = () => {
+    try { runBackupNow(); } catch (e) { console.error('[db] Échec de la sauvegarde automatique :', e.message); }
+  };
+  const sets = listBackups();
+  const mostRecentAgeMs = sets.length ? Date.now() - new Date(sets[0].createdAt).getTime() : Infinity;
+  if (mostRecentAgeMs >= intervalMs) run();
+  backupTimer = setInterval(run, intervalMs);
+  backupTimer.unref();
+}
+
+function stopAutoBackup() {
+  if (backupTimer) { clearInterval(backupTimer); backupTimer = null; }
+}
+
 module.exports = {
   // ---------------- Games ----------------
   gameExists(id) {
@@ -351,12 +471,12 @@ module.exports = {
   },
 
   // ---------------- Player names (renommage manuel, admin) ----------------
-  // Un joueur qui change de pseudo en jeu voit son ancien tag rester "le plus fréquent"
-  // (voir mostCommonName() côté frontend) tant qu'il n'a pas rejoué assez de parties sous
-  // le nouveau — ce nom personnalisé force l'affichage sans attendre. Indexé par userId
-  // CANONIQUE (voir playerLinks ci-dessus) : le frontend le réapplique après résolution
-  // d'alias (voir applyPlayerNameOverrides() dans frontend/src/player-names.js), donc un
-  // renommage suit son compte même si celui-ci est fusionné avec un autre par la suite.
+  // Le nom affiché suit déjà automatiquement le pseudo le plus récent vu en jeu (voir
+  // latestNiceName() côté frontend) — ce nom personnalisé sert quand l'admin veut un nom
+  // différent de ce que le jeu renvoie littéralement. Indexé par userId CANONIQUE (voir
+  // playerLinks ci-dessus) : le frontend le réapplique après résolution d'alias (voir
+  // applyPlayerNameOverrides() dans frontend/src/player-names.js), donc un renommage suit
+  // son compte même si celui-ci est fusionné avec un autre par la suite.
   getAllPlayerNames() {
     return Object.entries(state.playerNames).map(([uid, name]) => ({ uid, name }));
   },
@@ -366,11 +486,19 @@ module.exports = {
     gamePersister.saveNow();
     return { uid: key, name };
   },
-  // Idempotent : revient au nom auto-détecté (le plus fréquent des pseudos vus en jeu).
+  // Idempotent : revient au nom auto-détecté (le plus récent des pseudos vus en jeu).
   clearPlayerName(uid) {
     delete state.playerNames[String(uid)];
     gamePersister.saveNow();
   },
+
+  // ---------------- Sauvegardes automatiques (admin) ----------------
+  listBackups,
+  runBackupNow,
+  pruneOldBackups,
+  backupFilePath,
+  startAutoBackup,
+  stopAutoBackup,
 
   // ---------------- Admin ----------------
   resetAll() {
@@ -385,6 +513,9 @@ module.exports = {
       users: Object.keys(usersState.users).length,
       dataFile: DATA_FILE,
       usersFile: USERS_DATA_FILE,
+      backupDir: BACKUP_DIR,
+      backupRetention: BACKUP_RETENTION,
+      backupIntervalHours: BACKUP_INTERVAL_HOURS,
     };
   },
 
