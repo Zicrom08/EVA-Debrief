@@ -106,14 +106,42 @@ test('createUser / countAdmins / deleteUser', () => {
   assert.equal(db.countAdmins(), 0);
 });
 
+test('linkPlayer / unlinkPlayer / getAllPlayerLinks', () => {
+  const link = db.linkPlayer('alias1', 'primary1');
+  assert.deepEqual(link, { aliasUserId: 'alias1', primaryUserId: 'primary1' });
+  assert.deepEqual(db.getAllPlayerLinks(), [{ aliasUserId: 'alias1', primaryUserId: 'primary1' }]);
+  db.unlinkPlayer('alias1');
+  assert.deepEqual(db.getAllPlayerLinks(), []);
+  assert.doesNotThrow(() => db.unlinkPlayer('alias1')); // idempotent
+});
+
+test('linkPlayer rejects a self-link, including indirect (A already merged into B, then B into A)', () => {
+  assert.equal(db.linkPlayer('same', 'same'), null);
+  db.linkPlayer('A', 'B');
+  assert.equal(db.linkPlayer('B', 'A'), null); // A est déjà un alias de B -> reviendrait à fusionner B avec lui-même
+  db.unlinkPlayer('A');
+});
+
+test('linkPlayer always flattens: never stores an alias -> alias -> primary chain', () => {
+  db.linkPlayer('X', 'Y');
+  const link = db.linkPlayer('Y', 'Z'); // Y était déjà primary pour X ; Y devient à son tour alias de Z
+  assert.equal(link.primaryUserId, 'Z');
+  const all = Object.fromEntries(db.getAllPlayerLinks().map(l => [l.aliasUserId, l.primaryUserId]));
+  assert.equal(all.X, 'Z'); // X repointé directement vers la nouvelle racine, jamais X -> Y -> Z
+  assert.equal(all.Y, 'Z');
+  db.unlinkPlayer('X'); db.unlinkPlayer('Y');
+});
+
 // Placed last: resetAll wipes games/snapshots/teams (but not users) for the whole
 // shared db.js module instance, so no other test in this file can run after it.
-test('resetAll empties games/snapshots/teams but never touches user accounts', () => {
+test('resetAll empties games/snapshots/teams/playerLinks but never touches user accounts', () => {
   db.upsertGame({ id: 'g4', createdAt: '2026-01-01T00:00:00Z', players: [] });
   db.createTeam('Temp', ['u1']);
+  db.linkPlayer('aliasR', 'primaryR');
   const user = db.createUser({ username: 'survivor', role: 'admin', passwordSalt: 's', passwordHash: 'h' });
   db.resetAll();
   assert.equal(db.gameCount(), 0);
   assert.equal(db.getAllTeams().length, 0);
+  assert.equal(db.getAllPlayerLinks().length, 0);
   assert.notEqual(db.getUserById(user.id), null);
 });

@@ -395,6 +395,7 @@ app.get('/api/state', (req, res) => {
     games: db.getAllGames(),
     playerStats: db.getAllSnapshots(),
     teams: db.getAllTeams(),
+    playerLinks: db.getAllPlayerLinks(),
   });
 });
 
@@ -469,6 +470,31 @@ app.put('/api/teams/:id', requireAdmin, (req, res) => {
 // Suppression idempotente (pas d'erreur si l'équipe n'existe déjà plus).
 app.delete('/api/teams/:id', requireAdmin, (req, res) => {
   db.deleteTeam(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Fusion de comptes joueurs (admin) — associe un ancien compte EVA (smurf) à un
+// compte "primary" pour agréger leurs stats côté client (voir
+// frontend/src/player-links.js : canonicalUid()). Ne modifie jamais les parties ou
+// captures stockées, uniquement une table de correspondance — toujours réversible.
+// Incluse dans /api/state (playerLinks) pour tout le monde ; seule la mutation est
+// réservée aux admins, comme les équipes.
+// ---------------------------------------------------------------------------
+app.post('/api/player-links', requireAdmin, (req, res) => {
+  const { aliasUserId, primaryUserId } = req.body || {};
+  if (!aliasUserId || !primaryUserId || String(aliasUserId) === String(primaryUserId)) {
+    return res.status(400).json({ error: 'Champs requis : aliasUserId et primaryUserId, différents l\'un de l\'autre.' });
+  }
+  const link = db.linkPlayer(aliasUserId, primaryUserId);
+  if (!link) {
+    return res.status(400).json({ error: 'Lien invalide : ce compte est déjà, directement ou indirectement, le même que le compte principal choisi.' });
+  }
+  res.json(link);
+});
+// Suppression idempotente (pas d'erreur si le lien n'existe déjà plus).
+app.delete('/api/player-links/:aliasUserId', requireAdmin, (req, res) => {
+  db.unlinkPlayer(req.params.aliasUserId);
   res.json({ ok: true });
 });
 

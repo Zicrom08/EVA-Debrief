@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { snapshotSeasonId, displaySeasonId, normalizeSnapshotStats, computeSeasons } from '../src/seasons.js';
+import { snapshotSeasonId, displaySeasonId, normalizeSnapshotStats, computeSeasons, filteredSnapshotsForUser } from '../src/seasons.js';
 
 test('snapshotSeasonId reads the root seasonId (v8.0+ collector) before falling back to experience.seasonId (pre-v8.0)', () => {
   assert.equal(snapshotSeasonId({ seasonId: 8, experience: { seasonId: 5 } }), 8);
@@ -46,4 +46,19 @@ test('computeSeasons derives bounds from both profile snapshots and games, sorte
   assert.deepEqual(seasons.map(s => s.seasonId), [7, 8]);
   assert.equal(seasons[0].isCurrent, false);
   assert.equal(seasons[1].isCurrent, true);
+});
+
+test('filteredSnapshotsForUser gathers snapshots from merged aliases too, not just the canonical account', () => {
+  state.playerLinks = { aliasY: 'primaryY' };
+  state.playerStatsSnapshots = {
+    primaryY: [{ capturedAt: '2026-01-01T00:00:00Z', seasonId: 7 }],
+    aliasY: [{ capturedAt: '2026-01-02T00:00:00Z', seasonId: 7 }],
+  };
+  state.selectedSeasonId = null;
+  state.dateRangeStart = null;
+  state.dateRangeEnd = null;
+  const snaps = filteredSnapshotsForUser('primaryY');
+  assert.equal(snaps.length, 2);
+  assert.ok(new Date(snaps[0].capturedAt) < new Date(snaps[1].capturedAt));
+  state.playerLinks = {};
 });

@@ -3,6 +3,7 @@ import { findPlayerInGame, mostCommonName } from './format.js';
 import { filteredGamesArray } from './game-filters.js';
 import { apiGet, apiSend } from './api.js';
 import { persistUiPrefs } from './ui-prefs.js';
+import { canonicalUid } from './player-links.js';
 
 // ================= ÉQUIPES (groupes de joueurs créés manuellement) =================
 function teamId() {
@@ -33,7 +34,9 @@ export function computeTeamAggregate(memberUids, games) {
     });
     n += mN; wins += mWins; losses += mLosses; kills += mKills; deaths += mDeaths; assists += mAssists;
     dmgSum += mDmg; scoreSum += mScore;
-    const rec = state.players[uid];
+    // canonicalUid() : les équipes créées avant une fusion peuvent encore lister un
+    // alias directement (state.players n'est indexé, lui, que par identifiant canonique).
+    const rec = state.players[canonicalUid(uid)];
     const name = rec ? mostCommonName(rec) : (myGames[0] && findPlayerInGame(myGames[0], uid).data.niceName) || '?';
     perMember.push({
       uid, name, n: mN, wins: mWins, losses: mLosses,

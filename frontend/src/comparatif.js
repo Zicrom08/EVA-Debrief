@@ -3,6 +3,7 @@ import { findPlayerInGame, mostCommonName } from './format.js';
 import { filteredGamesArray } from './game-filters.js';
 import { aggregateGames } from './tendances.js';
 import { computeImpactScore } from './profil/compute.js';
+import { canonicalUid } from './player-links.js';
 
 // ================= COMPARATIF (classement entre tous les joueurs croisés dans les parties importées) =================
 let comparatifSort = 'winrate'; // 'winrate' | 'kd' | 'n' | 'avgDmg' | 'avgScore' | 'impactScore'
@@ -22,8 +23,11 @@ export function renderComparatif() {
     return;
   }
 
+  // Identifiants canoniques (voir player-links.js) : sans ça, un joueur fusionné avec un
+  // smurf apparaîtrait deux fois dans le classement, chaque ligne agrégeant à tort TOUTES
+  // les parties des deux comptes (findPlayerInGame() ci-dessous matche déjà par canonique).
   const uidSet = new Set();
-  games.forEach(g => (g.players || []).forEach(p => uidSet.add(p.userId)));
+  games.forEach(g => (g.players || []).forEach(p => uidSet.add(canonicalUid(p.userId))));
 
   const allRows = Array.from(uidSet).map(uid => {
     const uGames = games.filter(g => findPlayerInGame(g, uid));

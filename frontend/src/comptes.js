@@ -1,6 +1,9 @@
 import { state } from './state.js';
-import { apiGet, apiSend } from './api.js';
-import { roleLabel } from './format.js';
+import { apiGet, apiSend, loadFromServer } from './api.js';
+import { roleLabel, resolvePlayerName } from './format.js';
+import { linkPlayers, unlinkPlayer } from './player-links.js';
+import { rebuildPlayerIndex } from './player-index.js';
+import { showApp } from './shell.js';
 
 // ================= COMPTES (gestion des utilisateurs, réservé aux admins) =================
 // Onglet visible seulement pour un compte admin (voir applyRolePermissions() dans shell.js) ;
@@ -122,6 +125,111 @@ function wireUserManager() {
   }
 }
 
+// ================= FUSION DE COMPTES JOUEURS (admin) =================
+// Distinct des comptes EVA Debrief ci-dessus (login/rôles) : ici on fusionne des comptes
+// EVA (smurfs) entre eux pour agréger leurs stats côté client — voir player-links.js. Ne
+// modifie jamais une partie ou une capture stockée, toujours réversible (défusion).
+
+// Tous les userId EVA bruts jamais vus (parties + captures de profil), fusionnés ou non —
+// vivier du sélecteur "compte à fusionner" (state.players, lui, n'est indexé QUE par
+// identifiant canonique, donc insuffisant pour lister les comptes encore fusionnables).
+function allRawPlayerIds() {
+  const ids = new Set();
+  Object.values(state.gamesById).forEach(g => (g.players || []).forEach(p => {
+    if (p.userId != null) ids.add(String(p.userId));
+  }));
+  Object.keys(state.playerStatsSnapshots).forEach(uid => ids.add(String(uid)));
+  return Array.from(ids);
+}
+
+function renderPlayerLinksList() {
+  const links = Object.entries(state.playerLinks);
+  if (!links.length) return `<div style="color:var(--muted);font-size:13px;">Aucune fusion active.</div>`;
+  const rows = links.map(([aliasUserId, primaryUserId]) => `
+    <tr>
+      <td class="name-cell">${resolvePlayerName(aliasUserId)} <span style="color:var(--muted);font-size:11px;">(#${aliasUserId})</span></td>
+      <td class="num">→</td>
+      <td class="name-cell">${resolvePlayerName(primaryUserId)}</td>
+      <td class="num"><button class="btn small danger" data-unlink-player="${aliasUserId}">Défusionner</button></td>
+    </tr>`).join('');
+  return `
+    <div class="table-scroll"><table class="roster">
+      <thead><tr><th>Compte fusionné</th><th></th><th>Compte principal</th><th class="num">Actions</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function renderPlayerLinkForm() {
+  const primaries = Object.entries(state.players)
+    .map(([uid, rec]) => ({ uid, name: resolvePlayerName(uid), games: rec.games }))
+    .sort((a, b) => b.games - a.games);
+  const aliasCandidates = allRawPlayerIds()
+    .map(uid => ({ uid, name: resolvePlayerName(uid) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  if (!aliasCandidates.length) {
+    return `<div style="color:var(--muted);font-size:12px;margin-top:10px;">Importe d'abord des parties ou des profils pour pouvoir fusionner des comptes.</div>`;
+  }
+
+  return `
+    <div class="team-create-form">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;">Fusionner un compte EVA (smurf) dans un autre :</div>
+      <select id="mergeAliasSelect">
+        <option value="">— compte à fusionner —</option>
+        ${aliasCandidates.map(p => `<option value="${p.uid}">${p.name} (#${p.uid})</option>`).join('')}
+      </select>
+      <select id="mergePrimarySelect">
+        <option value="">— fusionner dans —</option>
+        ${primaries.map(p => `<option value="${p.uid}">${p.name} (${p.games} partie(s))</option>`).join('')}
+      </select>
+      <button class="btn primary small" id="mergePlayersBtn">Fusionner</button>
+    </div>`;
+}
+
+// Une fusion/défusion change l'identité canonique de potentiellement tous les joueurs —
+// on recharge tout depuis le serveur et on re-rend l'app entière (même logique que la
+// suppression d'une partie, voir historique.js deleteGame()), plutôt que de tenter un
+// rafraîchissement partiel forcément incomplet.
+async function reloadAfterPlayerLinkChange() {
+  await loadFromServer();
+  rebuildPlayerIndex();
+  renderComptes();
+  showApp();
+}
+
+function wirePlayerLinksManager() {
+  document.querySelectorAll('[data-unlink-player]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const aliasUserId = btn.dataset.unlinkPlayer;
+      if (!confirm('Défusionner ce compte ? Il redeviendra un joueur autonome dans les statistiques.')) return;
+      try {
+        await unlinkPlayer(aliasUserId);
+      } catch (e) {
+        alert('Erreur lors de la défusion : ' + e.message);
+        return;
+      }
+      await reloadAfterPlayerLinkChange();
+    });
+  });
+
+  const mergeBtn = document.getElementById('mergePlayersBtn');
+  if (mergeBtn) {
+    mergeBtn.addEventListener('click', async () => {
+      const aliasUserId = document.getElementById('mergeAliasSelect').value;
+      const primaryUserId = document.getElementById('mergePrimarySelect').value;
+      if (!aliasUserId || !primaryUserId) return;
+      if (aliasUserId === primaryUserId) { alert('Choisis deux comptes différents.'); return; }
+      try {
+        await linkPlayers(aliasUserId, primaryUserId);
+      } catch (e) {
+        alert('Erreur lors de la fusion : ' + e.message);
+        return;
+      }
+      await reloadAfterPlayerLinkChange();
+    });
+  }
+}
+
 // Point d'entrée de l'onglet Comptes.
 export async function renderComptes() {
   const container = document.getElementById('comptesContent');
@@ -136,6 +244,16 @@ export async function renderComptes() {
       <div class="section-title">Comptes</div>
       ${renderUserList()}
       ${renderCreateForm()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Fusion de comptes joueurs</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Regroupe plusieurs comptes EVA (smurfs) d'une même personne sous un seul profil dans
+        toutes les stats de l'app. Ne modifie aucune partie ni capture stockée — toujours réversible.
+      </div>
+      ${renderPlayerLinksList()}
+      ${renderPlayerLinkForm()}
     </div>`;
   wireUserManager();
+  wirePlayerLinksManager();
 }

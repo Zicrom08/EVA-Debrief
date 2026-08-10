@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData } from './format.js';
+import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
 import { apiSend, loadFromServer } from './api.js';
 import { rebuildPlayerIndex } from './player-index.js';
@@ -79,7 +80,7 @@ export function renderMatchRosterTable(teamPlayers, teamKey){
     const kd = kdNum.toFixed(2);
     const kdaNum = d.deaths ? (d.kills+(d.assists||0))/d.deaths : (d.kills+(d.assists||0));
     const kda = kdaNum.toFixed(2);
-    const isMe = p.userId == state.currentUid;
+    const isMe = canonicalUid(p.userId) === canonicalUid(state.currentUid);
     const acc = d.firedAccuracy||0;
     const name = d.niceName || resolvePlayerName(p.userId);
     return `
@@ -143,7 +144,7 @@ function renderSimpleMatchDetail(g, self) {
     const d = p.data;
     const kdNum = d.deaths ? d.kills / d.deaths : (d.kills || 0);
     const kdaNum = d.deaths ? (d.kills + (d.assists || 0)) / d.deaths : (d.kills + (d.assists || 0));
-    const isMe = p.userId == state.currentUid;
+    const isMe = canonicalUid(p.userId) === canonicalUid(state.currentUid);
     const name = resolvePlayerName(p.userId);
     return `
       <tr class="${isMe ? 'me' : ''}">

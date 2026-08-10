@@ -42,6 +42,7 @@ function emptyGameState() {
     games: {},               // gameId (string) -> game node complet (JSON brut)
     playerStatsSnapshots: {},// userId (string) -> [snapshot, ...] trié par capturedAt croissant
     teams: {},                // teamId -> { id, name, members: [userId,...] }
+    playerLinks: {},          // aliasUserId (string) -> primaryUserId (string) — fusion de comptes joueurs (smurfs), voir linkPlayer()
   };
 }
 function emptyUsersState() {
@@ -91,6 +92,7 @@ let state = {
   games: (legacyDataFile && legacyDataFile.games) || {},
   playerStatsSnapshots: (legacyDataFile && legacyDataFile.playerStatsSnapshots) || {},
   teams: (legacyDataFile && legacyDataFile.teams) || {},
+  playerLinks: (legacyDataFile && legacyDataFile.playerLinks) || {},
 };
 const gamePersister = makePersister(DATA_FILE, () => state);
 
@@ -183,6 +185,20 @@ function deriveOutcomes(g) {
       p.data.outcome = winner == null ? 'Draw' : (p.data.team === winner ? 'Victory' : 'Defeat');
     }
   });
+}
+
+// Résout un aliasUserId à travers la map jusqu'à sa racine — toujours censé s'arrêter
+// en une seule étape (linkPlayer aplatit systématiquement, jamais de chaîne
+// alias->alias->primary stockée), la boucle + le Set `seen` ne sont qu'un garde-fou
+// défensif contre un état corrompu écrit à la main dans data.json.
+function resolvePrimary(uid) {
+  let cur = String(uid);
+  const seen = new Set();
+  while (state.playerLinks[cur] != null && !seen.has(cur)) {
+    seen.add(cur);
+    cur = state.playerLinks[cur];
+  }
+  return cur;
 }
 
 module.exports = {
@@ -299,6 +315,37 @@ module.exports = {
   },
   countAdmins() {
     return Object.values(usersState.users).filter(u => u.role === 'admin').length;
+  },
+
+  // ---------------- Player links (fusion de comptes joueurs, admin) ----------------
+  // Ne réécrit jamais games/playerStatsSnapshots : la fusion n'existe qu'au niveau de
+  // cette table de correspondance, résolue côté client (voir frontend/src/player-links.js
+  // canonicalUid()) — donc toujours réversible sans perte de donnée brute.
+  getAllPlayerLinks() {
+    return Object.entries(state.playerLinks).map(([aliasUserId, primaryUserId]) => ({ aliasUserId, primaryUserId }));
+  },
+  // Fusionne aliasUserId dans primaryUserId. Toujours stocké "à plat" : primaryUserId est
+  // d'abord résolu à sa propre racine (pour ne jamais empiler de chaîne), et si aliasUserId
+  // était lui-même déjà une primary pour d'autres alias, ceux-ci sont repointés directement
+  // vers la nouvelle racine — ça permet de fusionner deux groupes déjà fusionnés en un seul
+  // appel. Renvoie null (rejeté) si ça reviendrait à fusionner un compte avec lui-même,
+  // y compris indirectement (ex: A déjà fusionné dans B, on tente ensuite B -> A).
+  linkPlayer(aliasUserId, primaryUserIdInput) {
+    const alias = String(aliasUserId);
+    const primary = resolvePrimary(primaryUserIdInput);
+    if (alias === primary) return null;
+    Object.keys(state.playerLinks).forEach(a => {
+      if (state.playerLinks[a] === alias) state.playerLinks[a] = primary;
+    });
+    state.playerLinks[alias] = primary;
+    gamePersister.saveNow();
+    return { aliasUserId: alias, primaryUserId: primary };
+  },
+  // Défusion d'un compte précis (idempotent) — le compte redevient un joueur autonome,
+  // ses parties/captures n'ont jamais bougé.
+  unlinkPlayer(aliasUserId) {
+    delete state.playerLinks[String(aliasUserId)];
+    gamePersister.saveNow();
   },
 
   // ---------------- Admin ----------------
