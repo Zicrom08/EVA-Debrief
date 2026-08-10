@@ -1,17 +1,20 @@
 import { state } from '../state.js';
-import { findPlayerInGame, fmtHM } from '../format.js';
+import { findPlayerInGame } from '../format.js';
 import { aggregateGames } from '../tendances.js';
+import { filteredGamesArray } from '../game-filters.js';
 import { renderProfil } from './index.js';
 import {
   metricValue, rollingAverage, computeRollingWinRate, computeMapStats, computeModeStats,
   computeDayOfWeekStats, computeTimeOfDayStats, computeSessionFatigue, computeKDDistribution,
   computeStreaks, bestWorstGames, computeDuoNemesisStats, computeRankStats,
   computeContributionTrend, computeDamageContributionTrend, computeDamageTeamStats,
-  computePlaytimeStats, computeEfficiencyStats,
+  computeEfficiencyStats, computeImpactScore,
+  computeRatingBaseline, computeRating,
 } from './compute.js';
 import { buildLineChart, buildTrendChart, barRow, mapBarRow, distRow, highlightCard } from './charts.js';
 
 const METRIC_LABELS = { kd: 'Ratio K/D', dmg: 'Dégâts infligés', score: 'Score', acc: 'Précision de tir (%)' };
+const NA = '<span style="color:var(--muted);">n/d</span>';
 
 // ---- Focus carte : mini-profil dédié à une carte, ouvert en cliquant une ligne
 // dans "Performance par carte" (voir mapBarRow / data-map-select) ----
@@ -67,8 +70,10 @@ export function renderGameAnalytics(games, uid) {
   const kdDist = computeKDDistribution(games, uid);
   const bw = bestWorstGames(games, uid);
   const rankStats = computeRankStats(games, uid);
-  const playtime = computePlaytimeStats(games, uid);
   const efficiency = computeEfficiencyStats(games, uid);
+  const impact = computeImpactScore(games, uid);
+  const ratingBaseline = computeRatingBaseline(filteredGamesArray());
+  const rating = computeRating(games, uid, ratingBaseline);
 
   const rawVals = games.map(g => metricValue(findPlayerInGame(g, uid), state.profileMetric));
   const window = Math.min(5, Math.max(2, Math.round(games.length / 4) || 2));
@@ -129,27 +134,57 @@ export function renderGameAnalytics(games, uid) {
     </div>
 
     <div class="analytics-section">
-      <div class="section-title">Temps de jeu</div>
-      <div class="streak-row">
-        <div class="streak-card"><div class="streak-label">Temps de jeu (période)</div><div class="streak-value">${fmtHM(playtime.totalSec)}</div></div>
-        <div class="streak-card"><div class="streak-label">Durée moyenne / partie</div><div class="streak-value">${fmtHM(playtime.avgSec)}</div></div>
-        <div class="streak-card"><div class="streak-label">Taux de MVP (rang 1 équipe)</div><div class="streak-value" style="color:var(--gold)">${rankStats.mvpRate}%</div></div>
+      <div class="section-title">Rating (façon HLTV)</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+        Inspiré du Rating HLTV (CS) : combine kills, morts, dégâts, assists et score en un seul
+        chiffre plutôt que de se fier au seul K/D. 1.00 = performance moyenne parmi tous les
+        joueurs croisés sur la période (même population que le classement Comparatif), au-dessus
+        = meilleur que la moyenne. EVA n'a pas de round/KAST/trade-kill comme CS, donc c'est une
+        adaptation par partie — pas le calcul HLTV exact.
       </div>
+      ${rating.rating == null ? `<div class="hl-empty">Pas assez de données sur la période pour calculer un rating.</div>` : `
+      <div class="streak-card" style="max-width:220px;margin-bottom:14px;">
+        <div class="streak-label">Rating</div>
+        <div class="streak-value ${rating.rating>=1?'kd-good':'kd-bad'}" style="font-size:32px;">${rating.rating.toFixed(2)}</div>
+      </div>
+      <div class="profile-grid">
+        <div class="cell"><div class="label">Kills</div><div class="value ${rating.components.kills>=1?'kd-good':'kd-bad'}">×${rating.components.kills.toFixed(2)}</div></div>
+        <div class="cell"><div class="label">Morts (inversé)</div><div class="value ${rating.components.deaths>=1?'kd-good':'kd-bad'}">×${rating.components.deaths.toFixed(2)}</div></div>
+        <div class="cell"><div class="label">Dégâts</div><div class="value ${rating.components.dmg>=1?'kd-good':'kd-bad'}">×${rating.components.dmg.toFixed(2)}</div></div>
+        <div class="cell"><div class="label">Assists</div><div class="value ${rating.components.assists>=1?'kd-good':'kd-bad'}">×${rating.components.assists.toFixed(2)}</div></div>
+        <div class="cell"><div class="label">Score</div><div class="value ${rating.components.score>=1?'kd-good':'kd-bad'}">×${rating.components.score.toFixed(2)}</div></div>
+      </div>`}
+    </div>
+
+    <div class="analytics-section">
+      <div class="section-title">Score d'impact</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+        Pondère le taux de victoire et la contribution aux dégâts d'équipe (par rapport à ta
+        juste part vu la taille de l'équipe) — mesure l'impact sur les victoires, pas la
+        performance individuelle brute (voir "Efficacité" plus bas pour ça).
+      </div>
+      <div class="streak-row">
+        <div class="streak-card"><div class="streak-label">Score d'impact</div><div class="streak-value" style="font-size:28px;color:var(--gold);">${impact.score}<span style="font-size:14px;color:var(--muted);">/100</span></div></div>
+        <div class="streak-card"><div class="streak-label">Taux de victoire</div><div class="streak-value">${impact.winrate}%</div></div>
+        <div class="streak-card"><div class="streak-label">Indice de contribution</div><div class="streak-value">${impact.contribIndex == null ? NA : `${impact.contribIndex}/100`}</div></div>
+      </div>
+      ${impact.contribIndex == null ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+        Contribution non disponible : aucune partie de la période n'a d'assignation d'équipe exploitable — score basé sur le winrate seul.
+      </div>` : ''}
     </div>
 
     <div class="analytics-section">
       <div class="section-title">Efficacité</div>
       <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Des stats normalisées (par mort ou par minute) plutôt que par partie — plus fiables
-        pour comparer des périodes ou des joueurs qui n'ont pas le même nombre de parties.
+        Des stats normalisées par mort plutôt que par partie — plus fiables pour comparer des
+        périodes ou des joueurs qui n'ont pas le même nombre de parties.
       </div>
       <div class="profile-grid">
         <div class="cell"><div class="label">KDA ((kills+assists)/morts)</div><div class="value">${efficiency.kda}</div></div>
         <div class="cell"><div class="label">Dégâts par mort</div><div class="value">${efficiency.dmgPerDeath.toLocaleString('fr-FR')}</div></div>
         <div class="cell"><div class="label">Précision moyenne</div><div class="value">${efficiency.avgAccuracy}%</div></div>
         <div class="cell"><div class="label">Assists moyens / partie</div><div class="value">${efficiency.avgAssists}</div></div>
-        <div class="cell"><div class="label">Kills par minute</div><div class="value">${efficiency.killsPerMin}</div></div>
-        <div class="cell"><div class="label">Dégâts par minute</div><div class="value">${efficiency.dmgPerMin.toLocaleString('fr-FR')}</div></div>
+        <div class="cell"><div class="label">Taux de MVP (rang 1 équipe)</div><div class="value" style="color:var(--gold)">${rankStats.mvpRate}%</div></div>
       </div>
     </div>
 
