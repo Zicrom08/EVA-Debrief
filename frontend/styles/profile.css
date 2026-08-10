@@ -1,7 +1,7 @@
 .profile-wrap{padding:24px 32px;max-width:1440px;}
 .profile-layout{display:flex; gap:28px; align-items:flex-start;}
 .profile-main{flex:1; min-width:0; max-width:920px;}
-.profile-compare{width:380px; flex-shrink:0; position:sticky; top:20px;}
+.profile-compare{width:380px; flex-shrink:0;}
 .compare-panel-card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px;}
 .compare-select{
   width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;
@@ -13,7 +13,7 @@
 @media (max-width:1200px){
   .profile-layout{flex-direction:column;}
   .profile-main{max-width:none; width:100%;}
-  .profile-compare{width:100%; position:static;}
+  .profile-compare{width:100%;}
 }
 .profile-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:22px 26px;}
 .profile-top{display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:20px;margin-bottom:20px;}
