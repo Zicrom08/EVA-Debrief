@@ -1,5 +1,6 @@
 import { findPlayerInGame, resolvePlayerName } from '../format.js';
 import { computeSessions } from '../tendances.js';
+import { canonicalUid } from '../player-links.js';
 
 // ================= PROFIL : helpers d'analyse (depuis l'historique de parties) =================
 
@@ -221,6 +222,7 @@ export function computeDuoNemesisStats(games, uid, minGames) {
   minGames = minGames || 3;
   const teammates = {};
   const opponents = {};
+  const myCanon = canonicalUid(uid);
 
   games.forEach(g => {
     const me = findPlayerInGame(g, uid);
@@ -232,9 +234,12 @@ export function computeDuoNemesisStats(games, uid, minGames) {
     if (myTeam == null) return;
     const won = me.data.outcome === 'Victory';
     (g.players || []).forEach(p => {
-      if (p.userId == uid) return;
+      // Comparaison par identifiant canonique (pas seulement p.userId == uid) : si le
+      // joueur a deux comptes fusionnés présents dans la même partie (rare mais possible),
+      // il ne doit pas apparaître comme son propre duo/némésis.
+      if (canonicalUid(p.userId) === myCanon) return;
       const bucket = p.data.team === myTeam ? teammates : opponents;
-      const oid = p.userId;
+      const oid = canonicalUid(p.userId);
       const name = p.data.niceName || resolvePlayerName(p.userId);
       if (!bucket[oid]) bucket[oid] = { n: 0, wins: 0, name };
       bucket[oid].n++;

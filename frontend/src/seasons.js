@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { inDateRange } from './game-filters.js';
+import { canonicalUid, aliasesOf } from './player-links.js';
 
 // ============================================================================
 // SAISONS — déduites de deux sources, combinées : les captures de profil
@@ -84,12 +85,26 @@ export function displaySeasonId(rawSeasonId) {
   return rawSeasonId == null ? rawSeasonId : rawSeasonId - 1;
 }
 
+// Toutes les captures de profil connues d'un joueur, alias fusionnés compris (voir
+// player-links.js) — les captures de profil sont stockées par compte EVA brut et ne
+// sont JAMAIS fusionnées entre elles (contrairement aux parties, où findPlayerInGame()
+// résout déjà l'identité canonique), donc il faut explicitement rassembler celles de
+// chaque alias en plus de celles du compte canonique. Triées par capturedAt croissant,
+// comme state.playerStatsSnapshots[uid] l'est individuellement (voir api.js).
+function allSnapshotsFor(uid) {
+  const canon = canonicalUid(uid);
+  const ids = [canon, ...aliasesOf(canon)];
+  const combined = [];
+  ids.forEach(id => { (state.playerStatsSnapshots[id] || []).forEach(s => combined.push(s)); });
+  return combined.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
+}
+
 // Captures de profil d'un joueur pour la sélection courante : filtrage exact par
 // numéro de saison si une saison est sélectionnée (le plus fiable, puisque le champ
 // existe directement sur chaque capture), sinon filtrage par période classique
 // (capturedAt), pour rester cohérent avec le filtre appliqué aux parties.
 export function filteredSnapshotsForUser(uid) {
-  const list = state.playerStatsSnapshots[uid] || [];
+  const list = allSnapshotsFor(uid);
   if (state.selectedSeasonId != null) {
     return list.filter(s => snapshotSeasonId(s) === state.selectedSeasonId);
   }
@@ -195,7 +210,7 @@ export function seasonCardBaseline(uid, inRange) {
   const latestSeason = snapshotSeasonId(latest);
   if (latestSeason == null) return null;
 
-  const all = state.playerStatsSnapshots[uid] || []; // triés asc par capturedAt (voir api.js)
+  const all = allSnapshotsFor(uid); // alias fusionnés compris, triés asc par capturedAt
   const windowStartT = new Date(inRange[0].capturedAt).getTime();
   const before = all.filter(s => {
     const sid = snapshotSeasonId(s);

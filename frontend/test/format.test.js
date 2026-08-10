@@ -10,6 +10,14 @@ test('findPlayerInGame finds a player by userId with loose equality (string/numb
   assert.equal(findPlayerInGame(g, '999'), undefined);
 });
 
+test('findPlayerInGame matches through a merged player alias, in either direction', () => {
+  state.playerLinks = { alias1: 'primary1' };
+  const g = { players: [{ userId: 'alias1', data: {} }] };
+  assert.equal(findPlayerInGame(g, 'primary1'), g.players[0]); // recherche par primary, trouve l'alias qui a joué
+  assert.equal(findPlayerInGame(g, 'alias1'), g.players[0]);
+  state.playerLinks = {};
+});
+
 test('hasFullMatchData is true only when g.data exists AND at least one player has data.team', () => {
   assert.equal(hasFullMatchData({ data: {}, players: [{ data: { team: 'Alliance' } }] }), true);
   assert.equal(hasFullMatchData({ data: {}, players: [{ data: { outcome: 'Victory' } }] }), false); // list-only game, no team
@@ -27,6 +35,14 @@ test('resolvePlayerName falls back from known niceName -> profile snapshot displ
 
   state.players['u1'] = { niceNames: { ZicromTag: 5, OldTag: 1 } };
   assert.equal(resolvePlayerName('u1'), 'ZicromTag');
+});
+
+test('resolvePlayerName falls back to a merged alias\'s profile snapshot when the canonical account has none of its own', () => {
+  state.players = {};
+  state.playerStatsSnapshots = { aliasX: [{ user: { displayName: 'AliasName' } }] };
+  state.playerLinks = { aliasX: 'primaryX' };
+  assert.equal(resolvePlayerName('primaryX'), 'AliasName');
+  state.playerLinks = {};
 });
 
 test('fmtDuration pads seconds to two digits', () => {

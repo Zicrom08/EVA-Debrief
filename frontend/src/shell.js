@@ -88,7 +88,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
     return;
   }
   state.gamesById = {}; state.players = {}; state.playerStatsSnapshots = {};
-  state.customTeams = {};
+  state.customTeams = {}; state.playerLinks = {};
   state.currentUid = null; state.activeGameId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
   state.dateRangeStart = null; state.dateRangeEnd = null; state.selectedSeasonId = null;
   state.excludedMaps = new Set();

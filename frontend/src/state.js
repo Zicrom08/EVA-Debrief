@@ -4,6 +4,7 @@
 //   gamesById              { gameId -> partie brute (telle que renvoyée par l'API EVA) }
 //   playerStatsSnapshots   { userId -> [capture de profil, ...] triées par date }
 //   customTeams            { teamId -> { id, name, members: [userId, ...] } }
+//   playerLinks            { aliasUserId -> primaryUserId }  — fusion de comptes joueurs (voir player-links.js)
 //   players                { userId -> { niceNames, games } }  — reconstruit par rebuildPlayerIndex()
 //
 // Exporté comme un seul objet plutôt que des `let` individuels : beaucoup de
@@ -17,6 +18,7 @@ export const state = {
   gamesById: {},              // id -> game node
   players: {},                // userId -> aggregated stats (from game history)
   playerStatsSnapshots: {},   // userId -> [snapshot, ...] sorted asc by capturedAt
+  playerLinks: {},            // aliasUserId -> primaryUserId (fusion de comptes joueurs, voir player-links.js)
   currentUid: null,
   activeGameId: null,
   trendMode: 'session',

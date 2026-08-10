@@ -1,4 +1,5 @@
 import { state } from './state.js';
+import { canonicalUid, aliasesOf } from './player-links.js';
 
 // Libellé affiché pour un rôle de compte (header + onglet Comptes) — doit
 // rester cohérent avec auth.ROLES côté backend.
@@ -23,9 +24,13 @@ export function fmtDateShort(iso){
   const d = new Date(iso);
   return d.toLocaleDateString('fr-FR', {day:'2-digit',month:'short',year:'2-digit'});
 }
-// Retrouve l'entrée d'un joueur (par userId) parmi les participants d'une partie.
+// Retrouve l'entrée d'un joueur (par userId) parmi les participants d'une partie. Compare
+// par identifiant canonique (voir player-links.js) : si `uid` a été fusionné avec un autre
+// compte (ou vice-versa), la partie où c'est l'AUTRE compte qui a joué doit quand même
+// matcher — c'est tout l'intérêt de la fusion de comptes.
 export function findPlayerInGame(g, uid){
-  return (g.players||[]).find(p => p.userId == uid);
+  const target = canonicalUid(uid);
+  return (g.players||[]).find(p => canonicalUid(p.userId) === target);
 }
 // Raccourci pour retrouver le joueur actuellement sélectionné (state.currentUid) dans une partie.
 export function findSelf(g){ return findPlayerInGame(g, state.currentUid); }
@@ -40,16 +45,23 @@ export function mostCommonName(rec){
 // EVA) ne portent plus aucun pseudo (p.data.niceName a disparu), donc state.players ne
 // peut plus toujours en fournir un pour les nouvelles parties. On retombe alors sur le
 // user/username capturé par une éventuelle snapshot de profil de ce joueur (le sien ou
-// celui d'un coéquipier déjà importé), et en dernier recours sur son id brut.
+// celui d'un coéquipier déjà importé), et en dernier recours sur son id brut. `uid` est
+// résolu à son identifiant canonique (voir player-links.js) : state.players y est déjà
+// indexé par rebuildPlayerIndex(), mais les captures de profil (state.playerStatsSnapshots)
+// restent, elles, indexées par compte EVA brut et ne sont jamais fusionnées entre elles —
+// on doit donc chercher parmi tous les alias connus de ce joueur, pas juste sa racine.
 export function resolvePlayerName(uid) {
-  const rec = state.players[uid];
+  const canon = canonicalUid(uid);
+  const rec = state.players[canon];
   if (rec && rec.niceNames && Object.keys(rec.niceNames).length) return mostCommonName(rec);
-  const snaps = state.playerStatsSnapshots[uid];
-  if (snaps && snaps.length) {
-    const u = snaps[snaps.length - 1].user;
-    if (u && (u.displayName || u.username)) return u.displayName || u.username;
+  for (const candidate of [canon, ...aliasesOf(canon)]) {
+    const snaps = state.playerStatsSnapshots[candidate];
+    if (snaps && snaps.length) {
+      const u = snaps[snaps.length - 1].user;
+      if (u && (u.displayName || u.username)) return u.displayName || u.username;
+    }
   }
-  return `Joueur #${uid}`;
+  return `Joueur #${canon}`;
 }
 
 // Vrai si cette partie porte encore le détail complet de match (score par équipe,

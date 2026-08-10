@@ -1,5 +1,6 @@
 import { state } from './state.js';
 import { mostCommonName } from './format.js';
+import { canonicalUid } from './player-links.js';
 import { persistUiPrefs } from './ui-prefs.js';
 import { renderSummary } from './shell.js';
 import { renderList } from './historique.js';
@@ -8,11 +9,14 @@ import { renderComparatif } from './comparatif.js';
 import { renderProfil } from './profil/index.js';
 
 // ================= PLAYER INDEX (from game history) =================
+// Indexé par identifiant CANONIQUE (voir player-links.js) : un joueur fusionné avec un
+// smurf apparaît comme une seule entrée agrégeant les parties des deux comptes, quel que
+// soit celui qui a réellement joué chaque partie.
 export function rebuildPlayerIndex() {
   state.players = {};
   Object.values(state.gamesById).forEach(g => {
     (g.players || []).forEach(p => {
-      const uid = p.userId;
+      const uid = canonicalUid(p.userId);
       if (!state.players[uid]) state.players[uid] = {
         niceNames:{}, games:0, wins:0, losses:0, kills:0, deaths:0, assists:0, dmg:0, score:0
       };
@@ -31,10 +35,11 @@ export function rebuildPlayerIndex() {
   });
   // also register state.players that only exist via profile-stat imports (no games imported yet)
   Object.entries(state.playerStatsSnapshots).forEach(([uid, snaps]) => {
-    if (!state.players[uid] && snaps.length) {
+    const canon = canonicalUid(uid);
+    if (!state.players[canon] && snaps.length) {
       const last = snaps[snaps.length-1];
-      state.players[uid] = {
-        niceNames: { [last.user.displayName || last.user.username || uid]: 1 },
+      state.players[canon] = {
+        niceNames: { [last.user.displayName || last.user.username || canon]: 1 },
         games:0, wins:0, losses:0, kills:0, deaths:0, assists:0, dmg:0, score:0
       };
     }
