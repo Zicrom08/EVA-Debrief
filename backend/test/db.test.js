@@ -132,16 +132,27 @@ test('linkPlayer always flattens: never stores an alias -> alias -> primary chai
   db.unlinkPlayer('X'); db.unlinkPlayer('Y');
 });
 
+test('setPlayerName / clearPlayerName / getAllPlayerNames', () => {
+  const rec = db.setPlayerName('u1', 'NouveauTag');
+  assert.deepEqual(rec, { uid: 'u1', name: 'NouveauTag' });
+  assert.deepEqual(db.getAllPlayerNames(), [{ uid: 'u1', name: 'NouveauTag' }]);
+  db.clearPlayerName('u1');
+  assert.deepEqual(db.getAllPlayerNames(), []);
+  assert.doesNotThrow(() => db.clearPlayerName('u1')); // idempotent
+});
+
 // Placed last: resetAll wipes games/snapshots/teams (but not users) for the whole
 // shared db.js module instance, so no other test in this file can run after it.
-test('resetAll empties games/snapshots/teams/playerLinks but never touches user accounts', () => {
+test('resetAll empties games/snapshots/teams/playerLinks/playerNames but never touches user accounts', () => {
   db.upsertGame({ id: 'g4', createdAt: '2026-01-01T00:00:00Z', players: [] });
   db.createTeam('Temp', ['u1']);
   db.linkPlayer('aliasR', 'primaryR');
+  db.setPlayerName('u1', 'Temp');
   const user = db.createUser({ username: 'survivor', role: 'admin', passwordSalt: 's', passwordHash: 'h' });
   db.resetAll();
   assert.equal(db.gameCount(), 0);
   assert.equal(db.getAllTeams().length, 0);
   assert.equal(db.getAllPlayerLinks().length, 0);
+  assert.equal(db.getAllPlayerNames().length, 0);
   assert.notEqual(db.getUserById(user.id), null);
 });

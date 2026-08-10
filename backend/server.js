@@ -396,6 +396,7 @@ app.get('/api/state', (req, res) => {
     playerStats: db.getAllSnapshots(),
     teams: db.getAllTeams(),
     playerLinks: db.getAllPlayerLinks(),
+    playerNames: db.getAllPlayerNames(),
   });
 });
 
@@ -495,6 +496,22 @@ app.post('/api/player-links', requireAdmin, (req, res) => {
 // Suppression idempotente (pas d'erreur si le lien n'existe déjà plus).
 app.delete('/api/player-links/:aliasUserId', requireAdmin, (req, res) => {
   db.unlinkPlayer(req.params.aliasUserId);
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Renommage manuel d'un joueur (admin) — force le nom affiché quand un joueur a changé
+// de pseudo en jeu (voir db.js : setPlayerName). N'affecte aucune donnée de partie,
+// toujours réversible (suppression du renommage = retour au pseudo auto-détecté).
+// ---------------------------------------------------------------------------
+app.put('/api/player-names/:uid', requireAdmin, (req, res) => {
+  const name = (req.body && req.body.name != null) ? String(req.body.name).trim() : '';
+  if (!name) return res.status(400).json({ error: 'Nom requis.' });
+  res.json(db.setPlayerName(req.params.uid, name));
+});
+// Suppression idempotente (pas d'erreur si le renommage n'existe déjà plus).
+app.delete('/api/player-names/:uid', requireAdmin, (req, res) => {
+  db.clearPlayerName(req.params.uid);
   res.json({ ok: true });
 });
 
