@@ -325,18 +325,109 @@ export function computeDamageTeamStats(games, uid) {
   };
 }
 
-// Calcule le temps de jeu total et moyen par partie, sur la période filtrée.
-export function computePlaytimeStats(games, uid) {
-  const myGames = games.filter(g => findPlayerInGame(g, uid));
-  const totalSec = myGames.reduce((s, g) => s + ((g.data && g.data.duration) || 0), 0);
-  const avgSec = myGames.length ? Math.round(totalSec / myGames.length) : 0;
-  return { totalSec, avgSec, n: myGames.length };
+// Score composite (0-100) pondérant le taux de victoire et l'impact sur l'équipe, plutôt
+// que le skill brut (K/D, précision...) — répond à "est-ce que je fais gagner mon équipe ?"
+// plutôt qu'à "suis-je performant individuellement ?" (déjà couvert par computeEfficiencyStats).
+//
+// Le winrate est déjà sur une échelle 0-100 avec un point de référence naturel (50% = pile
+// ou face). La contribution aux dégâts d'équipe (part des dégâts totaux de l'équipe apportée
+// par le joueur, voir computeDamageTeamStats) n'a pas cette propriété : sa "juste part"
+// dépend de la taille de l'équipe ce jour-là (25% pour 4, 33% pour 3...), donc on la
+// normalise partie par partie contre cette juste part avant de moyenner. Un ratio de 1.0
+// (exactement la juste part) vaut 50 points sur l'indice de contribution — même sémantique
+// que le winrate ("50 = dans la moyenne") — un ratio de 2.0+ (le double de la juste part ou
+// plus) plafonne à 100. Les parties sans assignation d'équipe (voir hasFullMatchData côté
+// format.js) sont ignorées pour ce volet, même garde que computeDamageTeamStats.
+//
+// Si aucune partie de la période n'a de contribution exploitable (import list-only complet),
+// contribIndex reste `null` et le score retombe sur le winrate seul plutôt que d'inventer
+// une contribution — l'appelant doit afficher "n/d" pour ce volet dans ce cas, pas un 0.
+export function computeImpactScore(games, uid) {
+  let wins = 0, n = 0;
+  let contribSum = 0, contribGames = 0;
+  games.forEach(g => {
+    const p = findPlayerInGame(g, uid);
+    if (!p) return;
+    n++;
+    if (p.data.outcome === 'Victory') wins++;
+    if (p.data.team == null) return;
+    const teamPlayers = (g.players || []).filter(pl => pl.data.team === p.data.team);
+    if (teamPlayers.length < 2) return; // seul dans son "équipe" ce jour-là, pas de juste part à comparer
+    const teamTotal = teamPlayers.reduce((s, pl) => s + (pl.data.inflictedDamage || 0), 0);
+    if (!teamTotal) return;
+    const fairShare = 100 / teamPlayers.length;
+    const contribPct = ((p.data.inflictedDamage || 0) / teamTotal) * 100;
+    const ratio = contribPct / fairShare;
+    contribSum += Math.min(100, ratio * 50);
+    contribGames++;
+  });
+  const winrate = n ? Math.round((wins / n) * 100) : 0;
+  const contribIndex = contribGames ? Math.round(contribSum / contribGames) : null;
+  const score = contribIndex == null ? winrate : Math.round(winrate * 0.5 + contribIndex * 0.5);
+  return { score, winrate, contribIndex, n, contribGames };
 }
 
-// Stats d'efficacité : normalisées par mort ou par minute plutôt que par partie,
-// pour comparer des joueurs qui ne jouent pas le même nombre/la même durée de parties.
-export function computeEfficiencyStats(games, uid) {
-  let n = 0, kills = 0, deaths = 0, assists = 0, dmg = 0, totalSec = 0, accSum = 0;
+// ================= RATING (façon HLTV) =================
+// EVA n'a ni round, ni KAST, ni détection de trade-kill — la vraie formule HLTV Rating
+// 2.0/2.1 (régression linéaire sur KAST/KPR/DPR/Impact/ADR calée sur des données pro CS)
+// ne peut donc pas être reproduite telle quelle. Ce qu'on reprend de son esprit : UN seul
+// chiffre, centré sur 1.00 = performance moyenne, combinant plusieurs stats (pas juste K/D)
+// pondérées par importance plutôt qu'une simple somme.
+//
+// Méthode : chaque stat du joueur (moyenne par partie sur la période) est exprimée en ratio
+// par rapport à la moyenne de TOUS les joueurs croisés dans les mêmes parties (voir
+// computeRatingBaseline — même population que le classement Comparatif). Un ratio de 1.00
+// veut dire "exactement dans la moyenne" pour cette stat ; les morts sont inversées (moins
+// mourir que la moyenne doit augmenter le ratio, pas le baisser) pour que les 5 composantes
+// partagent la même lecture "plus haut = mieux". Chaque ratio est plafonné à
+// RATING_RATIO_CAP avant pondération, pour qu'une partie exceptionnelle (ou une moyenne
+// d'échantillon trop petit) ne fasse pas exploser le résultat final. Les poids sont un choix
+// arbitraire assumé (kills/dégâts pèsent le plus, à l'image de KPR/ADR dans HLTV 2.0/2.1) —
+// à ajuster si l'usage montre qu'une autre pondération reflète mieux "qui a bien joué".
+const RATING_WEIGHTS = { kills: 0.30, deaths: 0.25, dmg: 0.25, assists: 0.10, score: 0.10 };
+const RATING_RATIO_CAP = 3;
+
+function ratingRatio(playerAvg, baselineAvg, invert) {
+  if (!baselineAvg) return 1; // population sans référence exploitable pour cette stat -> composante neutre
+  const r = invert
+    ? (playerAvg ? baselineAvg / playerAvg : RATING_RATIO_CAP)
+    : (playerAvg / baselineAvg);
+  return Math.max(0, Math.min(RATING_RATIO_CAP, r));
+}
+
+// Moyennes de référence (kills/morts/assists/dégâts/score par partie jouée, tous joueurs
+// confondus) sur un ensemble de parties — le "1.00" auquel chaque joueur est comparé par
+// computeRating(). À calculer une seule fois sur la période filtrée (voir filteredGamesArray
+// côté game-filters.js) et réutiliser pour chaque joueur, pas par joueur individuellement.
+export function computeRatingBaseline(games) {
+  let n = 0, kills = 0, deaths = 0, assists = 0, dmg = 0, score = 0;
+  games.forEach(g => {
+    (g.players || []).forEach(p => {
+      if (!p || !p.data) return;
+      n++;
+      kills += p.data.kills || 0;
+      deaths += p.data.deaths || 0;
+      assists += p.data.assists || 0;
+      dmg += p.data.inflictedDamage || 0;
+      score += p.data.score || 0;
+    });
+  });
+  return {
+    n,
+    avgKills: n ? kills / n : 0,
+    avgDeaths: n ? deaths / n : 0,
+    avgAssists: n ? assists / n : 0,
+    avgDmg: n ? dmg / n : 0,
+    avgScore: n ? score / n : 0,
+  };
+}
+
+// Rating façon HLTV pour un joueur sur `games` (déjà filtrées à ce joueur), comparé à
+// `baseline` (voir computeRatingBaseline, calculée sur la population complète de la même
+// période). Renvoie `rating: null` si `games` ou la baseline sont vides plutôt qu'un chiffre
+// trompeur.
+export function computeRating(games, uid, baseline) {
+  let n = 0, kills = 0, deaths = 0, assists = 0, dmg = 0, score = 0;
   games.forEach(g => {
     const p = findPlayerInGame(g, uid);
     if (!p) return;
@@ -345,16 +436,44 @@ export function computeEfficiencyStats(games, uid) {
     deaths += p.data.deaths || 0;
     assists += p.data.assists || 0;
     dmg += p.data.inflictedDamage || 0;
-    totalSec += (g.data && g.data.duration) || 0;
+    score += p.data.score || 0;
+  });
+  if (!n || !baseline || !baseline.n) return { rating: null, n };
+
+  const components = {
+    kills: ratingRatio(kills / n, baseline.avgKills),
+    deaths: ratingRatio(deaths / n, baseline.avgDeaths, true),
+    dmg: ratingRatio(dmg / n, baseline.avgDmg),
+    assists: ratingRatio(assists / n, baseline.avgAssists),
+    score: ratingRatio(score / n, baseline.avgScore),
+  };
+  const rating = Object.entries(RATING_WEIGHTS).reduce((sum, [key, w]) => sum + w * components[key], 0);
+  return { rating: Math.round(rating * 100) / 100, n, components };
+}
+
+// Stats d'efficacité : normalisées par mort plutôt que par partie, pour comparer des
+// joueurs qui ne jouent pas le même nombre de parties. Pas de version "par minute"
+// (kills/dégâts par minute) : ça dépendrait de g.data.duration, qu'aucune source EVA connue
+// ne fournit depuis le changement d'API de juillet 2026 (ni la liste enrichie du collecteur
+// HistoryBa, ni le détail getAfterhGameHistoryById ne le redemandent — voir CLAUDE.md), donc
+// systématiquement n/d en pratique — retiré plutôt que de garder une stat qui n'affiche
+// jamais rien d'exploitable.
+export function computeEfficiencyStats(games, uid) {
+  let n = 0, kills = 0, deaths = 0, assists = 0, dmg = 0, accSum = 0;
+  games.forEach(g => {
+    const p = findPlayerInGame(g, uid);
+    if (!p) return;
+    n++;
+    kills += p.data.kills || 0;
+    deaths += p.data.deaths || 0;
+    assists += p.data.assists || 0;
+    dmg += p.data.inflictedDamage || 0;
     accSum += p.data.firedAccuracy || 0;
   });
-  const minutes = totalSec / 60;
   return {
     n,
     kda: deaths ? ((kills + assists) / deaths).toFixed(2) : (kills + assists).toFixed(2),
     dmgPerDeath: deaths ? Math.round(dmg / deaths) : dmg,
-    killsPerMin: minutes ? (kills / minutes).toFixed(2) : '0.00',
-    dmgPerMin: minutes ? Math.round(dmg / minutes) : 0,
     avgAccuracy: n ? Math.round((accSum / n) * 100) : 0,
     avgAssists: n ? (assists / n).toFixed(1) : '0.0',
   };
