@@ -283,10 +283,26 @@ et déplacés vers `users.json` tout seuls au premier démarrage après mise à
 jour — rien à faire, aucune donnée perdue. Un message dans les logs du
 serveur confirme la migration (`[db] Migration : comptes trouvés dans...`).
 
-**Sauvegarde :** copier ces deux fichiers suffit à faire une sauvegarde
-complète (un seul suffit si tu ne veux sauvegarder que l'un des deux). Tu
-peux aussi récupérer un export complet des données de jeu à tout moment via
-`GET /api/export` (les comptes n'y figurent pas, par sécurité).
+**Sauvegarde manuelle :** copier ces deux fichiers suffit à faire une
+sauvegarde complète (un seul suffit si tu ne veux sauvegarder que l'un des
+deux). Tu peux aussi récupérer un export complet des données de jeu à tout
+moment via `GET /api/export` (les comptes n'y figurent pas, par sécurité).
+
+**Sauvegardes automatiques :** le serveur prend lui-même des copies
+horodatées de `data.json`/`users.json` — toutes les 24h par défaut
+(`BACKUP_INTERVAL_HOURS`, `0` pour désactiver), avec une sauvegarde
+immédiate au démarrage s'il n'en existe pas déjà une récente (pour ne pas
+en reprendre une à chaque redémarrage en développement avec `--watch`).
+Stockées dans `BACKUP_DIR` (`data.json`, dossier `backups/`, par défaut),
+les 30 plus récentes sont conservées (`BACKUP_RETENTION`), les plus
+anciennes purgées automatiquement. Consultables et déclenchables à la main
+("Sauvegarder maintenant") depuis l'onglet Comptes (réservé aux admins), ou
+via l'API : `GET /api/backups` (liste), `POST /api/backups` (sauvegarde
+immédiate), `GET /api/backups/<nom-de-fichier>` (télécharger un fichier
+précis). Pas de route de restauration automatique — remplacer
+`data.json`/`users.json` par les fichiers voulus puis redémarrer le serveur
+reste un geste manuel volontaire, plus sûr qu'un simple bouton qui
+écraserait les données en place.
 
 **Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `backend/db.js`
 stocke tout avec une écriture atomique (jamais de fichier à moitié écrit
@@ -602,6 +618,13 @@ Même avec des comptes créés, garde en tête que :
 | POST    | `/api/users`      | admin | Crée un compte `{ username, email?, password, role }` |
 | PUT     | `/api/users/:id`  | admin | Modifie le rôle et/ou le mot de passe d'un compte |
 | DELETE  | `/api/users/:id`  | admin | Supprime un compte (jamais soi-même, jamais le dernier admin) |
+| POST    | `/api/player-links` | admin | Fusionne deux comptes joueurs `{ aliasUserId, primaryUserId }` |
+| DELETE  | `/api/player-links/:aliasUserId` | admin | Défusionne un compte joueur |
+| PUT     | `/api/player-names/:uid` | admin | Force le nom affiché d'un joueur `{ name }` |
+| DELETE  | `/api/player-names/:uid` | admin | Revient au pseudo auto-détecté |
+| GET     | `/api/backups`    | admin | Sauvegardes existantes + config (`intervalHours`, `retention`) |
+| POST    | `/api/backups`    | admin | Déclenche une sauvegarde immédiate |
+| GET     | `/api/backups/:filename` | admin | Télécharge un fichier de sauvegarde précis |
 
 ("Auth requise" ne s'applique que si au moins un compte existe — sinon tout
 est ouvert le temps de créer le premier, voir [Comptes et rôles](#comptes-et-rôles).

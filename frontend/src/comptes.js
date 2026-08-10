@@ -1,9 +1,10 @@
 import { state } from './state.js';
 import { apiGet, apiSend, loadFromServer } from './api.js';
-import { roleLabel, resolvePlayerName } from './format.js';
+import { roleLabel, resolvePlayerName, fmtDate } from './format.js';
 import { linkPlayers, unlinkPlayer } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames } from './team-detect.js';
+import { fetchBackups, backupNow } from './backups.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -12,6 +13,7 @@ import { showApp } from './shell.js';
 // le serveur applique les mêmes règles indépendamment de l'UI (voir requireAdmin dans server.js).
 
 let users = [];
+let backupsData = { intervalHours: 0, retention: 0, sets: [] };
 
 const ROLES = ['admin', 'contributor', 'readonly'];
 function roleOptionsHtml(selectedRole) {
@@ -415,6 +417,71 @@ function wireTeamDetectionManager() {
   }
 }
 
+// ================= SAUVEGARDES DE LA BASE (admin) =================
+// Voir backups.js pour les appels API — la copie/purge elle-même vit côté serveur
+// (backend/db.js). Contrairement aux autres panneaux ci-dessus, une sauvegarde ne change
+// rien à l'affichage du reste de l'app : pas besoin de reloadAndRerenderApp(), un simple
+// re-rendu de l'onglet Comptes suffit.
+async function refreshBackupsFromServer() {
+  backupsData = await fetchBackups();
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return `${n} o`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} Ko`;
+  return `${(n / 1024 / 1024).toFixed(1)} Mo`;
+}
+
+function renderBackupsList(sets) {
+  if (!sets.length) return `<div style="color:var(--muted);font-size:13px;">Aucune sauvegarde pour l'instant.</div>`;
+  const rows = sets.map(s => {
+    const totalSize = s.files.reduce((sum, f) => sum + f.size, 0);
+    const links = s.files.map(f => `<a href="/api/backups/${f.name}">${f.kind}</a>`).join(' · ');
+    return `
+    <tr>
+      <td class="name-cell">${fmtDate(s.createdAt)}</td>
+      <td class="num">${fmtBytes(totalSize)}</td>
+      <td class="num">${links}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="table-scroll"><table class="roster">
+      <thead><tr><th>Date</th><th class="num">Taille</th><th class="num">Télécharger</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>`;
+}
+
+function renderBackupsPanel() {
+  if (backupsData.error) {
+    return `<div class="detail-empty">Impossible de charger les sauvegardes : ${backupsData.error}</div>`;
+  }
+  const freq = backupsData.intervalHours > 0
+    ? `Sauvegarde automatique toutes les ${backupsData.intervalHours} heure(s), ${backupsData.retention} sauvegarde(s) conservée(s).`
+    : `Sauvegarde automatique désactivée (BACKUP_INTERVAL_HOURS=0) — seule la sauvegarde manuelle ci-dessous est disponible.`;
+  return `
+    <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">${freq}</div>
+    <button class="btn small primary" id="backupNowBtn" style="margin-bottom:14px;">Sauvegarder maintenant</button>
+    ${renderBackupsList(backupsData.sets)}`;
+}
+
+function wireBackupsManager() {
+  const btn = document.getElementById('backupNowBtn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await backupNow();
+        await refreshBackupsFromServer();
+      } catch (e) {
+        alert('Erreur lors de la sauvegarde : ' + e.message);
+        btn.disabled = false;
+        return;
+      }
+      renderComptes();
+    });
+  }
+}
+
 // Point d'entrée de l'onglet Comptes.
 export async function renderComptes() {
   const container = document.getElementById('comptesContent');
@@ -423,6 +490,11 @@ export async function renderComptes() {
   } catch (e) {
     container.innerHTML = `<div class="detail-empty">Impossible de charger les comptes : ${e.message}</div>`;
     return;
+  }
+  try {
+    await refreshBackupsFromServer();
+  } catch (e) {
+    backupsData = { intervalHours: 0, retention: 0, sets: [], error: e.message };
   }
   container.innerHTML = `
     <div class="team-manager">
@@ -456,9 +528,14 @@ export async function renderComptes() {
         et propose de créer l'équipe correspondante ou d'y ajouter les nouveaux membres détectés.
       </div>
       ${renderTeamDetectionPanel()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Sauvegardes</div>
+      ${renderBackupsPanel()}
     </div>`;
   wireUserManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
   wireTeamDetectionManager();
+  wireBackupsManager();
 }
