@@ -40,19 +40,25 @@ export function rebuildPlayerIndex() {
       rec.score += p.data.score || 0;
     });
   });
-  // also register state.players that only exist via profile-stat imports (no games imported yet)
+  // Nom depuis la dernière capture de profil de chaque joueur, en compétition de fraîcheur
+  // avec les pseudos vus en jeu ci-dessus — PAS seulement en repli quand le joueur n'a aucune
+  // partie. Un joueur qui a rejoué son profil récemment (nouveau displayName/username) mais
+  // pas encore de nouvelle partie sous ce nom doit voir son pseudo mis à jour quand même :
+  // avant ce correctif, dès qu'un joueur avait ne serait-ce qu'une seule partie connue
+  // (même très ancienne), son nom de profil n'était plus jamais consulté, peu importe sa
+  // fraîcheur — exactement le bug de pseudo périmé signalé.
   Object.entries(state.playerStatsSnapshots).forEach(([uid, snaps]) => {
     const canon = canonicalUid(uid);
-    if (!state.players[canon] && snaps.length) {
-      const last = snaps[snaps.length-1];
-      // Poids = horodatage de la capture (même logique que ci-dessus), pas une constante
-      // arbitraire : si ce joueur obtient des parties par la suite, leur pseudo (plus
-      // récent) doit pouvoir légitimement l'emporter sur ce nom de secours.
-      state.players[canon] = {
-        niceNames: { [last.user.displayName || last.user.username || canon]: new Date(last.capturedAt).getTime() },
-        games:0, wins:0, losses:0, kills:0, deaths:0, assists:0, dmg:0, score:0
-      };
-    }
+    if (!snaps.length) return;
+    if (!state.players[canon]) state.players[canon] = {
+      niceNames:{}, games:0, wins:0, losses:0, kills:0, deaths:0, assists:0, dmg:0, score:0
+    };
+    const last = snaps[snaps.length - 1];
+    const name = last.user && (last.user.displayName || last.user.username);
+    if (!name) return;
+    const rec = state.players[canon];
+    const ts = new Date(last.capturedAt).getTime();
+    if (!rec.niceNames[name] || ts > rec.niceNames[name]) rec.niceNames[name] = ts;
   });
   // Renommages manuels (voir player-names.js) : appliqués en dernier, après agrégation
   // complète des parties et des snapshots ci-dessus, pour toujours l'emporter.
