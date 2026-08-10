@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { apiGet, apiSend, loadFromServer } from './api.js';
-import { roleLabel, resolvePlayerName, fmtDate } from './format.js';
-import { linkPlayers, unlinkPlayer } from './player-links.js';
+import { roleLabel, resolvePlayerName, nameFreshness, fmtDate } from './format.js';
+import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames } from './team-detect.js';
 import { fetchBackups, backupNow } from './backups.js';
@@ -482,6 +482,68 @@ function wireBackupsManager() {
   }
 }
 
+// ================= ANALYSE DES JOUEURS (admin) =================
+// Rapport de contrôle sur les données déjà importées : pour chaque joueur connu, quel
+// pseudo est actuellement retenu, d'où il vient (nameFreshness() dans format.js réutilise
+// exactement le mécanisme de rebuildPlayerIndex()/latestNiceName() — même poids, même
+// tri, aucune logique dupliquée) et depuis quand, pour vérifier d'un coup d'œil que
+// l'actualisation automatique des pseudos (voir player-index.js) a bien tourné sur
+// l'ensemble de la base, sans avoir à rouvrir chaque profil un par un.
+function renderPlayerAnalysisPanel() {
+  const rows = Object.entries(state.players).map(([uid, rec]) => ({
+    uid,
+    rec,
+    info: nameFreshness(rec),
+    snapshotCount: [uid, ...aliasesOf(uid)].reduce((sum, id) => sum + (state.playerStatsSnapshots[id] || []).length, 0),
+    aliasCount: aliasesOf(uid).length,
+  })).sort((a, b) => b.rec.games - a.rec.games);
+
+  if (!rows.length) {
+    return `<div style="color:var(--muted);font-size:13px;">Aucun joueur connu pour l'instant.</div>`;
+  }
+
+  const forcedCount = rows.filter(r => r.info.forced).length;
+  const summary = `${rows.length} joueur(s) connu(s) — ${rows.length - forcedCount} avec pseudo auto-actualisé, ${forcedCount} avec un renommage forcé.`;
+
+  const trs = rows.map(({ uid, rec, info, snapshotCount, aliasCount }) => `
+    <tr>
+      <td class="name-cell">${info.name} <span style="color:var(--muted);font-size:11px;">(#${uid})</span></td>
+      <td>${info.forced ? '<span style="color:var(--gold);">Renommage forcé</span>' : (info.asOf ? fmtDate(info.asOf) : '—')}</td>
+      <td class="num">${rec.games}</td>
+      <td class="num">${snapshotCount}</td>
+      <td class="num">${aliasCount || '—'}</td>
+    </tr>`).join('');
+
+  return `
+    <div style="color:var(--muted);font-size:12px;margin-bottom:10px;">${summary}</div>
+    <div class="table-scroll"><table class="roster">
+      <thead><tr>
+        <th>Joueur</th><th>Pseudo à jour depuis</th><th class="num">Parties</th>
+        <th class="num">Captures profil</th><th class="num">Comptes fusionnés</th>
+      </tr></thead>
+      <tbody>${trs}</tbody>
+    </table></div>`;
+}
+
+// Le pseudo est déjà recalculé à chaque chargement (rebuildPlayerIndex() tourne au
+// démarrage et après chaque import/fusion/renommage) — ce bouton ne fait donc que
+// redemander l'état complet au serveur puis relancer ce même recalcul, utile si les
+// données ont changé depuis ailleurs (import concurrent, autre onglet) sans qu'il y ait
+// besoin d'une route ou d'une logique d'analyse séparée côté serveur.
+function wirePlayerAnalysisManager() {
+  const btn = document.getElementById('refreshAnalysisBtn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await reloadAndRerenderApp();
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  }
+}
+
 // Point d'entrée de l'onglet Comptes.
 export async function renderComptes() {
   const container = document.getElementById('comptesContent');
@@ -522,6 +584,19 @@ export async function renderComptes() {
       ${renderPlayerNameForm()}
     </div>
     <div class="team-manager">
+      <div class="section-title-row">
+        <div class="section-title">Analyse des joueurs</div>
+        <button class="btn small" id="refreshAnalysisBtn">Rafraîchir</button>
+      </div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        État actuel du pseudo de chaque joueur connu, recalculé sur l'ensemble des parties
+        et captures de profil déjà importées (le pseudo le plus récent des deux sources
+        l'emporte automatiquement) — vérifie ici que l'actualisation a bien pris en compte
+        tes dernières données.
+      </div>
+      ${renderPlayerAnalysisPanel()}
+    </div>
+    <div class="team-manager">
       <div class="section-title">Détection automatique d'équipes par pseudo</div>
       <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
         Détecte les équipes à partir des pseudos au format "TAGxJoueur" (ex: "BABOxViclegrand7")
@@ -536,6 +611,7 @@ export async function renderComptes() {
   wireUserManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
+  wirePlayerAnalysisManager();
   wireTeamDetectionManager();
   wireBackupsManager();
 }

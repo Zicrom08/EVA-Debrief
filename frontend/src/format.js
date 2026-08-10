@@ -45,6 +45,16 @@ export function latestNiceName(rec){
   return Object.entries(rec.niceNames).sort((a,b)=>b[1]-a[1])[0][0];
 }
 
+// Explique la provenance du pseudo gagnant, pour le panneau d'analyse admin (voir
+// comptes.js) : le poids qui a fait gagner ce pseudo EST son horodatage (voir
+// rebuildPlayerIndex()), donc pas besoin de tracer la source séparément — seul le cas
+// Infinity (renommage forcé, voir player-names.js) n'a pas de date réelle à afficher.
+export function nameFreshness(rec){
+  const [name, weight] = Object.entries(rec.niceNames).sort((a,b)=>b[1]-a[1])[0];
+  if (weight === Infinity) return { name, forced: true, asOf: null };
+  return { name, forced: false, asOf: new Date(weight).toISOString() };
+}
+
 // Retrouve le nom d'affichage d'un joueur par son userId, quelle que soit la source
 // disponible : depuis juillet 2026, les parties importées (nouveau format d'historique
 // EVA) ne portent plus aucun pseudo (p.data.niceName a disparu), donc state.players ne

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { hasFullMatchData, resolvePlayerName, findPlayerInGame, latestNiceName, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
+import { hasFullMatchData, resolvePlayerName, findPlayerInGame, latestNiceName, nameFreshness, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
 
 test('findPlayerInGame finds a player by userId with loose equality (string/number mix)', () => {
   const g = { players: [{ userId: '123', data: {} }] };
@@ -21,6 +21,18 @@ test('findPlayerInGame matches through a merged player alias, in either directio
 test('latestNiceName picks the highest-weighted niceName (a game timestamp in practice, or Infinity for a forced rename)', () => {
   assert.equal(latestNiceName({ niceNames: { OldTag: 1000, NewTag: 2000 } }), 'NewTag');
   assert.equal(latestNiceName({ niceNames: { OldTag: 2000, ForcedName: Infinity } }), 'ForcedName');
+});
+
+test('nameFreshness reports the winning niceName\'s own timestamp as its "as of" date, and flags Infinity as a forced rename', () => {
+  const auto = nameFreshness({ niceNames: { OldTag: new Date('2026-01-01').getTime(), NewTag: new Date('2026-06-01').getTime() } });
+  assert.equal(auto.name, 'NewTag');
+  assert.equal(auto.forced, false);
+  assert.equal(auto.asOf, new Date('2026-06-01').toISOString());
+
+  const forced = nameFreshness({ niceNames: { AutoTag: new Date('2026-06-01').getTime(), ForcedName: Infinity } });
+  assert.equal(forced.name, 'ForcedName');
+  assert.equal(forced.forced, true);
+  assert.equal(forced.asOf, null);
 });
 
 test('hasFullMatchData is true only when g.data exists AND at least one player has data.team', () => {
