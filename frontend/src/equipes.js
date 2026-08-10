@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { findPlayerInGame, mostCommonName } from './format.js';
+import { findPlayerInGame, latestNiceName } from './format.js';
 import { filteredGamesArray } from './game-filters.js';
 import { apiGet, apiSend } from './api.js';
 import { persistUiPrefs } from './ui-prefs.js';
@@ -13,7 +13,7 @@ function teamId() {
 // Liste tous les joueurs connus (au moins une partie importée), triés par nombre de parties.
 function allKnownPlayers() {
   // joueurs vus dans l'historique (avec au moins une partie) + ceux qui n'ont que des stats de profil
-  return Object.entries(state.players).map(([uid, rec]) => ({ uid, name: mostCommonName(rec), games: rec.games }));
+  return Object.entries(state.players).map(([uid, rec]) => ({ uid, name: latestNiceName(rec), games: rec.games }));
 }
 
 // Agrège les stats de tous les membres d'une équipe personnalisée sur les parties filtrées.
@@ -37,7 +37,7 @@ export function computeTeamAggregate(memberUids, games) {
     // canonicalUid() : les équipes créées avant une fusion peuvent encore lister un
     // alias directement (state.players n'est indexé, lui, que par identifiant canonique).
     const rec = state.players[canonicalUid(uid)];
-    const name = rec ? mostCommonName(rec) : (myGames[0] && findPlayerInGame(myGames[0], uid).data.niceName) || '?';
+    const name = rec ? latestNiceName(rec) : (myGames[0] && findPlayerInGame(myGames[0], uid).data.niceName) || '?';
     perMember.push({
       uid, name, n: mN, wins: mWins, losses: mLosses,
       winrate: mN ? Math.round((mWins / mN) * 100) : 0,

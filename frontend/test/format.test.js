@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { hasFullMatchData, resolvePlayerName, findPlayerInGame, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
+import { hasFullMatchData, resolvePlayerName, findPlayerInGame, latestNiceName, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
 
 test('findPlayerInGame finds a player by userId with loose equality (string/number mix)', () => {
   const g = { players: [{ userId: '123', data: {} }] };
@@ -16,6 +16,11 @@ test('findPlayerInGame matches through a merged player alias, in either directio
   assert.equal(findPlayerInGame(g, 'primary1'), g.players[0]); // recherche par primary, trouve l'alias qui a joué
   assert.equal(findPlayerInGame(g, 'alias1'), g.players[0]);
   state.playerLinks = {};
+});
+
+test('latestNiceName picks the highest-weighted niceName (a game timestamp in practice, or Infinity for a forced rename)', () => {
+  assert.equal(latestNiceName({ niceNames: { OldTag: 1000, NewTag: 2000 } }), 'NewTag');
+  assert.equal(latestNiceName({ niceNames: { OldTag: 2000, ForcedName: Infinity } }), 'ForcedName');
 });
 
 test('hasFullMatchData is true only when g.data exists AND at least one player has data.team', () => {
