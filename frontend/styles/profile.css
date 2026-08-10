@@ -1,7 +1,7 @@
 .profile-wrap{padding:24px 32px;max-width:1440px;}
 .profile-layout{display:flex; gap:28px; align-items:flex-start;}
 .profile-main{flex:1; min-width:0; max-width:920px;}
-.profile-compare{width:380px; flex-shrink:0;}
+.profile-compare{width:420px; flex-shrink:0;}
 .compare-panel-card{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px 20px;}
 .compare-select{
   width:100%; background:var(--panel-2); border:1px solid var(--line); border-radius:8px;

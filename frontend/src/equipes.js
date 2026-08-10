@@ -181,8 +181,12 @@ function renderTeamMemberTable(agg) {
     </table></div>`;
 }
 
-// Construit une ligne de comparaison à deux valeurs avec barre colorée proportionnelle (utilisé par Équipes et par le panneau de comparaison du Profil).
-export function compareRow(label, valA, valB, fmt, higherIsBetter) {
+// Construit une ligne de comparaison à deux valeurs avec barre colorée proportionnelle
+// (utilisé par Équipes et par le panneau de comparaison du Profil). `diffFmt` est optionnel
+// et rétrocompatible : omis (comme dans tous les appels d'Équipes), la colonne centrale
+// reste un `<div></div>` vide comme avant — seul le comparatif Profil le renseigne pour
+// afficher l'écart (valB - valA) entre les deux joueurs.
+export function compareRow(label, valA, valB, fmt, higherIsBetter, diffFmt) {
   fmt = fmt || (v => v);
   higherIsBetter = higherIsBetter !== false;
   const numA = parseFloat(valA), numB = parseFloat(valB);
@@ -191,10 +195,11 @@ export function compareRow(label, valA, valB, fmt, higherIsBetter) {
   const pctB = Math.min(100, Math.round((Math.abs(numB) / maxAbs) * 100));
   const aWins = higherIsBetter ? numA > numB : numA < numB;
   const bWins = higherIsBetter ? numB > numA : numB < numA;
+  const diffCell = diffFmt ? `<div class="metric-diff">${diffFmt(numB - numA)}</div>` : `<div></div>`;
   return `
     <div class="metric-label">${label}</div>
     <div class="metric-val" style="color:${aWins?'var(--win)':'var(--text)'}">${fmt(valA)}</div>
-    <div></div>
+    ${diffCell}
     <div class="metric-val" style="color:${bWins?'var(--win)':'var(--text)'}">${fmt(valB)}</div>
     <div class="metric-bar-wrap left"><div class="fill" style="width:${pctA}%;background:var(--alliance);"></div></div>
     <div></div>
