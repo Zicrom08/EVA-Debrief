@@ -1,4 +1,4 @@
-import { findPlayerInGame, resolvePlayerName } from '../format.js';
+import { findPlayerInGame, resolvePlayerName, hasFullMatchData } from '../format.js';
 import { computeSessions } from '../tendances.js';
 import { canonicalUid } from '../player-links.js';
 
@@ -454,6 +454,28 @@ export function computeRating(games, uid, baseline) {
   };
   const rating = Object.entries(RATING_WEIGHTS).reduce((sum, [key, w]) => sum + w * components[key], 0);
   return { rating: Math.round(rating * 100) / 100, n, components };
+}
+
+// Rating façon HLTV pour CHAQUE joueur d'UNE SEULE partie (voir computeRating ci-dessus,
+// même formule/pondération) — utilisé par l'onglet Historique pour noter chaque joueur
+// match par match. Contrairement au Profil/Comparatif (baseline = toute la période
+// filtrée, voir computeRatingBaseline appelée depuis analytics-view.js/profil/index.js),
+// la seule référence disponible pour "qui a bien joué CE match" est le lobby du jour
+// lui-même : la baseline est donc recalculée sur `[g]` uniquement. Renvoie une Map vide
+// pour une partie sans détail complet (voir hasFullMatchData côté format.js) plutôt que
+// des ratings basés sur des dégâts/score absents. Clé de la Map : userId canonique (voir
+// player-links.js) — l'appelant doit résoudre l'uid d'un joueur avec canonicalUid()
+// avant de lire dans cette Map.
+export function computeMatchRatings(g) {
+  const ratings = new Map();
+  if (!hasFullMatchData(g)) return ratings;
+  const baseline = computeRatingBaseline([g]);
+  (g.players || []).forEach(p => {
+    if (!p || !p.data) return;
+    const { rating } = computeRating([g], p.userId, baseline);
+    if (rating != null) ratings.set(canonicalUid(p.userId), rating);
+  });
+  return ratings;
 }
 
 // Stats d'efficacité : normalisées par mort plutôt que par partie, pour comparer des

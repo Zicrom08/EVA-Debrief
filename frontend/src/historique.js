@@ -2,6 +2,7 @@ import { state } from './state.js';
 import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
+import { computeMatchRatings } from './profil/compute.js';
 import { apiSend, loadFromServer } from './api.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
@@ -64,9 +65,12 @@ export function renderList(){
 }
 
 // Construit le tableau des joueurs d'une équipe pour la vue détail d'un match (classement par
-// score décroissant, mise en valeur du meilleur de l'équipe par colonne, et icône MVP sur le
-// meilleur joueur toutes équipes confondues — voir findMvp() dans format.js).
-export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid){
+// score décroissant, mise en valeur du meilleur de l'équipe par colonne, icône MVP sur le
+// meilleur joueur toutes équipes confondues — voir findMvp() dans format.js — et un Rating
+// façon HLTV par joueur — voir computeMatchRatings() dans profil/compute.js, `ratings` est
+// une Map userId canonique -> rating pour CETTE partie, calculée une seule fois par
+// renderDetail() et partagée entre les deux appels (alliance + rebels)).
+export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid, ratings){
   teamPlayers = teamPlayers.slice().sort((a,b)=>b.data.score - a.data.score);
 
   // Le meilleur de l'équipe sur chaque colonne numérique est mis en valeur dans la
@@ -89,6 +93,7 @@ export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid){
     const isMvp = mvpUid != null && canonicalUid(p.userId) === mvpUid;
     const acc = d.firedAccuracy||0;
     const name = d.niceName || resolvePlayerName(p.userId);
+    const rating = ratings ? ratings.get(canonicalUid(p.userId)) : null;
     return `
       <tr class="${isMe?'me':''}">
         <td><span class="match-rank-circle">${i+1}</span></td>
@@ -99,13 +104,14 @@ export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid){
         <td class="num ${acc===bestAcc && bestAcc>0 ? bestClass : ''}">${Math.round(acc*100)}%</td>
         <td class="num ${kdNum===bestKD && bestKD>0 ? bestClass : (kdNum>=1?'kd-good':'kd-bad')}">${kd}</td>
         <td class="num ${kdaNum===bestKDA && bestKDA>0 ? bestClass : (kdaNum>=1?'kd-good':'kd-bad')}">${kda}</td>
+        <td class="num ${rating==null ? '' : (rating>=1?'kd-good':'kd-bad')}">${rating==null ? '–' : rating.toFixed(2)}</td>
       </tr>`;
   }).join('');
 
   return `
     <div class="table-scroll"><table class="match-roster">
       <thead><tr>
-        <th></th><th>Joueur</th><th class="num">K / D / A</th><th class="num">Score</th><th class="num">Dégâts</th><th class="num">Précision</th><th class="num">K/D</th><th class="num">KDA</th>
+        <th></th><th>Joueur</th><th class="num">K / D / A</th><th class="num">Score</th><th class="num">Dégâts</th><th class="num">Précision</th><th class="num">K/D</th><th class="num">KDA</th><th class="num" title="Score de performance façon HLTV, calculé par rapport à la moyenne des joueurs de cette partie — 1.00 = performance moyenne du match">Rating</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -233,6 +239,7 @@ export function renderDetail(g){
   const rebels = (g.players||[]).filter(p=>p.data.team === teamBKey);
   const mvp = findMvp(g);
   const mvpUid = mvp ? canonicalUid(mvp.userId) : null;
+  const ratings = computeMatchRatings(g);
   const t1 = (gd.teamOne && gd.teamOne.score) || 0;
   const t2 = (gd.teamTwo && gd.teamTwo.score) || 0;
   const total = (t1 + t2) || 1;
@@ -275,11 +282,11 @@ export function renderDetail(g){
 
     <div class="match-team-block alliance">
       <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamAKey)}<span class="count">${alliance.length} joueur(s)</span></div>
-      ${renderMatchRosterTable(alliance, 'alliance', mvpUid)}
+      ${renderMatchRosterTable(alliance, 'alliance', mvpUid, ratings)}
     </div>
     <div class="match-team-block rebels">
       <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamBKey)}<span class="count">${rebels.length} joueur(s)</span></div>
-      ${renderMatchRosterTable(rebels, 'rebels', mvpUid)}
+      ${renderMatchRosterTable(rebels, 'rebels', mvpUid, ratings)}
     </div>
   `;
   wireDeleteButton(g);
