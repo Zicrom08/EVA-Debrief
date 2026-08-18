@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend } from '../src/profil/compute.js';
+import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend, computeMatchRatings } from '../src/profil/compute.js';
 
 test('computeDuoNemesisStats ignores games without a team assignment instead of treating everyone as a teammate', () => {
   // Regression test for the bug documented in CLAUDE.md: p.data.team === x.data.team
@@ -64,4 +64,24 @@ test('computeContributionTrend excludes games without a team assignment (same gu
   ];
   const trend = computeContributionTrend(games, 'me');
   assert.deepEqual(trend, [50]); // only the second game counted, 50% of the team's 100 total
+});
+
+test('computeMatchRatings rates a player above 1.00 for above-average performance within that single match\'s lobby', () => {
+  const g = {
+    data: {},
+    players: [
+      { userId: 'star', data: { team: 'ALLIANCE', kills: 20, deaths: 5, assists: 2, inflictedDamage: 4000, score: 3000 } },
+      { userId: 'average', data: { team: 'ALLIANCE', kills: 8, deaths: 8, assists: 2, inflictedDamage: 1500, score: 1200 } },
+      { userId: 'weak', data: { team: 'REBELS', kills: 2, deaths: 12, assists: 1, inflictedDamage: 500, score: 400 } },
+    ],
+  };
+  const ratings = computeMatchRatings(g);
+  assert.ok(ratings.get('star') > 1);
+  assert.ok(ratings.get('weak') < 1);
+});
+
+test('computeMatchRatings returns an empty Map for a game without full match data (reduced/list-only format)', () => {
+  const g = { players: [{ userId: 'me', data: { outcome: 'Victory', kills: 5, deaths: 2, assists: 1 } }] };
+  const ratings = computeMatchRatings(g);
+  assert.equal(ratings.size, 0);
 });
