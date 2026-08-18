@@ -87,6 +87,21 @@ export function hasFullMatchData(g) {
   return !!(g.data && (g.players || []).some(p => p.data && p.data.team));
 }
 
+// Retrouve le MVP d'une partie : le joueur avec le meilleur score toutes équipes
+// confondues pour une partie à détail complet (voir hasFullMatchData) — le score
+// n'existe plus sur le format réduit (nouvel historique EVA, juillet 2026), donc on
+// retombe sur le flag isMvp fourni par EVA elle-même sur ce format, et en dernier
+// recours sur le plus de kills si même ce flag est absent (ex: capture manuelle).
+export function findMvp(g) {
+  const players = g.players || [];
+  if (!players.length) return null;
+  if (hasFullMatchData(g)) {
+    return players.reduce((best, p) => (p.data && p.data.score || 0) > (best.data && best.data.score || 0) ? p : best);
+  }
+  return players.find(p => p.isMvp)
+    || players.reduce((best, p) => (p.data && p.data.kills || 0) > (best.data && best.data.kills || 0) ? p : best);
+}
+
 // Formate un nombre en notation française, avec un nombre de décimales personnalisable.
 export function niceNum(n, decimals) {
   if (n == null || isNaN(n)) return '–';

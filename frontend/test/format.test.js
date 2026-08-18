@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { hasFullMatchData, resolvePlayerName, findPlayerInGame, latestNiceName, nameFreshness, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
+import { hasFullMatchData, findMvp, resolvePlayerName, findPlayerInGame, latestNiceName, nameFreshness, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
 
 test('findPlayerInGame finds a player by userId with loose equality (string/number mix)', () => {
   const g = { players: [{ userId: '123', data: {} }] };
@@ -40,6 +40,41 @@ test('hasFullMatchData is true only when g.data exists AND at least one player h
   assert.equal(hasFullMatchData({ data: {}, players: [{ data: { outcome: 'Victory' } }] }), false); // list-only game, no team
   assert.equal(hasFullMatchData({ players: [{ data: { team: 'Alliance' } }] }), false); // no g.data at all
   assert.equal(hasFullMatchData({ data: {}, players: [] }), false);
+});
+
+test('findMvp picks the highest score across both teams on a full-match-data game', () => {
+  const g = {
+    data: {},
+    players: [
+      { userId: 'u1', data: { team: 'ALLIANCE', score: 1200 } },
+      { userId: 'u2', data: { team: 'ALLIANCE', score: 1800 } },
+      { userId: 'u3', data: { team: 'REBELS', score: 1500 } },
+    ],
+  };
+  assert.equal(findMvp(g).userId, 'u2');
+});
+
+test('findMvp uses EVA\'s isMvp flag on a reduced (list-only) game, falling back to most kills if absent', () => {
+  const flagged = {
+    players: [
+      { userId: 'u1', isMvp: false, data: { outcome: 'Victory', kills: 10 } },
+      { userId: 'u2', isMvp: true, data: { outcome: 'Victory', kills: 3 } },
+    ],
+  };
+  assert.equal(findMvp(flagged).userId, 'u2');
+
+  const unflagged = {
+    players: [
+      { userId: 'u1', data: { outcome: 'Victory', kills: 10 } },
+      { userId: 'u2', data: { outcome: 'Defeat', kills: 3 } },
+    ],
+  };
+  assert.equal(findMvp(unflagged).userId, 'u1');
+});
+
+test('findMvp returns null for a game with no players', () => {
+  assert.equal(findMvp({ players: [] }), null);
+  assert.equal(findMvp({}), null);
 });
 
 test('resolvePlayerName falls back from known niceName -> profile snapshot displayName -> raw id', () => {

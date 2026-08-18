@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData } from './format.js';
+import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
 import { apiSend, loadFromServer } from './api.js';
@@ -27,6 +27,8 @@ export function renderList(){
     const total = (t1 + t2) || 1;
     const aPct = Math.round((t1/total)*100);
     const rPct = 100-aPct;
+    const mvp = findMvp(g);
+    const mvpName = mvp ? resolvePlayerName(mvp.userId) : null;
 
     const row = document.createElement('div');
     row.className = 'game-row' + (g.id === state.activeGameId ? ' active' : '');
@@ -46,6 +48,7 @@ export function renderList(){
         <div class="score-bar"><div class="a" style="width:${aPct}%"></div><div class="r" style="width:${rPct}%"></div></div>
         <span style="color:var(--rebels)">${t2}</span>
       </div>` : ''}
+      ${mvpName ? `<div class="mvp-line"><span class="mvp-icon" title="MVP">★</span>${mvpName}</div>` : ''}
     `;
     row.addEventListener('click', ()=>{
       state.activeGameId = g.id;
@@ -60,8 +63,10 @@ export function renderList(){
   }
 }
 
-// Construit le tableau des joueurs d'une équipe pour la vue détail d'un match (mise en valeur du meilleur de l'équipe par colonne).
-export function renderMatchRosterTable(teamPlayers, teamKey){
+// Construit le tableau des joueurs d'une équipe pour la vue détail d'un match (classement par
+// score décroissant, mise en valeur du meilleur de l'équipe par colonne, et icône MVP sur le
+// meilleur joueur toutes équipes confondues — voir findMvp() dans format.js).
+export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid){
   teamPlayers = teamPlayers.slice().sort((a,b)=>b.data.score - a.data.score);
 
   // Le meilleur de l'équipe sur chaque colonne numérique est mis en valeur dans la
@@ -81,12 +86,13 @@ export function renderMatchRosterTable(teamPlayers, teamKey){
     const kdaNum = d.deaths ? (d.kills+(d.assists||0))/d.deaths : (d.kills+(d.assists||0));
     const kda = kdaNum.toFixed(2);
     const isMe = canonicalUid(p.userId) === canonicalUid(state.currentUid);
+    const isMvp = mvpUid != null && canonicalUid(p.userId) === mvpUid;
     const acc = d.firedAccuracy||0;
     const name = d.niceName || resolvePlayerName(p.userId);
     return `
       <tr class="${isMe?'me':''}">
         <td><span class="match-rank-circle">${i+1}</span></td>
-        <td class="name-cell">${name}${isMe?' <span style="color:var(--gold);font-size:11px;">(toi)</span>':''}</td>
+        <td class="name-cell">${isMvp?'<span class="mvp-icon" title="MVP">★</span>':''}${name}${isMe?' <span style="color:var(--gold);font-size:11px;">(toi)</span>':''}</td>
         <td class="num">${d.kills} / ${d.deaths} / ${d.assists||0}</td>
         <td class="num ${d.score===bestScore && bestScore>0 ? bestClass : ''}">${d.score}</td>
         <td class="num ${(d.inflictedDamage||0)===bestDmg && bestDmg>0 ? bestClass : ''}">${(d.inflictedDamage||0).toLocaleString('fr-FR')}</td>
@@ -140,15 +146,18 @@ function wireDeleteButton(g) {
 // blocs d'équipe, puisqu'on ne sait plus qui était dans quelle équipe.
 function renderSimpleMatchDetail(g, self) {
   const roster = (g.players || []).slice().sort((a, b) => (b.data.kills || 0) - (a.data.kills || 0));
+  const mvp = findMvp(g);
+  const mvpUid = mvp ? canonicalUid(mvp.userId) : null;
   const rows = roster.map(p => {
     const d = p.data;
     const kdNum = d.deaths ? d.kills / d.deaths : (d.kills || 0);
     const kdaNum = d.deaths ? (d.kills + (d.assists || 0)) / d.deaths : (d.kills + (d.assists || 0));
     const isMe = canonicalUid(p.userId) === canonicalUid(state.currentUid);
+    const isMvp = mvpUid != null && canonicalUid(p.userId) === mvpUid;
     const name = resolvePlayerName(p.userId);
     return `
       <tr class="${isMe ? 'me' : ''}">
-        <td>${p.isMvp ? '<span title="MVP" style="color:var(--gold);">★</span>' : ''}</td>
+        <td>${isMvp ? '<span class="mvp-icon" title="MVP">★</span>' : ''}</td>
         <td class="name-cell">${name}${isMe ? ' <span style="color:var(--gold);font-size:11px;">(toi)</span>' : ''}</td>
         <td class="num ${d.outcome === 'Victory' ? 'win' : 'loss'}">${d.outcome === 'Victory' ? 'Victoire' : 'Défaite'}</td>
         <td class="num">${d.kills || 0} / ${d.deaths || 0} / ${d.assists || 0}</td>
@@ -222,6 +231,8 @@ export function renderDetail(g){
   }
   const alliance = (g.players||[]).filter(p=>p.data.team === teamAKey);
   const rebels = (g.players||[]).filter(p=>p.data.team === teamBKey);
+  const mvp = findMvp(g);
+  const mvpUid = mvp ? canonicalUid(mvp.userId) : null;
   const t1 = (gd.teamOne && gd.teamOne.score) || 0;
   const t2 = (gd.teamTwo && gd.teamTwo.score) || 0;
   const total = (t1 + t2) || 1;
@@ -264,11 +275,11 @@ export function renderDetail(g){
 
     <div class="match-team-block alliance">
       <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamAKey)}<span class="count">${alliance.length} joueur(s)</span></div>
-      ${renderMatchRosterTable(alliance, 'alliance')}
+      ${renderMatchRosterTable(alliance, 'alliance', mvpUid)}
     </div>
     <div class="match-team-block rebels">
       <div class="match-team-header"><span class="dot"></span>${teamDisplayName(teamBKey)}<span class="count">${rebels.length} joueur(s)</span></div>
-      ${renderMatchRosterTable(rebels, 'rebels')}
+      ${renderMatchRosterTable(rebels, 'rebels', mvpUid)}
     </div>
   `;
   wireDeleteButton(g);

@@ -17,6 +17,7 @@
 .outcome-tag.na{background:rgba(124,133,152,0.15);color:var(--muted);}
 .game-row .meta-line{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);}
 .game-row .score-line{display:flex;align-items:center;gap:8px;font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:13px;}
+.game-row .mvp-line{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--gold);font-weight:600;}
 .score-bar{flex:1;height:5px;border-radius:3px;overflow:hidden;display:flex;background:#000;}
 .score-bar .a{background:var(--alliance);height:100%;}
 .score-bar .r{background:var(--rebels);height:100%;}
