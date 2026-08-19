@@ -28,3 +28,6 @@ table.match-roster tr.me td.name-cell{color:var(--gold);}
 table.match-roster tr:hover{background:rgba(255,255,255,0.035);}
 table.match-roster td.best-alliance{color:var(--alliance);font-weight:700;}
 table.match-roster td.best-rebels{color:var(--rebels);font-weight:700;}
+table.match-roster th.sortable{cursor:pointer;user-select:none;}
+table.match-roster th.sortable:hover{color:var(--text);}
+table.match-roster th.sortable.active{color:var(--gold);}
