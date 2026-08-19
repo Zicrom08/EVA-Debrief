@@ -64,14 +64,76 @@ export function renderList(){
   }
 }
 
-// Construit le tableau des joueurs d'une équipe pour la vue détail d'un match (classement par
-// score décroissant, mise en valeur du meilleur de l'équipe par colonne, icône MVP sur le
-// meilleur joueur toutes équipes confondues — voir findMvp() dans format.js — et un Rating
-// façon HLTV par joueur — voir computeMatchRatings() dans profil/compute.js, `ratings` est
-// une Map userId canonique -> rating pour CETTE partie, calculée une seule fois par
-// renderDetail() et partagée entre les deux appels (alliance + rebels)).
+// Colonnes triables du tableau de roster complet (score, dégâts, précision, K/D, KDA,
+// Rating) — décrivent à la fois l'en-tête cliquable et la valeur utilisée pour trier (voir
+// sortRosterPlayers/sortHeaderHtml). La colonne "K / D / A" (triplet affiché tel quel) se
+// trie sur les kills, comme les tableaux de stats esport habituels.
+const ROSTER_SORT_COLUMNS = [
+  { key: 'kills', label: 'K / D / A', getValue: p => p.data.kills || 0 },
+  { key: 'score', label: 'Score', getValue: p => p.data.score || 0 },
+  { key: 'dmg', label: 'Dégâts', getValue: p => p.data.inflictedDamage || 0 },
+  { key: 'acc', label: 'Précision', getValue: p => p.data.firedAccuracy || 0 },
+  { key: 'kd', label: 'K/D', getValue: p => p.data.deaths ? p.data.kills / p.data.deaths : (p.data.kills || 0) },
+  { key: 'kda', label: 'KDA', getValue: p => p.data.deaths ? (p.data.kills + (p.data.assists || 0)) / p.data.deaths : (p.data.kills + (p.data.assists || 0)) },
+  {
+    key: 'rating', label: 'Rating',
+    title: 'Score de performance façon HLTV, calculé par rapport à la moyenne des joueurs de cette partie — 1.00 = performance moyenne du match (cliquer pour trier)',
+    getValue: (p, ratings) => (ratings && ratings.get(canonicalUid(p.userId))) ?? -Infinity,
+  },
+];
+
+// Même principe pour la vue détail réduite (voir renderSimpleMatchDetail) : ni score, ni
+// dégâts, ni précision, ni Rating (indisponibles sur ce format, voir hasFullMatchData).
+const SIMPLE_ROSTER_SORT_COLUMNS = [
+  { key: 'kills', label: 'K / D / A', getValue: p => p.data.kills || 0 },
+  { key: 'kd', label: 'K/D', getValue: p => p.data.deaths ? p.data.kills / p.data.deaths : (p.data.kills || 0) },
+  { key: 'kda', label: 'KDA', getValue: p => p.data.deaths ? (p.data.kills + (p.data.assists || 0)) / p.data.deaths : (p.data.kills + (p.data.assists || 0)) },
+];
+
+// Trie `players` selon `sort` (voir state.matchRosterSort) contre `columns` (l'un des deux
+// tableaux ci-dessus). Retombe sur la première colonne du tableau si `sort.key` ne
+// correspond à aucune colonne connue de CE tableau — cas normal en passant d'une partie à
+// détail complet à une partie réduite (ou vice-versa) sans réinitialiser l'état de tri.
+function sortRosterPlayers(players, columns, sort, ratings) {
+  const col = columns.find(c => c.key === sort.key) || columns[0];
+  const mult = sort.dir === 'asc' ? 1 : -1;
+  return players.slice().sort((a, b) => mult * (col.getValue(a, ratings) - col.getValue(b, ratings)));
+}
+
+// En-tête de colonne cliquable avec indicateur de tri actif (▼ décroissant / ▲ croissant).
+function sortHeaderHtml(col, sort) {
+  const active = sort.key === col.key;
+  const arrow = active ? (sort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+  const title = col.title || `Trier par ${col.label}`;
+  return `<th class="num sortable${active ? ' active' : ''}" data-sort-key="${col.key}" title="${title}">${col.label}${arrow}</th>`;
+}
+
+// Reclique un en-tête triable (l'un ou l'autre tableau, voir ROSTER_SORT_COLUMNS /
+// SIMPLE_ROSTER_SORT_COLUMNS) : même colonne -> inverse la direction, colonne différente ->
+// re-sélectionne en décroissant (comportement standard "meilleur en premier"). Un seul état
+// de tri partagé entre alliance/rebels (et entre parties) — voir state.matchRosterSort dans
+// state.js — donc re-rendre toute la vue détail pour que les deux tableaux restent alignés.
+function wireRosterSortHeaders(g) {
+  document.querySelectorAll('#detail th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      const current = state.matchRosterSort;
+      state.matchRosterSort = { key, dir: current.key === key && current.dir === 'desc' ? 'asc' : 'desc' };
+      renderDetail(g);
+    });
+  });
+}
+
+// Construit le tableau des joueurs d'une équipe pour la vue détail d'un match (tri par
+// colonne cliquable — voir state.matchRosterSort/ROSTER_SORT_COLUMNS —, mise en valeur du
+// meilleur de l'équipe par colonne, icône MVP sur le meilleur joueur toutes équipes
+// confondues — voir findMvp() dans format.js — et un Rating façon HLTV par joueur — voir
+// computeMatchRatings() dans profil/compute.js, `ratings` est une Map userId canonique ->
+// rating pour CETTE partie, calculée une seule fois par renderDetail() et partagée entre
+// les deux appels (alliance + rebels)).
 export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid, ratings){
-  teamPlayers = teamPlayers.slice().sort((a,b)=>b.data.score - a.data.score);
+  const sort = state.matchRosterSort;
+  teamPlayers = sortRosterPlayers(teamPlayers, ROSTER_SORT_COLUMNS, sort, ratings);
 
   // Le meilleur de l'équipe sur chaque colonne numérique est mis en valeur dans la
   // couleur de l'équipe — repère visuel rapide, à défaut d'avoir les stats "maison"
@@ -111,7 +173,7 @@ export function renderMatchRosterTable(teamPlayers, teamKey, mvpUid, ratings){
   return `
     <div class="table-scroll"><table class="match-roster">
       <thead><tr>
-        <th></th><th>Joueur</th><th class="num">K / D / A</th><th class="num">Score</th><th class="num">Dégâts</th><th class="num">Précision</th><th class="num">K/D</th><th class="num">KDA</th><th class="num" title="Score de performance façon HLTV, calculé par rapport à la moyenne des joueurs de cette partie — 1.00 = performance moyenne du match">Rating</th>
+        <th></th><th>Joueur</th>${ROSTER_SORT_COLUMNS.map(col => sortHeaderHtml(col, sort)).join('')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -151,7 +213,8 @@ function wireDeleteButton(g) {
 // dégâts, précision ni assignation Alliance/Rebels). Un seul classement plutôt que deux
 // blocs d'équipe, puisqu'on ne sait plus qui était dans quelle équipe.
 function renderSimpleMatchDetail(g, self) {
-  const roster = (g.players || []).slice().sort((a, b) => (b.data.kills || 0) - (a.data.kills || 0));
+  const sort = state.matchRosterSort;
+  const roster = sortRosterPlayers(g.players || [], SIMPLE_ROSTER_SORT_COLUMNS, sort, null);
   const mvp = findMvp(g);
   const mvpUid = mvp ? canonicalUid(mvp.userId) : null;
   const rows = roster.map(p => {
@@ -197,7 +260,7 @@ function renderSimpleMatchDetail(g, self) {
 
     <div class="table-scroll"><table class="match-roster">
       <thead><tr>
-        <th></th><th>Joueur</th><th class="num">Résultat</th><th class="num">K / D / A</th><th class="num">K/D</th><th class="num">KDA</th>
+        <th></th><th>Joueur</th><th class="num">Résultat</th>${SIMPLE_ROSTER_SORT_COLUMNS.map(col => sortHeaderHtml(col, sort)).join('')}
       </tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
@@ -219,6 +282,7 @@ export function renderDetail(g){
   if (!hasFullMatchData(g)) {
     document.getElementById('detail').innerHTML = renderSimpleMatchDetail(g, self);
     wireDeleteButton(g);
+    wireRosterSortHeaders(g);
     return;
   }
 
@@ -290,4 +354,5 @@ export function renderDetail(g){
     </div>
   `;
   wireDeleteButton(g);
+  wireRosterSortHeaders(g);
 }

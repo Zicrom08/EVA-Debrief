@@ -37,4 +37,5 @@ export const state = {
   profileCompareUid: null,    // joueur choisi pour la comparaison dans l'onglet Profil (optionnel)
   mapDeepDiveSelection: null, // nom de la carte sélectionnée pour le "focus carte" du Profil
   profileMetric: 'kd',        // 'kd' | 'dmg' | 'score' | 'acc' — métrique affichée dans les graphiques de progression du Profil
+  matchRosterSort: { key: 'score', dir: 'desc' }, // colonne/direction de tri du tableau de roster d'une partie (onglet Historique, voir historique.js) — 'score'/'desc' reproduit le tri par défaut d'origine
 };
