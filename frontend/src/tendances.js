@@ -1,6 +1,7 @@
 import { state } from './state.js';
 import { fmtDate, findPlayerInGame } from './format.js';
 import { filteredGamesArray } from './game-filters.js';
+import { buildLineChart } from './profil/charts.js';
 
 // ================= TENDANCES (sessions / months from game history) =================
 export function computeSessions(games, uid, gapMinutes) {
@@ -50,14 +51,79 @@ export function aggregateGames(games, uid) {
   };
 }
 
-// Construit l'onglet Tendances (agrégats par séance de jeu ou par mois).
+// Construit les 4 graphiques d'évolution de l'onglet Tendances (taux de victoire, K/D,
+// dégâts moyens, score moyen) à partir des lignes déjà agrégées par séance/mois (voir
+// renderTrends) — `rows` y est trié du plus récent au plus ancien pour le tableau, donc on
+// le parcourt à l'envers ici pour afficher les courbes chronologiquement (gauche = plus
+// ancien), comme le graphique de progression du Profil (voir buildTrendChart). Moins de 2
+// points ne permet pas de tracer une courbe utile — on affiche un message à la place plutôt
+// qu'un graphique dégénéré (même garde que renderMapDeepDive côté analytics-view.js).
+function buildTrendCharts(rows) {
+  const chrono = rows.slice().reverse();
+  const unit = state.trendMode === 'session' ? 'séance' : 'mois';
+  const tooFew = '<div class="hl-empty">Pas assez de données pour une courbe (2 minimum).</div>';
+
+  const winrateVals = chrono.map(r => r.agg.winrate);
+  const kdVals = chrono.map(r => Number(r.agg.kd));
+  const dmgVals = chrono.map(r => r.agg.avgDmg);
+  const scoreVals = chrono.map(r => r.agg.avgScore);
+
+  const winrateChart = winrateVals.length >= 2 ? buildLineChart(winrateVals, {
+    color: 'var(--win)', yMin: 0, yMax: 100, unit: '%', decimals: 0, pixelHeight: 130,
+    refValue: 50, refLabel: '50% (équilibre)', fill: true,
+    legendLabel: `Taux de victoire par ${unit}`,
+  }) : tooFew;
+
+  const kdChart = kdVals.length >= 2 ? buildLineChart(kdVals, {
+    color: 'var(--gold)', yMin: 0, decimals: 2, pixelHeight: 130, fill: true,
+    refValue: 1, refLabel: '1.00',
+    legendLabel: `Ratio K/D par ${unit}`,
+  }) : tooFew;
+
+  const dmgChart = dmgVals.length >= 2 ? buildLineChart(dmgVals, {
+    color: 'var(--rebels)', yMin: 0, pixelHeight: 130, fill: true,
+    legendLabel: `Dégâts moyens par ${unit}`,
+  }) : tooFew;
+
+  const scoreChart = scoreVals.length >= 2 ? buildLineChart(scoreVals, {
+    color: 'var(--alliance)', yMin: 0, pixelHeight: 130, fill: true,
+    legendLabel: `Score moyen par ${unit}`,
+  }) : tooFew;
+
+  return `
+    <div class="analytics-grid-2">
+      <div>
+        <div class="section-title">Évolution du taux de victoire</div>
+        <div class="chart-card">${winrateChart}</div>
+      </div>
+      <div>
+        <div class="section-title">Évolution du ratio K/D</div>
+        <div class="chart-card">${kdChart}</div>
+      </div>
+    </div>
+    <div class="analytics-grid-2">
+      <div>
+        <div class="section-title">Évolution des dégâts moyens</div>
+        <div class="chart-card">${dmgChart}</div>
+      </div>
+      <div>
+        <div class="section-title">Évolution du score moyen</div>
+        <div class="chart-card">${scoreChart}</div>
+      </div>
+    </div>`;
+}
+
+// Construit l'onglet Tendances (agrégats par séance de jeu ou par mois, sous forme de
+// graphiques d'évolution puis de tableau détaillé).
 export function renderTrends() {
   const wrap = document.getElementById('trendTableWrap');
+  const chartsWrap = document.getElementById('trendCharts');
   const uid = state.currentUid;
   const games = filteredGamesArray();
 
   if (!uid || !games.some(g => findPlayerInGame(g, uid))) {
     wrap.innerHTML = '<div class="detail-empty">Aucune partie dans la période sélectionnée pour ce joueur.</div>';
+    if (chartsWrap) chartsWrap.innerHTML = '';
     return;
   }
 
@@ -103,6 +169,8 @@ export function renderTrends() {
       <td class="num">${r.agg.avgScore}</td>
     </tr>
   `).join('');
+
+  if (chartsWrap) chartsWrap.innerHTML = buildTrendCharts(rows);
 
   wrap.innerHTML = `
     <div class="table-scroll"><table class="roster">

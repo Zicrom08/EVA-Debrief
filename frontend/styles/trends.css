@@ -1,3 +1,6 @@
 .trends-wrap{padding:24px 32px;}
 .trends-toggle{display:flex;gap:8px;margin-bottom:18px;}
+.trend-charts{margin-bottom:26px;}
+.trend-charts .analytics-grid-2{margin-top:0;margin-bottom:24px;}
+.trend-charts .analytics-grid-2:last-child{margin-bottom:0;}
 .trend-table-wrap{overflow-x:auto;}
