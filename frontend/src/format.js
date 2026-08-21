@@ -87,6 +87,29 @@ export function hasFullMatchData(g) {
   return !!(g.data && (g.players || []).some(p => p.data && p.data.team));
 }
 
+// Sépare le roster d'une partie à détail complet en deux équipes. Les deux "clés" d'équipe
+// utilisées pour regrouper les joueurs : normalement gd.teamOne.name/gd.teamTwo.name valent
+// "ALLIANCE"/"REBELS", mais certaines captures les ont à null (bug ponctuel du collecteur),
+// et une partie privée peut porter un nom d'équipe personnalisé (ex: "HASHIRAS"/"ARISE") —
+// jamais de valeur supposée en dur, toujours dérivée de ce que la partie porte réellement.
+// Repli sur les deux valeurs distinctes de p.data.team trouvées sur le roster si l'un des
+// deux noms est absent (jamais une comparaison p.data.team === x.data.team non gardée —
+// undefined === undefined vaudrait true et regrouperait tout le monde dans la même équipe,
+// voir le bug historique documenté dans CLAUDE.md).
+export function deriveTeams(g) {
+  const gd = g.data || {};
+  let teamAKey = gd.teamOne && gd.teamOne.name;
+  let teamBKey = gd.teamTwo && gd.teamTwo.name;
+  if (teamAKey == null || teamBKey == null) {
+    const distinctTeams = Array.from(new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null)));
+    teamAKey = distinctTeams[0] ?? null;
+    teamBKey = distinctTeams[1] ?? null;
+  }
+  const teamA = (g.players || []).filter(p => p.data && p.data.team === teamAKey);
+  const teamB = (g.players || []).filter(p => p.data && p.data.team === teamBKey);
+  return { teamAKey, teamBKey, teamA, teamB };
+}
+
 // Retrouve le MVP d'une partie : le joueur avec le meilleur score toutes équipes
 // confondues pour une partie à détail complet (voir hasFullMatchData) — le score
 // n'existe plus sur le format réduit (nouvel historique EVA, juillet 2026), donc on

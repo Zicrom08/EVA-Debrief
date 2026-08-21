@@ -1,5 +1,5 @@
 .summary{
-  display:grid;grid-template-columns:repeat(6,1fr);gap:1px;
+  display:grid;grid-template-columns:repeat(7,1fr);gap:1px;
   background:var(--line);border-bottom:1px solid var(--line);
 }
 .summary .cell{background:var(--panel);padding:16px 20px;}
@@ -8,6 +8,9 @@
 .summary .cell .value.win{color:var(--win);}
 .summary .cell .value.loss{color:var(--loss);}
 .summary .cell .sub{font-size:11px;color:var(--muted);margin-top:4px;}
+/* Cellule de rang compétitif (voir shell.js::rankCellHtml) — pas filtrée par période comme
+   les autres .cell, accent visuel pour marquer cette différence de portée. */
+.summary .cell-rank{border-left:3px solid var(--gold);}
 
 /* ===== Tabs ===== */
 .tabbar{

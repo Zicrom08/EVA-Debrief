@@ -7,6 +7,7 @@ import { renderList } from './historique.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
+import { computeMmrHistory, gamesForMmrScope, mmrToTier } from './rank.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -50,19 +51,36 @@ function applyRolePermissions() {
   document.getElementById('comptesTabBtn').style.display = isAdmin ? '' : 'none';
 }
 
+// Cellule de rang compétitif de l'en-tête — INDÉPENDANTE de la période filtrée (voir
+// gamesForMmrScope() dans rank.js : le MMR ne suit que la sélection de saison, jamais une
+// période libre/custom), donc calculée à part et affichée même quand le joueur n'a aucune
+// partie DANS la période actuellement filtrée (voir les deux branches de renderSummary() plus
+// bas). Doit se distinguer visuellement des autres `.cell` (qui SONT filtrées par période) —
+// classe modificatrice `.cell-rank` + libellé qui porte la portée.
+function rankCellHtml() {
+  const { mmrByUid } = computeMmrHistory(gamesForMmrScope());
+  const mmr = mmrByUid.get(state.currentUid);
+  const label = state.selectedSeasonId != null ? 'Rang' : 'Rang (carrière)';
+  const value = mmr != null
+    ? (t => `<span class="tier-badge ${t.tierKey}">${t.name}</span> <span style="color:var(--muted);font-size:12px;">${Math.round(mmr)}</span>`)(mmrToTier(mmr))
+    : '<span style="color:var(--muted);">n/d</span>';
+  return `<div class="cell cell-rank"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+}
+
 // ================= SUMMARY =================
 export function renderSummary(){
   const box = document.getElementById('summary');
   if (!state.currentUid) { box.innerHTML = ''; return; }
   const games = filteredGamesArray().filter(g => findPlayerInGame(g, state.currentUid));
   if (!games.length) {
-    box.innerHTML = `<div class="cell" style="grid-column:1/-1;"><div class="label">Joueur sélectionné</div>
+    box.innerHTML = `${rankCellHtml()}<div class="cell" style="grid-column:span 6;"><div class="label">Joueur sélectionné</div>
       <div class="value" style="font-size:16px;color:var(--muted);">Aucune partie dans la période sélectionnée pour ce joueur.</div></div>`;
     return;
   }
   const agg = aggregateGames(games, state.currentUid);
 
   box.innerHTML = `
+    ${rankCellHtml()}
     <div class="cell"><div class="label">Parties jouées</div><div class="value">${agg.n}</div></div>
     <div class="cell"><div class="label">Victoires / Défaites</div>
       <div class="value"><span class="win">${agg.wins}</span> <span style="color:var(--muted)">/</span> <span class="loss">${agg.losses}</span></div></div>

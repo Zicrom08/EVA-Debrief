@@ -10,7 +10,8 @@ import {
   computeImpactScore, computeDamageTeamStats, computeRatingBaseline, computeRating,
 } from './compute.js';
 import { renderSeasonCard, renderEvolutionTable } from './season.js';
-import { renderGameAnalytics, attachProfileMetricButtons } from './analytics-view.js';
+import { renderGameAnalytics, attachProfileMetricButtons, renderRankSection } from './analytics-view.js';
+import { computeMmrHistory, gamesForMmrScope } from '../rank.js';
 
 // ================= PROFIL : point d'entrée =================
 export function renderProfil() {
@@ -57,6 +58,8 @@ export function renderProfilMain(uid) {
       (<code>getPlayerByUserId</code>) peut être capturée, via "+ Importer".
     </div>`;
   }
+
+  html += renderRankSection(uid);
 
   if (games.length >= 3) {
     html += renderGameAnalytics(games, uid);
@@ -141,6 +144,12 @@ export function renderProfilCompareDetails(uid) {
   const ratingBaseline = computeRatingBaseline(filteredGamesArray());
   const ratingA = computeRating(gamesA, uid, ratingBaseline);
   const ratingB = computeRating(gamesB, state.profileCompareUid, ratingBaseline);
+  // MMR indépendant de gamesA/gamesB (période filtrée) — voir gamesForMmrScope() dans
+  // rank.js, même principe que renderRankSection() : le rang ne suit que la sélection de
+  // saison, jamais une période libre.
+  const { mmrByUid } = computeMmrHistory(gamesForMmrScope());
+  const mmrA = mmrByUid.get(uid);
+  const mmrB = mmrByUid.get(state.profileCompareUid);
 
   const pct = v => v; // valeurs déjà formatées en chaîne "12%" au point d'appel
   const num = v => Number(v).toLocaleString('fr-FR');
@@ -176,6 +185,7 @@ export function renderProfilCompareDetails(uid) {
         <div class="metric-label">Indices composites</div>
         ${ratingA.rating != null && ratingB.rating != null ? compareRow('Rating (façon HLTV)', ratingA.rating, ratingB.rating, pct, true, decDiff) : ''}
         ${compareRow("Score d'impact", impactA.score, impactB.score, num, true, intDiff)}
+        ${mmrA != null && mmrB != null ? compareRow('Rang (MMR)', Math.round(mmrA), Math.round(mmrB), num, true, intDiff) : ''}
         ${compareRow('Contribution dégâts équipe', dmgTeamA.avgContribPct + '%', dmgTeamB.avgContribPct + '%', pct, true, pctDiff)}
         ${compareRow('Taux de MVP', rankA.mvpRate + '%', rankB.mvpRate + '%', pct, true, pctDiff)}
 

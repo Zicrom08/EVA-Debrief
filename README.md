@@ -31,19 +31,32 @@ Node.js stocke et déduplique les données, un frontend en une seule page
 ## Fonctionnalités
 
 **Historique** — liste de toutes les parties importées, filtrable par
-joueur/période/carte/mode, avec une vue détail par match : bandeau de score,
-blocs d'équipe colorés, tableau K/D/A/Score/Dégâts/Précision/K-D/KDA avec la
-meilleure valeur de chaque équipe mise en évidence.
+joueur/période/carte/mode, avec un **MVP** (icône ★) mis en avant sur le
+meilleur joueur de chaque partie (dans la liste comme dans le détail), et une
+vue détail par match : bandeau de score, blocs d'équipe colorés, tableau
+K/D/A/Score/Dégâts/Précision/K-D/KDA/**Rating** (indice façon HLTV, voir
+[Rang compétitif](#fonctionnalités) ci-dessous) avec la meilleure valeur de
+chaque équipe mise en évidence — **chaque colonne est triable** en cliquant
+son en-tête (inversion du sens au deuxième clic).
 
 **Tendances** — agrégats par séance de jeu ou par mois (parties, V/D,
-winrate, K/D, dégâts et score moyens).
+winrate, K/D, dégâts et score moyens), avec 4 graphiques d'évolution
+correspondants (taux de victoire, ratio K/D, dégâts moyens, score moyen).
 
 **Profil** — le plus complet des onglets :
 - Carte de saison (niveau, XP, stats cumulées) à partir des captures de
   profil, avec un tableau d'évolution entre deux captures successives
   couvrant *toutes* les stats de saison (parties, K/D/A, dégâts, distance
   parcourue, temps de jeu, niveau, XP, records personnels...)
+- **Rang compétitif** — badge de palier (Bronze à Légende, 3 divisions
+  chacun) et courbe d'évolution du MMR (voir [Rang compétitif](#fonctionnalités)
+  ci-dessous)
 - Séries de victoires/défaites, temps de jeu, taux de MVP
+- **Rating façon HLTV** — un seul chiffre combinant kills/morts/dégâts/
+  assists/score, centré sur 1.00 = performance moyenne parmi les joueurs
+  croisés sur la période
+- **Score d'impact** — pondère taux de victoire et contribution aux dégâts
+  d'équipe (par rapport à la juste part vu la taille de l'équipe)
 - Stats d'efficacité normalisées (KDA, dégâts par mort, kills/dégâts par
   minute, précision moyenne)
 - Graphiques de progression (K/D, dégâts, score, précision) et de winrate
@@ -61,10 +74,27 @@ winrate, K/D, dégâts et score moyens).
   côte à côte, avec barres colorées proportionnelles
 
 **Comparatif** — classement de tous les joueurs croisés (coéquipiers et
-adversaires) dans les parties importées, triable par winrate/K-D/dégâts/score.
+adversaires) dans les parties importées, triable par winrate/K-D/dégâts/
+score/score d'impact/**rang**.
 
 **Équipes** — crée des groupes de joueurs personnalisés, consulte leurs
 stats agrégées, compare deux équipes entre elles.
+
+**Rang compétitif** — un système de rang façon jeu compétitif (Bronze,
+Argent, Or, Platine, Émeraude, Diamant, Prodige, Légende, chacun en 3
+divisions), entièrement calculé côté client à partir de l'historique de
+parties (EVA n'expose aucune notion de MMR). Chaque partie met à jour le MMR
+de chaque joueur façon Elo : le MMR moyen de son équipe est comparé à celui
+de l'équipe adverse pour établir un résultat "attendu", et un bonus/malus
+vient s'y ajouter selon sa performance individuelle (le Rating façon HLTV
+ci-dessus — score, dégâts et KDA en un seul chiffre). Visible dans l'en-tête
+(rang du joueur sélectionné), dans Comparatif (colonne triable) et dans
+Profil (badge, MMR, progression dans la division courante, courbe
+d'évolution). Le MMR suit dynamiquement le filtre de saison : une saison
+précise sélectionnée repart d'une base neutre et ne compte que les parties de
+cette saison (reset façon ranked saisonnier) ; sans saison sélectionnée, le
+MMR est continu sur toute la carrière, indépendamment d'une période libre
+éventuellement active.
 
 **Transverse** — filtre de saison (les saisons sont détectées automatiquement à
 partir des captures de profil et, depuis la v9.0 du collecteur, des parties
@@ -171,7 +201,7 @@ eva-debrief/
 │   │   ├── main.js                    # Point d'entrée JS (bootstrap)
 │   │   ├── login.js                   # Logique de login.html (module externe, voir CSP)
 │   │   ├── state.js                   # État partagé
-│   │   ├── format.js, api.js, ui-prefs.js, game-filters.js
+│   │   ├── format.js, api.js, ui-prefs.js, game-filters.js, rank.js
 │   │   ├── historique.js, tendances.js, comparatif.js, equipes.js, comptes.js
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
