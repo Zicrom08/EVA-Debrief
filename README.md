@@ -50,7 +50,7 @@ correspondants (taux de victoire, ratio K/D, dégâts moyens, score moyen).
   couvrant *toutes* les stats de saison (parties, K/D/A, dégâts, distance
   parcourue, temps de jeu, niveau, XP, records personnels...)
 - **Rang compétitif** — badge de palier (Bronze à Légende, 3 divisions
-  chacun) et courbe d'évolution du MMR (voir [Rang compétitif](#fonctionnalités)
+  chacun) et courbe d'évolution du LP (voir [Rang compétitif](#fonctionnalités)
   ci-dessous)
 - Séries de victoires/défaites, temps de jeu, taux de MVP
 - **Rating façon HLTV** — un seul chiffre combinant kills/morts/dégâts/
@@ -84,18 +84,18 @@ stats agrégées, compare deux équipes entre elles.
 **Rang compétitif** — un système de rang façon jeu compétitif (Bronze,
 Argent, Or, Platine, Émeraude, Diamant, Prodige, Légende, chacun en 3
 divisions), entièrement calculé côté client à partir de l'historique de
-parties (EVA n'expose aucune notion de MMR — voir `frontend/src/rank.js`).
+parties (EVA n'expose aucune notion de LP — voir `frontend/src/rank.js`).
 Visible dans l'en-tête (rang du joueur sélectionné), dans Comparatif (colonne
-triable), dans Profil (badge, MMR, progression dans la division courante,
-courbe d'évolution) et dans Historique (gain/perte de MMR affiché partie par
+triable), dans Profil (badge, LP, progression dans la division courante,
+courbe d'évolution) et dans Historique (gain/perte de LP affiché partie par
 partie, à côté du MVP, pour le joueur sélectionné).
 
 Calcul précis, rejoué partie par partie dans l'ordre chronologique (jamais
 dans l'ordre d'import) :
 
-1. Les deux équipes de la partie sont comparées sur leur **MMR moyen
-   courant** (`BASE_MMR = 1000` par défaut pour un joueur jamais vu). Espérance
-   Elo standard : `attendu(A) = 1 / (1 + 10^((moyenneMMR(B) − moyenneMMR(A)) / 400))`.
+1. Les deux équipes de la partie sont comparées sur leur **LP moyen
+   courant** (`BASE_LP = 1000` par défaut pour un joueur jamais vu). Espérance
+   Elo standard : `attendu(A) = 1 / (1 + 10^((moyenneLP(B) − moyenneLP(A)) / 400))`.
 2. Le résultat réel de CHAQUE joueur vient de sa propre issue de partie
    (jamais re-déduit du score d'équipe) : Victoire = 1, Défaite = 0, tout
    autre résultat (match nul) = 0.5 — pour ne pas punir les deux équipes
@@ -110,11 +110,11 @@ dans l'ordre d'import) :
    partie) : `bonusPerf = K_PERFORMANCE × clamp(rating − 1, −1, 1)`, avec
    `K_PERFORMANCE = 10`. **Additif**, jamais multiplicatif : un
    multiplicatif inverserait le signe (une bonne perf individuelle dans une
-   défaite ferait perdre *plus* de MMR au lieu de moins) et écraserait le
+   défaite ferait perdre *plus* de LP au lieu de moins) et écraserait le
    bonus dès que le delta de résultat est proche de zéro (match équilibré).
-5. `delta = deltaRésultat + bonusPerf` ; nouveau MMR =
-   `max(MMR_FLOOR, MMR précédent + delta)`, avec `MMR_FLOOR = 100`
-   (plancher, pour qu'une série noire ne fasse pas partir le MMR en négatif).
+5. `delta = deltaRésultat + bonusPerf` ; nouveau LP =
+   `max(LP_FLOOR, LP précédent + delta)`, avec `LP_FLOOR = 100`
+   (plancher, pour qu'une série noire ne fasse pas partir le LP en négatif).
 
 Swing maximum en une seule partie ≈ 38 points (grosse surprise + performance
 exceptionnelle) ; partie équilibrée typique ≈ ±14 à ±24 points. Les paliers
@@ -124,10 +124,10 @@ chance. Une partie sans détail complet (score/dégâts/équipe absents, voir
 plus bas) ou dont les deux équipes ne peuvent pas être clairement séparées
 n'est pas prise en compte.
 
-Le MMR suit dynamiquement le filtre de saison plutôt qu'une période libre :
+Le LP suit dynamiquement le filtre de saison plutôt qu'une période libre :
 une saison précise sélectionnée repart d'une base neutre et ne rejoue que les
 parties de cette saison (reset façon ranked saisonnier) ; sans saison
-sélectionnée, le MMR est continu sur toute la carrière, indépendamment d'une
+sélectionnée, le LP est continu sur toute la carrière, indépendamment d'une
 période libre éventuellement active en parallèle.
 
 **Transverse** — filtre de saison (les saisons sont détectées automatiquement à

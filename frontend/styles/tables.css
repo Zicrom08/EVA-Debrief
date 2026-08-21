@@ -9,7 +9,7 @@ table.roster tr:hover{background:var(--panel);}
 .rank-badge.r1{background:var(--gold);color:#141414;}
 .mvp-icon{color:var(--gold);margin-right:4px;}
 
-/* Rang compétitif (MMR + palier, voir rank.js) — NE PAS confondre avec .rank-badge
+/* Rang compétitif (LP + palier, voir rank.js) — NE PAS confondre avec .rank-badge
    ci-dessus (position de ligne dans CE classement) : .tier-badge affiche un palier
    (ex: "Platine III"), une couleur par rang, la division s'affiche en texte dans le badge. */
 .tier-badge{

@@ -12,27 +12,27 @@ import {
   computeRatingBaseline, computeRating,
 } from './compute.js';
 import { buildLineChart, buildTrendChart, barRow, mapBarRow, distRow, highlightCard } from './charts.js';
-import { computeMmrHistory, gamesForMmrScope, mmrToTier } from '../rank.js';
+import { computeLpHistory, gamesForLpScope, lpToTier } from '../rank.js';
 
 const METRIC_LABELS = { kd: 'Ratio K/D', dmg: 'Dégâts infligés', score: 'Score', acc: 'Précision de tir (%)' };
 const NA = '<span style="color:var(--muted);">n/d</span>';
 
-// ---- Rang compétitif : badge de palier + MMR + courbe d'évolution ----
+// ---- Rang compétitif : badge de palier + LP + courbe d'évolution ----
 // Fonction SÉPARÉE de renderGameAnalytics() à dessein : celle-ci reçoit des `games` déjà
 // filtrés par période pour CE joueur (gamesForPlayerSorted(uid)), alors que le rang doit
-// ignorer cette portée et appeler gamesForMmrScope() lui-même (voir rank.js — le MMR ne suit
+// ignorer cette portée et appeler gamesForLpScope() lui-même (voir rank.js — le LP ne suit
 // que la sélection de saison, jamais une période libre/custom). Garder ça à part rend cette
 // divergence de portée visible au point d'appel plutôt que noyée dans une fonction dont le
 // paramètre `games` a l'air pourtant faisant autorité.
 export function renderRankSection(uid) {
   if (!uid) return '';
-  const { mmrByUid, historyByUid } = computeMmrHistory(gamesForMmrScope());
-  const mmr = mmrByUid.get(uid);
+  const { lpByUid, historyByUid } = computeLpHistory(gamesForLpScope());
+  const lp = lpByUid.get(uid);
   const scopeNote = state.selectedSeasonId != null
-    ? 'Le MMR repart d\'une base neutre à chaque saison sélectionnée — non cumulatif d\'une saison à l\'autre.'
-    : 'Aucune saison sélectionnée : ce MMR est calculé sur toute la carrière du joueur.';
+    ? 'Le LP repart d\'une base neutre à chaque saison sélectionnée — non cumulatif d\'une saison à l\'autre.'
+    : 'Aucune saison sélectionnée : ce LP est calculé sur toute la carrière du joueur.';
 
-  if (mmr == null) {
+  if (lp == null) {
     return `
       <div class="analytics-section">
         <div class="section-title">Rang compétitif</div>
@@ -40,11 +40,11 @@ export function renderRankSection(uid) {
       </div>`;
   }
 
-  const tier = mmrToTier(mmr);
+  const tier = lpToTier(lp);
   const history = historyByUid.get(uid) || [];
-  const chart = history.length >= 2 ? buildLineChart(history.map(h => h.mmrAfter), {
+  const chart = history.length >= 2 ? buildLineChart(history.map(h => h.lpAfter), {
     color: 'var(--gold)', decimals: 0, fill: true,
-    legendLabel: 'MMR au fil des parties',
+    legendLabel: 'LP au fil des parties',
   }) : '<div class="hl-empty">Pas assez de parties dans cette portée pour une courbe (2 minimum).</div>';
 
   return `
@@ -56,8 +56,8 @@ export function renderRankSection(uid) {
           <div class="streak-value"><span class="tier-badge ${tier.tierKey}">${tier.name}</span></div>
         </div>
         <div class="streak-card">
-          <div class="streak-label">MMR</div>
-          <div class="streak-value">${Math.round(mmr)}</div>
+          <div class="streak-label">LP</div>
+          <div class="streak-value">${Math.round(lp)}</div>
         </div>
         <div class="streak-card">
           <div class="streak-label">Progression dans la division</div>

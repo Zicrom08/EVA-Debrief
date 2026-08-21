@@ -18,9 +18,9 @@
 .game-row .meta-line{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);}
 .game-row .score-line{display:flex;align-items:center;gap:8px;font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:13px;}
 .game-row .mvp-line{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11px;color:var(--gold);font-weight:600;}
-.mmr-delta{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-weight:700;white-space:nowrap;}
-.mmr-delta.mmr-gain{color:var(--win);}
-.mmr-delta.mmr-loss{color:var(--loss);}
+.lp-delta{font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-weight:700;white-space:nowrap;}
+.lp-delta.lp-gain{color:var(--win);}
+.lp-delta.lp-loss{color:var(--loss);}
 .score-bar{flex:1;height:5px;border-radius:3px;overflow:hidden;display:flex;background:#000;}
 .score-bar .a{background:var(--alliance);height:100%;}
 .score-bar .r{background:var(--rebels);height:100%;}

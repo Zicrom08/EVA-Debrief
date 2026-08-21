@@ -7,7 +7,7 @@ import { renderList } from './historique.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
-import { computeMmrHistory, gamesForMmrScope, mmrToTier } from './rank.js';
+import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { apiUrl, pageUrl } from './api-base.js';
 
 // ================= APP SHELL =================
@@ -53,17 +53,17 @@ function applyRolePermissions() {
 }
 
 // Cellule de rang compétitif de l'en-tête — INDÉPENDANTE de la période filtrée (voir
-// gamesForMmrScope() dans rank.js : le MMR ne suit que la sélection de saison, jamais une
+// gamesForLpScope() dans rank.js : le LP ne suit que la sélection de saison, jamais une
 // période libre/custom), donc calculée à part et affichée même quand le joueur n'a aucune
 // partie DANS la période actuellement filtrée (voir les deux branches de renderSummary() plus
 // bas). Doit se distinguer visuellement des autres `.cell` (qui SONT filtrées par période) —
 // classe modificatrice `.cell-rank` + libellé qui porte la portée.
 function rankCellHtml() {
-  const { mmrByUid } = computeMmrHistory(gamesForMmrScope());
-  const mmr = mmrByUid.get(state.currentUid);
+  const { lpByUid } = computeLpHistory(gamesForLpScope());
+  const lp = lpByUid.get(state.currentUid);
   const label = state.selectedSeasonId != null ? 'Rang' : 'Rang (carrière)';
-  const value = mmr != null
-    ? (t => `<span class="tier-badge ${t.tierKey}">${t.name}</span> <span style="color:var(--muted);font-size:12px;">${Math.round(mmr)}</span>`)(mmrToTier(mmr))
+  const value = lp != null
+    ? (t => `<span class="tier-badge ${t.tierKey}">${t.name}</span> <span style="color:var(--muted);font-size:12px;">${Math.round(lp)}</span>`)(lpToTier(lp))
     : '<span style="color:var(--muted);">n/d</span>';
   return `<div class="cell cell-rank"><div class="label">${label}</div><div class="value">${value}</div></div>`;
 }

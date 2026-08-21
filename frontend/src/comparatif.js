@@ -4,7 +4,7 @@ import { filteredGamesArray } from './game-filters.js';
 import { aggregateGames } from './tendances.js';
 import { computeImpactScore } from './profil/compute.js';
 import { canonicalUid } from './player-links.js';
-import { computeMmrHistory, gamesForMmrScope, mmrToTier } from './rank.js';
+import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 
 // ================= COMPARATIF (classement entre tous les joueurs croisés dans les parties importées) =================
 let comparatifSort = 'winrate'; // 'winrate' | 'kd' | 'n' | 'avgDmg' | 'avgScore' | 'impactScore'
@@ -30,11 +30,11 @@ export function renderComparatif() {
   const uidSet = new Set();
   games.forEach(g => (g.players || []).forEach(p => uidSet.add(canonicalUid(p.userId))));
 
-  // Rang/MMR calculé INDÉPENDAMMENT de `games` (période filtrée) ci-dessus : voir
-  // gamesForMmrScope() dans rank.js — le MMR ne suit que la sélection de saison (reset à
+  // Rang/LP calculé INDÉPENDAMMENT de `games` (période filtrée) ci-dessus : voir
+  // gamesForLpScope() dans rank.js — le LP ne suit que la sélection de saison (reset à
   // chaque saison), jamais une période libre/custom. Ne pas fusionner avec `games` pour "
   // simplifier" : ça casserait silencieusement ce scoping par saison.
-  const { mmrByUid } = computeMmrHistory(gamesForMmrScope());
+  const { lpByUid } = computeLpHistory(gamesForLpScope());
 
   const allRows = Array.from(uidSet).map(uid => {
     const uGames = games.filter(g => findPlayerInGame(g, uid));
@@ -44,14 +44,14 @@ export function renderComparatif() {
     const rec = state.players[uid];
     const sample = findPlayerInGame(uGames[uGames.length - 1], uid);
     const name = rec ? latestNiceName(rec) : (sample ? sample.data.niceName : '?');
-    const mmr = mmrByUid.get(uid);
-    return { uid, name, ...agg, impactScore: impact.score, mmr };
+    const lp = lpByUid.get(uid);
+    return { uid, name, ...agg, impactScore: impact.score, lp };
   }).filter(Boolean);
 
   // Ce seuil filtre sur les parties CROISÉES DE LA PÉRIODE affichée (voir `games` plus haut),
-  // pas sur la portée du MMR (saison sélectionnée ou carrière, voir gamesForMmrScope) — les
+  // pas sur la portée du LP (saison sélectionnée ou carrière, voir gamesForLpScope) — les
   // deux peuvent diverger : une ligne peut passer ce seuil et pourtant afficher "n/d" en Rang
-  // si la portée MMR ne contient aucune partie exploitable pour ce joueur.
+  // si la portée LP ne contient aucune partie exploitable pour ce joueur.
   let rows = allRows.filter(r => r.n >= comparatifMinGames);
 
   const sorters = {
@@ -61,11 +61,11 @@ export function renderComparatif() {
     avgDmg: (a,b) => b.avgDmg - a.avgDmg,
     avgScore: (a,b) => b.avgScore - a.avgScore,
     impactScore: (a,b) => b.impactScore - a.impactScore,
-    mmr: (a,b) => (b.mmr ?? -Infinity) - (a.mmr ?? -Infinity),
+    lp: (a,b) => (b.lp ?? -Infinity) - (a.lp ?? -Infinity),
   };
   rows = rows.sort(sorters[comparatifSort] || sorters.winrate);
 
-  const sortLabels = { winrate:'Winrate', kd:'K/D', n:'Parties', avgDmg:'Dégâts moy.', avgScore:'Score moy.', impactScore:"Score d'impact", mmr:'Rang' };
+  const sortLabels = { winrate:'Winrate', kd:'K/D', n:'Parties', avgDmg:'Dégâts moy.', avgScore:'Score moy.', impactScore:"Score d'impact", lp:'Rang' };
   const minGamesOptions = [1, 2, 3, 5, 10];
   const minGamesLabel = n => n <= 1 ? 'Tous' : `≥ ${n}`;
 
@@ -114,8 +114,8 @@ export function renderComparatif() {
       <td class="num">${r.avgDmg}</td>
       <td class="num">${r.avgScore}</td>
       <td class="num ${r.impactScore>=50?'kd-good':'kd-bad'}">${r.impactScore}</td>
-      <td class="num">${r.mmr != null
-        ? (t => `<span class="tier-badge ${t.tierKey}">${t.name}</span> <span style="color:var(--muted);font-size:11px;">${Math.round(r.mmr)}</span>`)(mmrToTier(r.mmr))
+      <td class="num">${r.lp != null
+        ? (t => `<span class="tier-badge ${t.tierKey}">${t.name}</span> <span style="color:var(--muted);font-size:11px;">${Math.round(r.lp)}</span>`)(lpToTier(r.lp))
         : '<span style="color:var(--muted);">n/d</span>'}</td>
     </tr>
   `).join('');
