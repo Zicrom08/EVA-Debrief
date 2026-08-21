@@ -13,3 +13,18 @@ export const API_BASE = import.meta.env?.VITE_API_BASE_URL || '';
 export function apiUrl(path) {
   return API_BASE + path;
 }
+
+// Racine de l'app côté navigateur — '/' par défaut, ou le sous-dossier du site de projet
+// GitHub Pages (ex: '/EVA-Debrief/', voir vite.config.js/VITE_BASE_PATH). Vite garantit un
+// slash de fin sur BASE_URL. `?.` par sécurité hors Vite (voir API_BASE ci-dessus, même
+// raison : api.js est atteint par les tests via player-links.js -> format.js).
+export const BASE_PATH = import.meta.env?.BASE_URL || '/';
+
+// Construit une URL vers une page statique de CET hébergeur (login.html, la racine de
+// l'app...), PAS vers l'API (voir apiUrl ci-dessus pour ça). `path` sans slash de tête, ex:
+// pageUrl('login.html') -> '/login.html' en déploiement racine, '/EVA-Debrief/login.html'
+// sur un site de projet GitHub Pages. Un window.location.href = '/login.html' codé en dur
+// casserait sur ce dernier cas (résolu contre la racine du DOMAINE, pas celle de l'app).
+export function pageUrl(path) {
+  return BASE_PATH + path;
+}

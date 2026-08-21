@@ -1,11 +1,12 @@
 import { state } from './state.js';
-import { apiUrl } from './api-base.js';
+import { apiUrl, pageUrl } from './api-base.js';
 
-// Redirige vers la page de connexion (session expirée ou absente). Chemin relatif : cette
-// page est servie par le même hébergeur statique que celui-ci (index.html), pas par
-// l'API — voir api-base.js pour la distinction avec les appels /api/*.
+// Redirige vers la page de connexion (session expirée ou absente). pageUrl(), pas l'API —
+// login.html est servie par le même hébergeur statique que celui-ci (index.html), voir
+// api-base.js pour la distinction avec les appels /api/*. Jamais '/login.html' en dur :
+// casserait sur un site de projet GitHub Pages, servi sous /<repo>/ et non à la racine.
 export function redirectToLogin() {
-  window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
+  window.location.href = pageUrl('login.html') + '?next=' + encodeURIComponent(window.location.pathname + window.location.search);
 }
 
 // Requête GET vers l'API du serveur ; redirige vers /login.html si la session a expiré (401).

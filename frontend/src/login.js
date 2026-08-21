@@ -4,7 +4,7 @@
 // 'unsafe-inline' sur script-src (voir backend/server.js).
 // ============================================================================
 
-import { apiUrl } from './api-base.js';
+import { apiUrl, pageUrl } from './api-base.js';
 
 const form = document.getElementById('loginForm');
 const btn = document.getElementById('loginBtn');
@@ -133,9 +133,11 @@ form.addEventListener('submit', async (e) => {
       if (mode === 'register' && window.turnstile && turnstileWidgetId != null) turnstile.reset(turnstileWidgetId);
       return;
     }
-    // redirige vers la page demandée à l'origine si connue, sinon l'accueil
+    // redirige vers la page demandée à l'origine si connue (déjà absolue et correcte, voir
+    // redirectToLogin() dans api.js), sinon la racine de l'app (pageUrl(''), jamais '/' en
+    // dur — casserait sur un site de projet GitHub Pages, servi sous /<repo>/)
     const params = new URLSearchParams(window.location.search);
-    window.location.href = params.get('next') || '/';
+    window.location.href = params.get('next') || pageUrl('');
   } catch (err) {
     errEl.textContent = 'Erreur de connexion au serveur.';
     btn.disabled = false;
