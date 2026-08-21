@@ -83,18 +83,51 @@ stats agrégées, compare deux équipes entre elles.
 **Rang compétitif** — un système de rang façon jeu compétitif (Bronze,
 Argent, Or, Platine, Émeraude, Diamant, Prodige, Légende, chacun en 3
 divisions), entièrement calculé côté client à partir de l'historique de
-parties (EVA n'expose aucune notion de MMR). Chaque partie met à jour le MMR
-de chaque joueur façon Elo : le MMR moyen de son équipe est comparé à celui
-de l'équipe adverse pour établir un résultat "attendu", et un bonus/malus
-vient s'y ajouter selon sa performance individuelle (le Rating façon HLTV
-ci-dessus — score, dégâts et KDA en un seul chiffre). Visible dans l'en-tête
-(rang du joueur sélectionné), dans Comparatif (colonne triable) et dans
-Profil (badge, MMR, progression dans la division courante, courbe
-d'évolution). Le MMR suit dynamiquement le filtre de saison : une saison
-précise sélectionnée repart d'une base neutre et ne compte que les parties de
-cette saison (reset façon ranked saisonnier) ; sans saison sélectionnée, le
-MMR est continu sur toute la carrière, indépendamment d'une période libre
-éventuellement active.
+parties (EVA n'expose aucune notion de MMR — voir `frontend/src/rank.js`).
+Visible dans l'en-tête (rang du joueur sélectionné), dans Comparatif (colonne
+triable), dans Profil (badge, MMR, progression dans la division courante,
+courbe d'évolution) et dans Historique (gain/perte de MMR affiché partie par
+partie, à côté du MVP, pour le joueur sélectionné).
+
+Calcul précis, rejoué partie par partie dans l'ordre chronologique (jamais
+dans l'ordre d'import) :
+
+1. Les deux équipes de la partie sont comparées sur leur **MMR moyen
+   courant** (`BASE_MMR = 1000` par défaut pour un joueur jamais vu). Espérance
+   Elo standard : `attendu(A) = 1 / (1 + 10^((moyenneMMR(B) − moyenneMMR(A)) / 400))`.
+2. Le résultat réel de CHAQUE joueur vient de sa propre issue de partie
+   (jamais re-déduit du score d'équipe) : Victoire = 1, Défaite = 0, tout
+   autre résultat (match nul) = 0.5 — pour ne pas punir les deux équipes
+   comme si elles avaient perdu un résultat que personne n'a réellement
+   perdu.
+3. `deltaRésultat = K_OUTCOME × (résultat réel − résultat attendu)`, avec
+   `K_OUTCOME = 28` — une victoire attendue rapporte peu, une victoire
+   surprise beaucoup (et symétriquement pour une défaite).
+4. Un bonus/malus de **performance individuelle** s'ajoute, tiré du Rating
+   façon HLTV de cette partie précise (voir plus haut — combinaison pondérée
+   de kills/morts/dégâts/assists/score, 1.00 = moyenne du lobby de cette
+   partie) : `bonusPerf = K_PERFORMANCE × clamp(rating − 1, −1, 1)`, avec
+   `K_PERFORMANCE = 10`. **Additif**, jamais multiplicatif : un
+   multiplicatif inverserait le signe (une bonne perf individuelle dans une
+   défaite ferait perdre *plus* de MMR au lieu de moins) et écraserait le
+   bonus dès que le delta de résultat est proche de zéro (match équilibré).
+5. `delta = deltaRésultat + bonusPerf` ; nouveau MMR =
+   `max(MMR_FLOOR, MMR précédent + delta)`, avec `MMR_FLOOR = 100`
+   (plancher, pour qu'une série noire ne fasse pas partir le MMR en négatif).
+
+Swing maximum en une seule partie ≈ 38 points (grosse surprise + performance
+exceptionnelle) ; partie équilibrée typique ≈ ±14 à ±24 points. Les paliers
+font 300 points chacun (3 divisions de 100), donc changer de palier demande
+plusieurs parties de sur/sous-performance soutenue, pas un simple coup de
+chance. Une partie sans détail complet (score/dégâts/équipe absents, voir
+plus bas) ou dont les deux équipes ne peuvent pas être clairement séparées
+n'est pas prise en compte.
+
+Le MMR suit dynamiquement le filtre de saison plutôt qu'une période libre :
+une saison précise sélectionnée repart d'une base neutre et ne rejoue que les
+parties de cette saison (reset façon ranked saisonnier) ; sans saison
+sélectionnée, le MMR est continu sur toute la carrière, indépendamment d'une
+période libre éventuellement active en parallèle.
 
 **Transverse** — filtre de saison (les saisons sont détectées automatiquement à
 partir des captures de profil et, depuis la v9.0 du collecteur, des parties
