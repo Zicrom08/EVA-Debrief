@@ -1,8 +1,9 @@
 import { state } from './state.js';
-import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp, deriveTeams } from './format.js';
+import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp, deriveTeams, fmtDelta } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
 import { computeMatchRatings } from './profil/compute.js';
+import { computeMmrHistory, gamesForMmrScope } from './rank.js';
 import { apiSend, loadFromServer } from './api.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
@@ -14,6 +15,16 @@ export function renderList(){
 
   const list = document.getElementById('gameList');
   list.innerHTML = '';
+
+  // Gain/perte de MMR du joueur SÉLECTIONNÉ, partie par partie — voir rank.js. Portée
+  // indépendante des filtres carte/mode/période affichés ici (gamesForMmrScope() suit
+  // uniquement la sélection de saison, jamais une période libre, voir CLAUDE.md sur
+  // game-filters.js) : calculé une seule fois pour toute la liste plutôt que par ligne.
+  // Une partie peut n'avoir aucune entrée (voir hasFullMatchData/deriveTeams dans
+  // computeMmrHistory) — le badge est alors simplement omis pour cette ligne.
+  const mmrHistory = computeMmrHistory(gamesForMmrScope());
+  const playerMmrHistory = mmrHistory.historyByUid.get(canonicalUid(state.currentUid)) || [];
+  const mmrDeltaByGameId = new Map(playerMmrHistory.map(h => [h.gameId, h]));
 
   sortedGames().forEach(g=>{
     if (mapVal && (!g.map || g.map.name !== mapVal)) return;
@@ -30,6 +41,7 @@ export function renderList(){
     const rPct = 100-aPct;
     const mvp = findMvp(g);
     const mvpName = mvp ? resolvePlayerName(mvp.userId) : null;
+    const mmrEntry = mmrDeltaByGameId.get(g.id);
 
     const row = document.createElement('div');
     row.className = 'game-row' + (g.id === state.activeGameId ? ' active' : '');
@@ -49,7 +61,10 @@ export function renderList(){
         <div class="score-bar"><div class="a" style="width:${aPct}%"></div><div class="r" style="width:${rPct}%"></div></div>
         <span style="color:var(--rebels)">${t2}</span>
       </div>` : ''}
-      ${mvpName ? `<div class="mvp-line"><span class="mvp-icon" title="MVP">★</span>${mvpName}</div>` : ''}
+      ${mvpName || mmrEntry ? `<div class="mvp-line">
+        ${mvpName ? `<span class="mvp-name"><span class="mvp-icon" title="MVP">★</span>${mvpName}</span>` : ''}
+        ${mmrEntry ? `<span class="mmr-delta ${mmrEntry.delta>=0?'mmr-gain':'mmr-loss'}" title="Variation de MMR sur cette partie">${fmtDelta(mmrEntry.delta, 0)} MMR</span>` : ''}
+      </div>` : ''}
     `;
     row.addEventListener('click', ()=>{
       state.activeGameId = g.id;
