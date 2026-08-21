@@ -101,8 +101,12 @@ function isProtected() {
 // elles, pas de lien "créer un compte" côté frontend et la route refuse tout.
 const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY;
 const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY;
+// Deux conditions doivent être vraies : Turnstile configuré (protection anti-bot, prérequis
+// technique — sans lui, jamais de lien d'inscription, quoi qu'il arrive) ET la bascule admin
+// db.getRegistrationEnabled() (réglable depuis l'onglet Comptes, voir /api/settings plus bas,
+// pour fermer temporairement les inscriptions sans toucher aux variables d'environnement).
 function isRegistrationEnabled() {
-  return Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY);
+  return Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY) && db.getRegistrationEnabled();
 }
 
 // Vérifie un jeton Turnstile auprès de Cloudflare — appel réseau serveur à
@@ -326,6 +330,29 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
   db.deleteUser(user.id);
   auth.destroySessionsForUser(user.id);
   res.json({ ok: true });
+});
+
+// Réglages admin (pour l'instant : seulement la bascule d'inscription publique, voir onglet
+// Comptes côté frontend). turnstileConfigured renseigne l'UI sur le fait que la bascule
+// n'aura aucun effet tant que TURNSTILE_SITE_KEY/SECRET_KEY ne sont pas définis (voir
+// isRegistrationEnabled ci-dessus) — sans ça, un admin pourrait "activer" l'inscription ici
+// sans comprendre pourquoi le lien n'apparaît toujours pas sur /login.html.
+app.get('/api/settings', requireAdmin, (req, res) => {
+  res.json({
+    registrationEnabled: db.getRegistrationEnabled(),
+    turnstileConfigured: Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY),
+  });
+});
+
+app.put('/api/settings', requireAdmin, (req, res) => {
+  const { registrationEnabled } = req.body || {};
+  if (typeof registrationEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'registrationEnabled doit être un booléen.' });
+  }
+  res.json({
+    registrationEnabled: db.setRegistrationEnabled(registrationEnabled),
+    turnstileConfigured: Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY),
+  });
 });
 
 // ---------------------------------------------------------------------------

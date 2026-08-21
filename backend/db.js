@@ -58,6 +58,7 @@ function emptyGameState() {
 function emptyUsersState() {
   return {
     users: {},                // userId (interne, généré) -> { id, username, email, passwordSalt, passwordHash, role, createdAt }
+    registrationEnabled: true, // bascule admin (onglet Comptes) — voir isRegistrationEnabled() dans server.js, qui l'ET-combine avec la présence de TURNSTILE_SITE_KEY/SECRET_KEY (les deux doivent être vrais pour que /api/register accepte)
   };
 }
 
@@ -117,9 +118,15 @@ const gamePersister = makePersister(DATA_FILE, () => state);
 const usersFileContent = readJsonFile(USERS_DATA_FILE);
 let usersState;
 if (usersFileContent) {
-  usersState = { users: usersFileContent.users || {} };
+  // registrationEnabled absent d'un users.json antérieur à ce réglage -> true par défaut,
+  // pour préserver le comportement actuel (déjà entièrement gouverné par la présence de
+  // TURNSTILE_SITE_KEY/SECRET_KEY jusqu'ici) tant qu'un admin ne le ferme pas explicitement.
+  usersState = {
+    users: usersFileContent.users || {},
+    registrationEnabled: usersFileContent.registrationEnabled !== undefined ? usersFileContent.registrationEnabled : true,
+  };
 } else if (legacyDataFile && legacyDataFile.users && Object.keys(legacyDataFile.users).length) {
-  usersState = { users: legacyDataFile.users };
+  usersState = { users: legacyDataFile.users, registrationEnabled: true };
   console.log(`[db] Migration : comptes trouvés dans ${DATA_FILE}, déplacés vers ${USERS_DATA_FILE}.`);
 } else {
   usersState = emptyUsersState();
@@ -437,6 +444,19 @@ module.exports = {
   },
   countAdmins() {
     return Object.values(usersState.users).filter(u => u.role === 'admin').length;
+  },
+
+  // Bascule admin (onglet Comptes) pour fermer/rouvrir l'inscription publique sans toucher
+  // aux variables d'environnement ni redémarrer le serveur — voir isRegistrationEnabled()
+  // dans server.js, qui reste de toute façon fermée si TURNSTILE_SITE_KEY/SECRET_KEY ne
+  // sont pas définis, quelle que soit cette valeur.
+  getRegistrationEnabled() {
+    return usersState.registrationEnabled !== false; // true par défaut, y compris si absent
+  },
+  setRegistrationEnabled(enabled) {
+    usersState.registrationEnabled = !!enabled;
+    usersPersister.saveNow();
+    return usersState.registrationEnabled;
   },
 
   // ---------------- Player links (fusion de comptes joueurs, admin) ----------------

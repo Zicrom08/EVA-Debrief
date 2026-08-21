@@ -5,6 +5,7 @@ import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames } from './team-detect.js';
 import { fetchBackups, backupNow } from './backups.js';
+import { fetchSettings, updateRegistrationEnabled } from './settings.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -14,6 +15,7 @@ import { showApp } from './shell.js';
 
 let users = [];
 let backupsData = { intervalHours: 0, retention: 0, sets: [] };
+let settingsData = { registrationEnabled: true, turnstileConfigured: false };
 
 const ROLES = ['admin', 'contributor', 'readonly'];
 function roleOptionsHtml(selectedRole) {
@@ -482,6 +484,53 @@ function wireBackupsManager() {
   }
 }
 
+// ================= INSCRIPTION PUBLIQUE (admin) =================
+// Bascule côté serveur (voir settings.js + /api/settings dans backend/server.js), séparée
+// des variables d'environnement TURNSTILE_SITE_KEY/SECRET_KEY : celles-ci restent le
+// prérequis technique (widget anti-bot configuré ou non), ce réglage ne fait que
+// fermer/rouvrir temporairement le lien d'inscription PAR-DESSUS ce prérequis, sans
+// redémarrer le serveur. Les deux doivent être vrais pour que /login.html propose le lien.
+async function refreshSettingsFromServer() {
+  settingsData = await fetchSettings();
+}
+
+function renderRegistrationPanel() {
+  const { registrationEnabled, turnstileConfigured, error } = settingsData;
+  if (error) {
+    return `<div class="detail-empty">Impossible de charger ce réglage : ${error}</div>`;
+  }
+  const statusColor = registrationEnabled ? 'var(--win)' : 'var(--loss)';
+  const statusLabel = registrationEnabled ? 'Ouverte' : 'Fermée';
+  return `
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div>État actuel : <strong style="color:${statusColor}">${statusLabel}</strong></div>
+      <button class="btn small ${registrationEnabled ? 'danger' : 'primary'}" id="toggleRegistrationBtn">
+        ${registrationEnabled ? 'Fermer les inscriptions' : 'Ouvrir les inscriptions'}
+      </button>
+    </div>
+    ${!turnstileConfigured ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+      ⚠️ TURNSTILE_SITE_KEY/TURNSTILE_SECRET_KEY ne sont pas configurées sur le serveur — le
+      lien d'inscription reste absent de /login.html quel que soit ce réglage, voir le README.
+    </div>` : ''}`;
+}
+
+function wireRegistrationManager() {
+  const btn = document.getElementById('toggleRegistrationBtn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        settingsData = await updateRegistrationEnabled(!settingsData.registrationEnabled);
+      } catch (e) {
+        alert('Erreur lors de la mise à jour du réglage : ' + e.message);
+        btn.disabled = false;
+        return;
+      }
+      renderComptes();
+    });
+  }
+}
+
 // ================= ANALYSE DES JOUEURS (admin) =================
 // Rapport de contrôle sur les données déjà importées : pour chaque joueur connu, quel
 // pseudo est actuellement retenu, d'où il vient (nameFreshness() dans format.js réutilise
@@ -558,11 +607,25 @@ export async function renderComptes() {
   } catch (e) {
     backupsData = { intervalHours: 0, retention: 0, sets: [], error: e.message };
   }
+  try {
+    await refreshSettingsFromServer();
+  } catch (e) {
+    settingsData = { registrationEnabled: true, turnstileConfigured: false, error: e.message };
+  }
   container.innerHTML = `
     <div class="team-manager">
       <div class="section-title">Comptes</div>
       ${renderUserList()}
       ${renderCreateForm()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Inscription publique</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Ferme ou rouvre à tout moment le lien "Pas de compte ? Crée-en un" sur la page de
+        connexion, sans toucher aux variables d'environnement ni redémarrer le serveur. Un
+        compte créé via ce lien reste toujours en rôle lecture seule.
+      </div>
+      ${renderRegistrationPanel()}
     </div>
     <div class="team-manager">
       <div class="section-title">Fusion de comptes joueurs</div>
@@ -609,6 +672,7 @@ export async function renderComptes() {
       ${renderBackupsPanel()}
     </div>`;
   wireUserManager();
+  wireRegistrationManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
   wirePlayerAnalysisManager();

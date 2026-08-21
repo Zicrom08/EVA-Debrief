@@ -235,8 +235,9 @@ eva-debrief/
 │   │   ├── main.js                    # Point d'entrée JS (bootstrap)
 │   │   ├── login.js                   # Logique de login.html (module externe, voir CSP)
 │   │   ├── state.js                   # État partagé
-│   │   ├── format.js, api.js, ui-prefs.js, game-filters.js, rank.js
+│   │   ├── format.js, api.js, api-base.js, ui-prefs.js, game-filters.js, rank.js
 │   │   ├── historique.js, tendances.js, comparatif.js, equipes.js, comptes.js
+│   │   ├── backups.js, settings.js    # Enveloppes API pour les panneaux admin de l'onglet Comptes
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
 │   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
@@ -490,6 +491,15 @@ TURNSTILE_SITE_KEY=xxxx TURNSTILE_SECRET_KEY=yyyy npm start
 
 (ou dans ton `.env`, voir [Installation](#installation).)
 
+Une fois ces clés configurées, un admin peut à tout moment fermer ou rouvrir
+le lien d'inscription depuis l'onglet "Comptes" — sans toucher aux variables
+d'environnement ni redémarrer le serveur (utile pour couper temporairement
+les inscriptions une fois le groupe au complet, par exemple). Ce réglage est
+persisté dans `users.json` et vient s'ajouter à `TURNSTILE_SITE_KEY`/
+`TURNSTILE_SECRET_KEY`, pas s'y substituer : les deux doivent être réunis
+pour que le lien apparaisse (voir `isRegistrationEnabled()` dans
+`backend/server.js`).
+
 Pour obtenir ces clés : [dash.cloudflare.com](https://dash.cloudflare.com) →
 Turnstile → "Add site" → mode "Managed", en indiquant ton nom de domaine
 (`zicrom.ddns.net` par exemple). Ajoute aussi `localhost` à la liste des
@@ -730,6 +740,8 @@ Même avec des comptes créés, garde en tête que :
 | POST    | `/api/users`      | admin | Crée un compte `{ username, email?, password, role }` |
 | PUT     | `/api/users/:id`  | admin | Modifie le rôle et/ou le mot de passe d'un compte |
 | DELETE  | `/api/users/:id`  | admin | Supprime un compte (jamais soi-même, jamais le dernier admin) |
+| GET     | `/api/settings`   | admin | Réglages admin : `{ registrationEnabled, turnstileConfigured }` |
+| PUT     | `/api/settings`   | admin | Ferme/rouvre l'inscription publique `{ registrationEnabled }` |
 | POST    | `/api/player-links` | admin | Fusionne deux comptes joueurs `{ aliasUserId, primaryUserId }` |
 | DELETE  | `/api/player-links/:aliasUserId` | admin | Défusionne un compte joueur |
 | PUT     | `/api/player-names/:uid` | admin | Force le nom affiché d'un joueur `{ name }` |

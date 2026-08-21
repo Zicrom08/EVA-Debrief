@@ -106,6 +106,14 @@ test('createUser / countAdmins / deleteUser', () => {
   assert.equal(db.countAdmins(), 0);
 });
 
+test('getRegistrationEnabled defaults to true, setRegistrationEnabled persists the new value', () => {
+  assert.equal(db.getRegistrationEnabled(), true);
+  assert.equal(db.setRegistrationEnabled(false), false);
+  assert.equal(db.getRegistrationEnabled(), false);
+  assert.equal(db.setRegistrationEnabled(true), true);
+  assert.equal(db.getRegistrationEnabled(), true);
+});
+
 test('linkPlayer / unlinkPlayer / getAllPlayerLinks', () => {
   const link = db.linkPlayer('alias1', 'primary1');
   assert.deepEqual(link, { aliasUserId: 'alias1', primaryUserId: 'primary1' });
