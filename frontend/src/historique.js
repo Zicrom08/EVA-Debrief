@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp } from './format.js';
+import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp, deriveTeams } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
 import { computeMatchRatings } from './profil/compute.js';
@@ -287,20 +287,7 @@ export function renderDetail(g){
   }
 
   const gd = g.data || {}; // certaines parties importées n'ont pas (encore) de résumé de match complet
-  // Les deux "clés" d'équipe utilisées pour regrouper les joueurs : normalement
-  // gd.teamOne.name/gd.teamTwo.name valent "ALLIANCE"/"REBELS", mais certaines
-  // captures les ont à null (bug ponctuel du collecteur), et une partie privée peut
-  // porter un nom d'équipe personnalisé (ex: "HASHIRAS"/"ARISE") — jamais de valeur
-  // supposée en dur, toujours dérivée de ce que la partie porte réellement.
-  let teamAKey = gd.teamOne && gd.teamOne.name;
-  let teamBKey = gd.teamTwo && gd.teamTwo.name;
-  if (teamAKey == null || teamBKey == null) {
-    const distinctTeams = Array.from(new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null)));
-    teamAKey = distinctTeams[0] ?? null;
-    teamBKey = distinctTeams[1] ?? null;
-  }
-  const alliance = (g.players||[]).filter(p=>p.data.team === teamAKey);
-  const rebels = (g.players||[]).filter(p=>p.data.team === teamBKey);
+  const { teamAKey, teamBKey, teamA: alliance, teamB: rebels } = deriveTeams(g);
   const mvp = findMvp(g);
   const mvpUid = mvp ? canonicalUid(mvp.userId) : null;
   const ratings = computeMatchRatings(g);

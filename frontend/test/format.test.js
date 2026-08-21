@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { hasFullMatchData, findMvp, resolvePlayerName, findPlayerInGame, latestNiceName, nameFreshness, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
+import { hasFullMatchData, deriveTeams, findMvp, resolvePlayerName, findPlayerInGame, latestNiceName, nameFreshness, fmtDuration, fmtHM, fmtDelta } from '../src/format.js';
 
 test('findPlayerInGame finds a player by userId with loose equality (string/number mix)', () => {
   const g = { players: [{ userId: '123', data: {} }] };
@@ -40,6 +40,52 @@ test('hasFullMatchData is true only when g.data exists AND at least one player h
   assert.equal(hasFullMatchData({ data: {}, players: [{ data: { outcome: 'Victory' } }] }), false); // list-only game, no team
   assert.equal(hasFullMatchData({ players: [{ data: { team: 'Alliance' } }] }), false); // no g.data at all
   assert.equal(hasFullMatchData({ data: {}, players: [] }), false);
+});
+
+test('deriveTeams splits by team name when both gd.teamOne/teamTwo.name are present', () => {
+  const g = {
+    data: { teamOne: { name: 'ALLIANCE' }, teamTwo: { name: 'REBELS' } },
+    players: [
+      { userId: 'a1', data: { team: 'ALLIANCE' } },
+      { userId: 'r1', data: { team: 'REBELS' } },
+      { userId: 'r2', data: { team: 'REBELS' } },
+    ],
+  };
+  const { teamAKey, teamBKey, teamA, teamB } = deriveTeams(g);
+  assert.equal(teamAKey, 'ALLIANCE');
+  assert.equal(teamBKey, 'REBELS');
+  assert.deepEqual(teamA.map(p => p.userId), ['a1']);
+  assert.deepEqual(teamB.map(p => p.userId), ['r1', 'r2']);
+});
+
+test('deriveTeams falls back to the two distinct p.data.team values when a team name is null', () => {
+  const g = {
+    data: { teamOne: { name: null }, teamTwo: { name: null } },
+    players: [
+      { userId: 'a1', data: { team: 'HASHIRAS' } },
+      { userId: 'r1', data: { team: 'ARISE' } },
+    ],
+  };
+  const { teamAKey, teamBKey, teamA, teamB } = deriveTeams(g);
+  assert.equal(teamAKey, 'HASHIRAS');
+  assert.equal(teamBKey, 'ARISE');
+  assert.deepEqual(teamA.map(p => p.userId), ['a1']);
+  assert.deepEqual(teamB.map(p => p.userId), ['r1']);
+});
+
+test('deriveTeams never lumps two players with an undefined team into the same side (undefined === undefined regression)', () => {
+  const g = {
+    data: {},
+    players: [
+      { userId: 'p1', data: { outcome: 'Victory' } }, // no team field at all
+      { userId: 'p2', data: { outcome: 'Defeat' } },
+    ],
+  };
+  const { teamAKey, teamBKey, teamA, teamB } = deriveTeams(g);
+  assert.equal(teamAKey, null);
+  assert.equal(teamBKey, null);
+  assert.equal(teamA.length, 0);
+  assert.equal(teamB.length, 0);
 });
 
 test('findMvp picks the highest score across both teams on a full-match-data game', () => {

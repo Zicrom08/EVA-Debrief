@@ -12,9 +12,63 @@ import {
   computeRatingBaseline, computeRating,
 } from './compute.js';
 import { buildLineChart, buildTrendChart, barRow, mapBarRow, distRow, highlightCard } from './charts.js';
+import { computeMmrHistory, gamesForMmrScope, mmrToTier } from '../rank.js';
 
 const METRIC_LABELS = { kd: 'Ratio K/D', dmg: 'Dégâts infligés', score: 'Score', acc: 'Précision de tir (%)' };
 const NA = '<span style="color:var(--muted);">n/d</span>';
+
+// ---- Rang compétitif : badge de palier + MMR + courbe d'évolution ----
+// Fonction SÉPARÉE de renderGameAnalytics() à dessein : celle-ci reçoit des `games` déjà
+// filtrés par période pour CE joueur (gamesForPlayerSorted(uid)), alors que le rang doit
+// ignorer cette portée et appeler gamesForMmrScope() lui-même (voir rank.js — le MMR ne suit
+// que la sélection de saison, jamais une période libre/custom). Garder ça à part rend cette
+// divergence de portée visible au point d'appel plutôt que noyée dans une fonction dont le
+// paramètre `games` a l'air pourtant faisant autorité.
+export function renderRankSection(uid) {
+  if (!uid) return '';
+  const { mmrByUid, historyByUid } = computeMmrHistory(gamesForMmrScope());
+  const mmr = mmrByUid.get(uid);
+  const scopeNote = state.selectedSeasonId != null
+    ? 'Le MMR repart d\'une base neutre à chaque saison sélectionnée — non cumulatif d\'une saison à l\'autre.'
+    : 'Aucune saison sélectionnée : ce MMR est calculé sur toute la carrière du joueur.';
+
+  if (mmr == null) {
+    return `
+      <div class="analytics-section">
+        <div class="section-title">Rang compétitif</div>
+        <div class="hl-empty">Pas assez de parties à détail complet dans cette portée pour calculer un rang (voir CLAUDE.md/hasFullMatchData).</div>
+      </div>`;
+  }
+
+  const tier = mmrToTier(mmr);
+  const history = historyByUid.get(uid) || [];
+  const chart = history.length >= 2 ? buildLineChart(history.map(h => h.mmrAfter), {
+    color: 'var(--gold)', decimals: 0, fill: true,
+    legendLabel: 'MMR au fil des parties',
+  }) : '<div class="hl-empty">Pas assez de parties dans cette portée pour une courbe (2 minimum).</div>';
+
+  return `
+    <div class="analytics-section">
+      <div class="section-title">Rang compétitif</div>
+      <div class="streak-row">
+        <div class="streak-card">
+          <div class="streak-label">Rang</div>
+          <div class="streak-value"><span class="tier-badge ${tier.tierKey}">${tier.name}</span></div>
+        </div>
+        <div class="streak-card">
+          <div class="streak-label">MMR</div>
+          <div class="streak-value">${Math.round(mmr)}</div>
+        </div>
+        <div class="streak-card">
+          <div class="streak-label">Progression dans la division</div>
+          <div class="streak-value" style="font-size:20px;">${tier.progressPct}%</div>
+          <div class="score-bar" style="height:7px;margin-top:8px;"><div class="a" style="width:${tier.progressPct}%"></div></div>
+        </div>
+      </div>
+      <div class="chart-card" style="margin-top:16px;">${chart}</div>
+      <div class="evolution-hint" style="margin-top:12px;">${scopeNote}</div>
+    </div>`;
+}
 
 // ---- Focus carte : mini-profil dédié à une carte, ouvert en cliquant une ligne
 // dans "Performance par carte" (voir mapBarRow / data-map-select) ----

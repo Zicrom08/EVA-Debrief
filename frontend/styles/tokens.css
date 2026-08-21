@@ -11,6 +11,14 @@
   --win:#3ddc84;
   --loss:#ff5c69;
   --gold:#ffc857;
+  /* Rangs compétitifs (voir rank.js) — Or réutilise --gold, les autres sont dédiées */
+  --tier-bronze:#c17a4a;
+  --tier-argent:#b0b8c4;
+  --tier-platine:#7fd8d0;
+  --tier-emeraude:#2ecc8f;
+  --tier-diamant:#4fc3ff;
+  --tier-prodige:#a06cff;
+  --tier-legende:#ff4f9a;
 }
 *{box-sizing:border-box;}
 html,body{margin:0;padding:0;}

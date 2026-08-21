@@ -8,6 +8,23 @@ table.roster tr:hover{background:var(--panel);}
 .rank-badge{display:inline-block;width:18px;height:18px;line-height:18px;text-align:center;border-radius:4px;background:var(--panel-2);font-size:11px;margin-right:4px;color:var(--muted);}
 .rank-badge.r1{background:var(--gold);color:#141414;}
 .mvp-icon{color:var(--gold);margin-right:4px;}
+
+/* Rang compétitif (MMR + palier, voir rank.js) — NE PAS confondre avec .rank-badge
+   ci-dessus (position de ligne dans CE classement) : .tier-badge affiche un palier
+   (ex: "Platine III"), une couleur par rang, la division s'affiche en texte dans le badge. */
+.tier-badge{
+  display:inline-block;padding:2px 9px;border-radius:10px;
+  font-size:11px;font-weight:700;letter-spacing:0.02em;
+  background:rgba(255,255,255,0.08);white-space:nowrap;
+}
+.tier-badge.bronze{color:var(--tier-bronze);background:rgba(193,122,74,0.15);}
+.tier-badge.argent{color:var(--tier-argent);background:rgba(176,184,196,0.15);}
+.tier-badge.or{color:var(--gold);background:rgba(255,200,87,0.15);}
+.tier-badge.platine{color:var(--tier-platine);background:rgba(127,216,208,0.15);}
+.tier-badge.emeraude{color:var(--tier-emeraude);background:rgba(46,204,143,0.15);}
+.tier-badge.diamant{color:var(--tier-diamant);background:rgba(79,195,255,0.15);}
+.tier-badge.prodige{color:var(--tier-prodige);background:rgba(160,108,255,0.15);}
+.tier-badge.legende{color:var(--tier-legende);background:rgba(255,79,154,0.15);}
 td.num, th.num,
 table.roster td.num, table.roster th.num,
 table.match-roster td.num, table.match-roster th.num{text-align:right;}
