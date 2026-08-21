@@ -59,6 +59,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// CORS — seulement si CORS_ORIGIN est défini (frontend hébergé ailleurs que ce backend,
+// ex: GitHub Pages, voir README). Aucune dépendance ajoutée (comme parseCookies dans
+// auth.js) : quelques en-têtes suffisent. Jamais `*` en Allow-Origin dès qu'on pose
+// Allow-Credentials — la spec CORS l'interdit — donc on reflète l'Origin de la requête
+// UNIQUEMENT si elle figure dans la liste autorisée. CORS_ORIGIN accepte plusieurs
+// origines séparées par des virgules (ex: GitHub Pages + un domaine perso plus tard).
+// Voir aussi sessionCookieHeader() dans auth.js : CORS_ORIGIN bascule aussi le cookie de
+// session en SameSite=None (obligatoire pour qu'il parte sur une requête cross-site).
+const CORS_ORIGINS = (process.env.CORS_ORIGIN || '').split(',').map(s => s.trim()).filter(Boolean);
+if (CORS_ORIGINS.length) {
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && CORS_ORIGINS.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+      res.setHeader('Access-Control-Allow-Credentials', 'true');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      res.setHeader('Vary', 'Origin');
+    }
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  });
+}
+
 app.use(express.json({ limit: '100mb' })); // les exports d'historique complets peuvent être volumineux
 
 // ---------------------------------------------------------------------------

@@ -1,0 +1,59 @@
+# Build le frontend (frontend/dist) et le publie sur GitHub Pages.
+#
+# Ne concerne QUE le frontend statique — le backend (Express + data.json/users.json) reste
+# hébergé séparément par ailleurs (GitHub Pages ne fait pas tourner de Node.js). Ce frontend
+# est buildé pour appeler ce backend en cross-origin : voir la variable de repo
+# API_BASE_URL ci-dessous, et CORS_ORIGIN côté backend (backend/server.js), sans laquelle
+# le navigateur bloquera ces requêtes. Voir la section "Déployer le frontend sur GitHub
+# Pages" du README pour la configuration complète (Pages à activer en mode "GitHub
+# Actions", variable de repo à renseigner, CORS_ORIGIN côté serveur).
+name: Deploy frontend to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm run build --workspace frontend
+        env:
+          # URL HTTPS publique du backend (sans slash final) — variable de repo à
+          # renseigner soi-même : Settings → Secrets and variables → Actions → Variables
+          # → API_BASE_URL (une variable, pas un secret : c'est une URL publique).
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+          # Site de PROJET GitHub Pages, servi sous /<repo>/ — à adapter si le repo est
+          # renommé, ou remplacer par '/' en cas de domaine personnalisé (voir README).
+          VITE_BASE_PATH: /${{ github.event.repository.name }}/
+      # Désactive le traitement Jekyll par défaut de GitHub Pages, qui peut ignorer ou mal
+      # gérer certains fichiers générés par Vite (ex: noms commençant par un underscore).
+      - run: touch frontend/dist/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: frontend/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
