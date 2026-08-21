@@ -8,6 +8,7 @@ import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
 import { computeMmrHistory, gamesForMmrScope, mmrToTier } from './rank.js';
+import { apiUrl } from './api-base.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -131,6 +132,6 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
-  try { await fetch('/api/logout', { method: 'POST' }); } catch (e) {}
+  try { await fetch(apiUrl('/api/logout'), { method: 'POST', credentials: 'include' }); } catch (e) {}
   window.location.href = '/login.html';
 });

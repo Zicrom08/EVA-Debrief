@@ -4,6 +4,8 @@
 // 'unsafe-inline' sur script-src (voir backend/server.js).
 // ============================================================================
 
+import { apiUrl } from './api-base.js';
+
 const form = document.getElementById('loginForm');
 const btn = document.getElementById('loginBtn');
 const errEl = document.getElementById('loginError');
@@ -84,7 +86,7 @@ toggleLink.addEventListener('click', () => {
 // (Turnstile configuré côté serveur — voir /api/auth-status).
 (async () => {
   try {
-    const res = await fetch('/api/auth-status');
+    const res = await fetch(apiUrl('/api/auth-status'), { credentials: 'include' });
     const status = await res.json();
     registrationEnabled = !!status.registrationEnabled;
     turnstileSiteKey = status.turnstileSiteKey || null;
@@ -117,8 +119,9 @@ form.addEventListener('submit', async (e) => {
   btn.disabled = true;
   btn.textContent = mode === 'login' ? 'Connexion…' : 'Création…';
   try {
-    const res = await fetch(endpoint, {
+    const res = await fetch(apiUrl(endpoint), {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
