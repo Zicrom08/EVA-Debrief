@@ -26,12 +26,28 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Rattaché à l'environnement "github-pages" pour que ${{ vars.API_BASE_URL }} voie AUSSI
+    # une variable ajoutée depuis Settings → Environments → github-pages (facile de s'y
+    # tromper : cette page existe déjà dès que Pages est activé, avant même la variable de
+    # repo Settings → Secrets and variables → Actions → Variables) — les deux emplacements
+    # fonctionnent désormais, plus besoin de deviner lequel a été utilisé.
+    environment: github-pages
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
       - run: npm install
+      # Échoue tôt et clairement plutôt que de publier silencieusement un site cassé (appels
+      # /api/* résolus en relatif contre github.io lui-même -> 404, aucun message d'erreur
+      # visible dans l'app elle-même, voir main.js::init() qui reste juste sur l'écran vide
+      # d'import sans erreur affichée si loadFromServer() renvoie des données vides).
+      - name: Vérifie que API_BASE_URL est configurée
+        run: |
+          if [ -z "${{ vars.API_BASE_URL }}" ]; then
+            echo "::error::La variable API_BASE_URL est vide ou absente (Settings → Secrets and variables → Actions → Variables, OU Settings → Environments → github-pages → Environment variables). Sans elle, le frontend appelle des chemins /api/* relatifs à github.io lui-même, qui n'existent pas — le site se charge mais reste vide. Voir la section 'Déployer le frontend sur GitHub Pages' du README."
+            exit 1
+          fi
       - run: npm run build --workspace frontend
         env:
           # URL HTTPS publique du backend (sans slash final) — variable de repo à
