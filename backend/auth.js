@@ -98,16 +98,23 @@ function parseCookies(req) {
 // Construit l'en-tête Set-Cookie de la session : HttpOnly (inaccessible en JS,
 // protège du vol par script malveillant) et Secure automatiquement dès que la
 // requête est en HTTPS (détecté nativement ou via X-Forwarded-Proto derrière un proxy).
+// SameSite=Lax par défaut (suffit pour un frontend servi par ce backend lui-même) ; passe
+// à SameSite=None dès que CORS_ORIGIN est défini (voir server.js) — un frontend hébergé
+// ailleurs (ex: GitHub Pages) envoie ses requêtes en cross-site, et un cookie SameSite=Lax
+// n'y est jamais inclus. SameSite=None EXIGE Secure (sinon le navigateur rejette
+// silencieusement le cookie) — forcé dans ce cas même si isHttps n'est pas détecté sur CETTE
+// requête précise, puisque CORS_ORIGIN implique déjà un déploiement HTTPS des deux côtés.
 function sessionCookieHeader(token, req, maxAgeSeconds) {
   const isHttps = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  const crossOrigin = !!process.env.CORS_ORIGIN;
   const parts = [
     `${SESSION_COOKIE}=${token}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    `SameSite=${crossOrigin ? 'None' : 'Lax'}`,
     `Max-Age=${maxAgeSeconds}`,
   ];
-  if (isHttps) parts.push('Secure');
+  if (isHttps || crossOrigin) parts.push('Secure');
   return parts.join('; ');
 }
 

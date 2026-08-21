@@ -18,6 +18,7 @@ Node.js stocke et déduplique les données, un frontend en une seule page
 - [Stack technique](#stack-technique)
 - [Structure du projet](#structure-du-projet)
 - [Installation](#installation)
+- [Déployer le frontend sur GitHub Pages](#déployer-le-frontend-sur-github-pages)
 - [Où sont stockées les données](#où-sont-stockées-les-données)
 - [Comptes et rôles](#comptes-et-rôles)
 - [Garder le serveur actif en permanence](#garder-le-serveur-actif-en-permanence)
@@ -316,6 +317,54 @@ cette deuxième instance (sinon les deux écrivent dans le même `data.json`) :
 ```bash
 PORT=3001 VITE_PORT=5174 DATA_FILE=data.dev.json npm run dev
 ```
+
+## Déployer le frontend sur GitHub Pages
+
+GitHub Pages n'héberge que du contenu **statique** — pas de Node.js, pas de
+stockage persistant. Le backend (`backend/server.js`, `data.json`/
+`users.json`) ne peut donc pas y tourner : ce qui est décrit ici publie
+uniquement le **frontend buildé** sur `https://<toi>.github.io/<repo>/`, en
+le faisant pointer vers un backend hébergé **ailleurs**, en HTTPS (VPS avec
+domaine/DDNS, voir [HTTPS](#https) et
+[Garder le serveur actif en permanence](#garder-le-serveur-actif-en-permanence)
+plus haut). Le frontend et le backend vivent alors sur deux origines
+différentes (cross-origin) : il faut l'autoriser explicitement des deux
+côtés.
+
+**1. Active GitHub Pages sur le repo** — Settings → Pages → Source =
+*"GitHub Actions"* (pas "Deploy from a branch"). Le workflow
+`.github/workflows/deploy-gh-pages.yml` build et publie automatiquement
+`frontend/dist` à chaque push sur `main` (ou à la demande, onglet Actions →
+"Run workflow").
+
+**2. Renseigne l'URL du backend** — Settings → Secrets and variables →
+Actions → onglet **Variables** (pas Secrets, c'est une URL publique) → crée
+`API_BASE_URL` = l'URL HTTPS publique du backend, sans slash final (ex:
+`https://eva.tondomaine.fr`). Le workflow l'injecte au build
+(`VITE_API_BASE_URL`, lue par `frontend/src/api-base.js`) — sans elle, le
+frontend continue d'appeler des chemins relatifs (`/api/...`), qui
+n'existent pas sur GitHub Pages.
+
+**3. Autorise cette origine côté backend** — sur le serveur qui héberge le
+backend, définis `CORS_ORIGIN=https://<toi>.github.io` (voir
+[.env](#fichier-env-éviter-de-répéter-les-variables-à-chaque-lancement)) puis
+redémarre le service. Sans ça, le navigateur bloque les requêtes
+cross-origin (CORS), et le cookie de session ne peut de toute façon pas
+partir : `CORS_ORIGIN` bascule aussi ce cookie en `SameSite=None` côté
+serveur (`backend/auth.js`), seul réglage qui permette à un cookie de
+traverser une requête cross-site — ce qui exige à son tour `Secure`, donc un
+backend déjà en HTTPS (prérequis de toute façon, voir plus haut).
+
+Une fois les trois réglages faits, `https://<toi>.github.io/<repo>/`
+fonctionne exactement comme une instance auto-hébergée classique — import,
+authentification, tous les onglets — juste avec le frontend et le backend
+sur deux domaines séparés plutôt qu'un seul process qui sert les deux.
+
+⚠️ Limite connue : les en-têtes de sécurité (CSP, `X-Frame-Options`) posés
+par `backend/server.js` protègent les pages qu'IL sert lui-même — ils ne
+s'appliquent pas aux pages servies par GitHub Pages. L'app fonctionne
+normalement (Turnstile compris), seule cette couche de durcissement
+supplémentaire n'est pas active côté GitHub Pages pour l'instant.
 
 ## Où sont stockées les données
 

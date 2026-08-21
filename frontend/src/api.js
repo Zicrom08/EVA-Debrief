@@ -1,21 +1,28 @@
 import { state } from './state.js';
+import { apiUrl } from './api-base.js';
 
-// Redirige vers la page de connexion (session expirée ou absente).
+// Redirige vers la page de connexion (session expirée ou absente). Chemin relatif : cette
+// page est servie par le même hébergeur statique que celui-ci (index.html), pas par
+// l'API — voir api-base.js pour la distinction avec les appels /api/*.
 export function redirectToLogin() {
   window.location.href = '/login.html?next=' + encodeURIComponent(window.location.pathname + window.location.search);
 }
 
 // Requête GET vers l'API du serveur ; redirige vers /login.html si la session a expiré (401).
+// credentials:'include' : nécessaire pour que le cookie de session parte même quand l'API
+// est à une autre origine (ex: frontend sur GitHub Pages, voir CORS_ORIGIN côté serveur) —
+// sans effet quand la requête est déjà même-origine (comportement de fetch() par défaut).
 export async function apiGet(path) {
-  const res = await fetch(path);
+  const res = await fetch(apiUrl(path), { credentials: 'include' });
   if (res.status === 401) { redirectToLogin(); throw new Error('session expirée'); }
   if (!res.ok) throw new Error(`API ${path} → HTTP ${res.status}`);
   return res.json();
 }
 // Requête POST/PUT/DELETE vers l'API du serveur avec un corps JSON.
 export async function apiSend(method, path, body) {
-  const res = await fetch(path, {
+  const res = await fetch(apiUrl(path), {
     method,
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: body != null ? JSON.stringify(body) : undefined,
   });

@@ -59,3 +59,20 @@ test('sessionCookieHeader marks Secure only for HTTPS requests (direct or via X-
   const proxiedHeader = auth.sessionCookieHeader('tok', { secure: false, headers: { 'x-forwarded-proto': 'https' } }, 60);
   assert.ok(proxiedHeader.includes('Secure'));
 });
+
+test('sessionCookieHeader defaults to SameSite=Lax, no CORS_ORIGIN set', () => {
+  assert.equal(process.env.CORS_ORIGIN, undefined); // hypothèse de départ du test
+  const header = auth.sessionCookieHeader('tok', { secure: false, headers: {} }, 60);
+  assert.ok(header.includes('SameSite=Lax'));
+});
+
+test('sessionCookieHeader switches to SameSite=None + forces Secure when CORS_ORIGIN is set (cross-site cookie, ex: frontend sur GitHub Pages)', () => {
+  process.env.CORS_ORIGIN = 'https://example.github.io';
+  try {
+    const header = auth.sessionCookieHeader('tok', { secure: false, headers: {} }, 60);
+    assert.ok(header.includes('SameSite=None'));
+    assert.ok(header.includes('Secure')); // SameSite=None exige Secure, même sans HTTPS détecté sur CETTE requête
+  } finally {
+    delete process.env.CORS_ORIGIN;
+  }
+});

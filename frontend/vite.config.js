@@ -5,6 +5,12 @@ import { fileURLToPath } from 'url';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  // '/' par défaut (déploiement même-origine, servi à la racine par backend/server.js —
+  // comportement inchangé). Un site de PROJET GitHub Pages (pas un domaine perso) est servi
+  // sous /<repo>/, pas à la racine : la GitHub Action passe VITE_BASE_PATH=/EVA-Debrief/
+  // pour ce build précis (voir .github/workflows/deploy-gh-pages.yml). Même mécanisme que
+  // VITE_PORT/PORT juste en dessous.
+  base: process.env.VITE_BASE_PATH || '/',
   build: {
     outDir: 'dist',
     rollupOptions: {
