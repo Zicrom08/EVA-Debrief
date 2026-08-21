@@ -1,10 +1,7 @@
 node_modules/
-data.json
-data.json.tmp
-users.json
-users.json.tmp
 *.log
 *.bck
+*.old
 CLAUDE.md
 frontend/dist/
 .env
