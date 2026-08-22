@@ -79,6 +79,14 @@ function destroySessionsForUser(userId) {
   }
 }
 
+// Invalide TOUTES les sessions — appelé après restauration d'un backup de comptes
+// (db.restoreBackup(), voir server.js) : les userId encore en mémoire peuvent ne plus
+// exister (ou plus avoir le même rôle) dans le users.json qui vient d'être restauré,
+// donc aucune session ouverte ne doit survivre à ce remplacement complet.
+function destroyAllSessions() {
+  sessions.clear();
+}
+
 // Parse l'en-tête HTTP "Cookie" en objet { nom: valeur } — pas de dépendance
 // externe (cookie-parser) pour rester avec un minimum de dépendances npm.
 function parseCookies(req) {
@@ -127,6 +135,7 @@ module.exports = {
   getSession,
   destroySession,
   destroySessionsForUser,
+  destroyAllSessions,
   parseCookies,
   sessionCookieHeader,
 };

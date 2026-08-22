@@ -305,6 +305,61 @@ function backupFilePath(filename) {
   return fs.existsSync(p) ? p : null;
 }
 
+// Restaure un set de sauvegarde précis (admin, voir POST /api/backups/:timestamp/restore
+// dans server.js) : recharge l'état EN MÉMOIRE depuis les fichiers de sauvegarde choisis,
+// puis le rend durable en réécrivant data.json/users.json tout de suite — indispensable,
+// sinon la prochaine mutation (import, création de compte...) réécrirait l'état encore en
+// mémoire (celui d'AVANT la restauration) par-dessus les fichiers qu'on vient de restaurer,
+// annulant silencieusement la restauration au prochain saveNow().
+//
+// Prend elle-même une sauvegarde de l'état ACTUELLEMENT sur disque juste avant d'écraser
+// quoi que ce soit (avant toute réassignation de state/usersState) — pour que la
+// restauration soit elle-même annulable (le nouveau set apparaît juste avant celui qu'on
+// restaure dans la liste), avant même de savoir si le contenu restauré convient.
+//
+// `kinds` restreint la restauration à 'data' et/ou 'users' (les deux par défaut, mais
+// seulement ceux réellement présents dans CE set précis) : restaurer les comptes peut
+// invalider la session de l'admin qui déclenche l'action (son compte peut ne pas exister
+// dans un users.json plus ancien) — server.js appelle auth.destroyAllSessions() quand
+// 'users' fait partie du résultat, un choix qu'on laisse explicite côté interface plutôt
+// que systématique.
+//
+// Renvoie null si `timestamp` ne correspond à aucun set connu (protège aussi contre une
+// traversée de chemin si jamais il vient directement d'une requête HTTP, même regex que
+// backupFilePath()) ; sinon { restored: ['data'|'users', ...], safetyBackup }.
+function restoreBackup(timestamp, kinds) {
+  if (!/^[0-9A-Za-z-]+$/.test(String(timestamp))) return null;
+  const set = listBackups().find(s => s.timestamp === String(timestamp));
+  if (!set) return null;
+  const wanted = new Set(Array.isArray(kinds) && kinds.length ? kinds : ['data', 'users']);
+  const toRestore = set.files.filter(f => wanted.has(f.kind));
+  if (!toRestore.length) return { restored: [], safetyBackup: null };
+
+  // Lit le CONTENU des fichiers à restaurer AVANT de prendre la sauvegarde de sécurité
+  // ci-dessous : avec une BACKUP_RETENTION faible, runBackupNow() purge tout de suite les
+  // sets excédentaires (pruneOldBackups()), ce qui pourrait supprimer du disque les fichiers
+  // qu'on s'apprête justement à restaurer si on ne les avait lus qu'après coup.
+  const contents = toRestore
+    .map(f => ({ kind: f.kind, raw: readJsonFile(path.join(BACKUP_DIR, f.name)) }))
+    .filter(c => c.raw);
+  if (!contents.length) return { restored: [], safetyBackup: null };
+
+  const safetyBackup = runBackupNow();
+
+  const restored = [];
+  contents.forEach(({ kind, raw }) => {
+    if (kind === 'data') {
+      state = Object.assign(emptyGameState(), raw);
+      gamePersister.saveNow();
+    } else {
+      usersState = Object.assign(emptyUsersState(), raw);
+      usersPersister.saveNow();
+    }
+    restored.push(kind);
+  });
+  return { restored, safetyBackup };
+}
+
 let backupTimer = null;
 
 // Démarre la sauvegarde périodique (appelé uniquement par server.js au vrai démarrage du
@@ -517,6 +572,7 @@ module.exports = {
   runBackupNow,
   pruneOldBackups,
   backupFilePath,
+  restoreBackup,
   startAutoBackup,
   stopAutoBackup,
 

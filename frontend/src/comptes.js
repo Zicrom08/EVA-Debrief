@@ -1,10 +1,10 @@
 import { state } from './state.js';
-import { apiGet, apiSend, loadFromServer } from './api.js';
+import { apiGet, apiSend, loadFromServer, redirectToLogin } from './api.js';
 import { roleLabel, resolvePlayerName, nameFreshness, fmtDate } from './format.js';
 import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames } from './team-detect.js';
-import { fetchBackups, backupNow } from './backups.js';
+import { fetchBackups, backupNow, restoreBackup } from './backups.js';
 import { fetchSettings, updateRegistrationEnabled } from './settings.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
@@ -439,18 +439,58 @@ function renderBackupsList(sets) {
   const rows = sets.map(s => {
     const totalSize = s.files.reduce((sum, f) => sum + f.size, 0);
     const links = s.files.map(f => `<a href="/api/backups/${f.name}">${f.kind}</a>`).join(' · ');
+    const kinds = s.files.map(f => f.kind).sort().join(',');
     return `
     <tr>
       <td class="name-cell">${fmtDate(s.createdAt)}</td>
       <td class="num">${fmtBytes(totalSize)}</td>
       <td class="num">${links}</td>
+      <td class="num"><button class="btn small" data-restore-backup="${s.timestamp}" data-restore-kinds="${kinds}">Restaurer</button></td>
     </tr>`;
   }).join('');
   return `
     <div class="table-scroll"><table class="roster">
-      <thead><tr><th>Date</th><th class="num">Taille</th><th class="num">Télécharger</th></tr></thead>
+      <thead><tr><th>Date</th><th class="num">Taille</th><th class="num">Télécharger</th><th class="num">Restaurer</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>`;
+}
+
+const KIND_LABELS = { data: 'les données de jeu (parties, profils, équipes)', users: 'les comptes' };
+
+// Restaure un set précis (bouton par ligne, voir renderBackupsList()). Confirmation
+// détaillée avant d'écraser quoi que ce soit — même si l'opération est elle-même
+// réversible (backend/db.js::restoreBackup() prend sa propre sauvegarde de sécurité de
+// l'état actuel juste avant), le risque de se tromper de ligne reste réel.
+async function handleRestoreClick(btn) {
+  const timestamp = btn.dataset.restoreBackup;
+  const kinds = btn.dataset.restoreKinds.split(',').filter(Boolean);
+  const includesUsers = kinds.includes('users');
+  const label = kinds.map(k => KIND_LABELS[k] || k).join(' et ');
+  const warning = includesUsers
+    ? `\n\n⚠️ Les comptes en font partie : TOUT LE MONDE sera déconnecté, y compris toi — et ton compte actuel pourrait ne plus exister du tout si cette sauvegarde est antérieure à sa création.`
+    : '';
+  const dateLabel = btn.closest('tr').querySelector('.name-cell').textContent;
+  const msg = `Restaurer cette sauvegarde va ÉCRASER l'état actuel de ${label} par celui de cette sauvegarde du ${dateLabel}.\n\nUne sauvegarde de sécurité de l'état actuel est prise automatiquement juste avant, donc c'est réversible ensuite si besoin.${warning}\n\nContinuer ?`;
+  if (!confirm(msg)) return;
+  btn.disabled = true;
+  try {
+    await restoreBackup(timestamp, kinds);
+  } catch (e) {
+    alert('Erreur lors de la restauration : ' + e.message);
+    btn.disabled = false;
+    return;
+  }
+  if (includesUsers) {
+    // Notre propre session vient potentiellement d'être invalidée (voir
+    // auth.destroyAllSessions() côté serveur) — inutile de tenter un rafraîchissement qui
+    // se prendrait un 401, on redirige nous-mêmes tout de suite avec un message clair.
+    alert('Comptes restaurés. Tout le monde (y compris toi) doit se reconnecter.');
+    redirectToLogin();
+    return;
+  }
+  alert('Sauvegarde restaurée.');
+  await refreshBackupsFromServer();
+  renderComptes();
 }
 
 function renderBackupsPanel() {
@@ -482,6 +522,9 @@ function wireBackupsManager() {
       renderComptes();
     });
   }
+  document.querySelectorAll('[data-restore-backup]').forEach(restoreBtn => {
+    restoreBtn.addEventListener('click', () => handleRestoreClick(restoreBtn));
+  });
 }
 
 // ================= INSCRIPTION PUBLIQUE (admin) =================

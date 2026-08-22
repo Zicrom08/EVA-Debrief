@@ -569,10 +569,7 @@ app.delete('/api/player-names/:uid', requireAdmin, (req, res) => {
 // ---------------------------------------------------------------------------
 // Sauvegardes automatiques (admin) — voir db.js : startAutoBackup()/runBackupNow().
 // Copies horodatées de data.json/users.json dans un dossier séparé (BACKUP_DIR),
-// purgées automatiquement au-delà de BACKUP_RETENTION sauvegardes. Pas de route de
-// restauration automatique : restaurer une sauvegarde reste un geste manuel conscient
-// (remplacer data.json/users.json par les fichiers voulus, puis redémarrer le serveur) —
-// trop dangereux pour l'exposer comme un simple bouton qui écraserait les données en place.
+// purgées automatiquement au-delà de BACKUP_RETENTION sauvegardes.
 // ---------------------------------------------------------------------------
 app.get('/api/backups', requireAdmin, (req, res) => {
   const s = db.stats();
@@ -588,6 +585,20 @@ app.get('/api/backups/:filename', requireAdmin, (req, res) => {
   const filePath = db.backupFilePath(req.params.filename);
   if (!filePath) return res.status(404).json({ error: 'Sauvegarde introuvable.' });
   res.download(filePath, req.params.filename);
+});
+// Restaure un set de sauvegarde précis — voir db.restoreBackup() pour le détail (backup de
+// sécurité automatique de l'état actuel avant d'écraser quoi que ce soit, :timestamp validé
+// strictement contre le format qu'on génère nous-mêmes). `kinds` (optionnel, body JSON)
+// restreint à 'data' et/ou 'users' — les deux par défaut si présents dans ce set.
+// Si les comptes font partie de ce qui est restauré, TOUTES les sessions sont invalidées
+// (y compris celle de l'admin qui déclenche l'action, si son compte n'existe plus dans le
+// users.json restauré) : on ne peut pas savoir a priori si l'admin courant y survit encore.
+app.post('/api/backups/:timestamp/restore', requireAdmin, (req, res) => {
+  const kinds = req.body && Array.isArray(req.body.kinds) ? req.body.kinds : undefined;
+  const result = db.restoreBackup(req.params.timestamp, kinds);
+  if (!result || !result.restored.length) return res.status(404).json({ error: 'Sauvegarde introuvable ou vide.' });
+  if (result.restored.includes('users')) auth.destroyAllSessions();
+  res.json(result);
 });
 
 // Réinitialisation complète (vide games + snapshots + teams)
