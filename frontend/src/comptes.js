@@ -662,7 +662,7 @@ export async function renderComptes() {
     <div class="team-manager">
       <div class="section-title">Détection automatique d'équipes par pseudo</div>
       <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
-        Détecte les équipes à partir des pseudos au format "TAGxJoueur" (ex: "BABOxViclegrand7")
+        Détecte les équipes à partir des pseudos au format "TAGxJoueur" (ex: "ALPHAxJoueur1")
         et propose de créer l'équipe correspondante ou d'y ajouter les nouveaux membres détectés.
       </div>
       ${renderTeamDetectionPanel()}
