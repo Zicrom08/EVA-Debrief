@@ -47,8 +47,10 @@ correspondants (taux de victoire, ratio K/D, dégâts moyens, score moyen).
 **Profil** — le plus complet des onglets :
 - Carte de saison (niveau, XP, stats cumulées) à partir des captures de
   profil, avec un tableau d'évolution entre deux captures successives
-  couvrant *toutes* les stats de saison (parties, K/D/A, dégâts, distance
-  parcourue, temps de jeu, niveau, XP, records personnels...)
+  couvrant les stats de saison disponibles (parties, K/D/A, meilleure série,
+  MVP, distance parcourue, niveau, XP...) — dégâts totaux et temps de jeu
+  cumulés affichés "n/d" sur toute capture récente, EVA ayant retiré ces
+  deux champs de son API (voir [Collecteur de données](#collecteur-de-données))
 - **Rang compétitif** — badge de palier (Bronze à Légende, 3 divisions
   chacun) et courbe d'évolution du LP (voir [Rang compétitif](#fonctionnalités)
   ci-dessous)
@@ -76,7 +78,8 @@ correspondants (taux de victoire, ratio K/D, dégâts moyens, score moyen).
 
 **Comparatif** — classement de tous les joueurs croisés (coéquipiers et
 adversaires) dans les parties importées, triable par winrate/K-D/dégâts/
-score/score d'impact/**rang**.
+score/score d'impact/**rang**, avec un seuil ajustable de parties croisées
+minimum (1 à 10) pour ignorer les rencontres trop rares.
 
 **Équipes** — crée des groupes de joueurs personnalisés, consulte leurs
 stats agrégées, compare deux équipes entre elles.
@@ -209,7 +212,8 @@ production : `npm run build` compile le frontend en fichiers statiques
 - **Auth** : sessions par cookie signé, sans dépendance (`crypto` natif de
   Node), mot de passe unique partagé.
 - **Collecteur** : userscript Tampermonkey qui intercepte `fetch`/`XHR` sur
-  le site EVA pour capturer l'historique de parties et les profils publics.
+  le site EVA pour capturer l'historique de parties et ta page de profil
+  connectée (les pages de profil publiques n'existent plus côté EVA).
 
 ## Structure du projet
 
@@ -219,6 +223,8 @@ eva-debrief/
 ├── data.json                        # Parties/profils/équipes (généré au runtime, gitignored)
 ├── users.json                       # Comptes (généré au runtime, gitignored, séparé de data.json)
 ├── .env.example                     # Modèle de fichier .env (voir Installation)
+├── .github/workflows/
+│   └── deploy-gh-pages.yml          # Build + publie frontend/dist sur GitHub Pages (voir plus bas)
 ├── backend/
 │   ├── package.json                 # dependencies: express
 │   ├── server.js                    # Point d'entrée : routes API + fichiers statiques buildés + HTTP(S)
@@ -236,12 +242,15 @@ eva-debrief/
 │   │   ├── login.js                   # Logique de login.html (module externe, voir CSP)
 │   │   ├── state.js                   # État partagé
 │   │   ├── format.js, api.js, api-base.js, ui-prefs.js, game-filters.js, rank.js
+│   │   ├── seasons.js                 # Détection des saisons, résolution seasonId, normalisation des captures de profil
 │   │   ├── historique.js, tendances.js, comparatif.js, equipes.js, comptes.js
+│   │   ├── player-links.js, player-names.js, team-detect.js
 │   │   ├── backups.js, settings.js    # Enveloppes API pour les panneaux admin de l'onglet Comptes
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
 │   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
-└── eva_history_collector.user.js    # Script Tampermonkey (côté navigateur, sur le site EVA)
+├── eva_history_collector.user.js    # Script Tampermonkey (côté navigateur, sur le site EVA)
+└── eva_network_inspector.user.js    # Script Tampermonkey de diagnostic (journalise tout le GraphQL du site, voir Collecteur de données)
 ```
 
 ## Installation
@@ -502,7 +511,7 @@ pour que le lien apparaisse (voir `isRegistrationEnabled()` dans
 
 Pour obtenir ces clés : [dash.cloudflare.com](https://dash.cloudflare.com) →
 Turnstile → "Add site" → mode "Managed", en indiquant ton nom de domaine
-(`zicrom.ddns.net` par exemple). Ajoute aussi `localhost` à la liste des
+(`tonpseudo.ddns.net` par exemple). Ajoute aussi `localhost` à la liste des
 domaines autorisés du widget si tu veux tester l'inscription en développement
 (`npm run dev`).
 
@@ -521,6 +530,32 @@ invalide immédiatement ses sessions ouvertes.
 moment de la connexion — **utilise toujours HTTPS en production** (voir la
 section [HTTPS](#https) plus bas) pour qu'il ne soit pas intercepté sur le
 réseau.
+
+### Outils admin de qualité des données
+
+L'onglet "Comptes" (admin uniquement) va au-delà de la gestion des accès —
+il regroupe aussi les outils qui corrigent la façon dont les *joueurs*
+(pas les comptes de connexion à cette app) sont identifiés/affichés à
+partir des données EVA importées :
+
+- **Fusion de comptes joueurs** — regroupe plusieurs comptes EVA (smurfs)
+  d'une même personne sous un seul profil dans toutes les stats de l'app
+  (`POST/DELETE /api/player-links`, `frontend/src/player-links.js`). Aucune
+  partie ni capture stockée n'est modifiée : la fusion n'agit qu'au niveau
+  de la résolution d'identité (`canonicalUid()`), donc toujours réversible.
+- **Renommer un joueur** — le pseudo affiché suit déjà automatiquement le
+  plus récent vu en jeu ; ce réglage force un nom différent si besoin (ex:
+  retirer un tag d'équipe de l'affichage) sans toucher aux données de
+  partie (`PUT/DELETE /api/player-names/:uid`, `frontend/src/player-names.js`).
+- **Analyse des joueurs** — recalcule et affiche l'état actuel du pseudo de
+  chaque joueur connu à partir de l'ensemble des parties/captures déjà
+  importées, pour vérifier que les deux outils ci-dessus ont bien pris effet.
+- **Détection automatique d'équipes par pseudo** — repère les joueurs dont
+  le pseudo EVA suit le format `TAGxJoueur` (ex: `ALPHAxJoueur1`, au
+  moins 2 joueurs partageant le même tag) et propose de créer l'équipe
+  personnalisée correspondante ou d'y ajouter les nouveaux membres détectés
+  (`frontend/src/team-detect.js`, réutilise les routes `/api/teams`
+  existantes plutôt qu'une route dédiée).
 
 ## Garder le serveur actif en permanence
 
@@ -647,6 +682,9 @@ SSL_KEY_PATH=/chemin/vers/privkey.pem \
 SSL_CERT_PATH=/chemin/vers/cert.pem \
 npm start
 ```
+
+Optionnellement `SSL_CA_PATH=/chemin/vers/chain.pem` si ton certificat a
+besoin d'une chaîne d'autorité intermédiaire.
 
 Le serveur bascule alors entièrement en HTTPS (`https://...`). Le cookie de
 session reçoit automatiquement le flag `Secure` dès qu'il détecte une vraie
@@ -779,22 +817,43 @@ redemandent par défaut : score d'équipe/dégâts/équipe/rang/pseudo ont
 disparu de la liste d'historique, et les stats de bataille de la page de
 profil sont passées d'un format complet (`statistics`) à un format réduit
 (`battleArenaStatistics`, sans temps de jeu ni dégâts totaux) réparti en
-plusieurs requêtes par widget. Les données existent toujours côté serveur
-EVA, le site a juste arrêté de les redemander — depuis la v8.0, le
-collecteur en profite : à chaque requête d'historique ou de profil que le
-site envoie, il déclenche EN PLUS un second appel réseau séparé (mêmes
-URL/authentification, mais une requête personnalisée qui redemande tous les
-champs manquants) et n'utilise que sa réponse, jamais celle du site. La
-requête du site elle-même n'est donc jamais modifiée — voir le gros
+plusieurs requêtes par widget. Depuis la v8.0, le collecteur route autour de
+ça en déclenchant, à chaque requête d'historique ou de profil que le site
+envoie, un second appel réseau totalement séparé (mêmes
+URL/authentification, mais une requête personnalisée qui redemande les
+champs manquants) et n'utilise que sa réponse, jamais celle du site — la
+requête du site elle-même n'est donc jamais modifiée. Voir le gros
 avertissement en tête de `eva_history_collector.user.js` sur les versions
 précédentes (4.0 à 7.0) qui modifiaient la requête du site en place, ce qui
 provoquait des boucles de requêtes et a fait bannir temporairement des
-comptes ; **ne pas revenir à cette approche**. Résultat : une capture
-fraîche (parties comme profil) revient à nouveau complète en un seul appel,
-sans fusion de fragments nécessaire côté script. La visionneuse affiche
-toujours "n/d" pour les champs qui manqueraient sur des captures plus
-anciennes (faites avec une version du collecteur antérieure à la v8.0),
-plutôt qu'un faux 0.
+comptes ; **ne pas revenir à cette approche**.
+
+Pour l'**historique de parties**, ce contournement fonctionne toujours
+intégralement : une capture fraîche revient complète en un seul appel
+(mode, score par équipe, et par joueur outcome/kills/deaths/assists/score/
+dégâts/précision/équipe/rang/pseudo), sans fusion de fragments nécessaire.
+
+⚠️ Pour les **stats de profil**, ce n'est plus le cas depuis la v9.3 du
+collecteur : EVA a fini par retirer le champ `statistics` du schéma GraphQL
+lui-même — ce n'est plus seulement "arrêté d'être redemandé par défaut"
+comme en juillet 2026, la requête enrichie qui le redemandait explicitement
+se prend désormais un `400` de validation
+(`Cannot query field "statistics" on type "Player"`). Il n'existe donc plus
+aucun moyen de récupérer le temps de jeu total ni les dégâts cumulés de
+saison — la visionneuse affiche "n/d" pour ces deux champs sur **toute**
+nouvelle capture, pas seulement les anciennes (voir la note "format réduit"
+plus haut dans [Profil](#fonctionnalités)). Le reste des stats de saison
+(winrate, K/D, kills/deaths/assists, meilleure série, MVP, distance
+parcourue, niveau/XP) reste disponible : le collecteur redemande désormais
+`battleArenaStatistics` à la place de `statistics`, sur la même requête
+`UseProfileUserOwned`.
+
+Si EVA change encore son schéma plus tard, ce script redeviendra incomplet
+de la même façon — utilise `eva_network_inspector.user.js` (même méthode
+d'installation Tampermonkey, à côté du collecteur dans ce repo) pour
+diagnostiquer si ça se reproduit : il journalise sans rien modifier toutes
+les requêtes/réponses GraphQL brutes du site, utile pour repérer un nom de
+champ ou une opération qui a changé.
 
 ## Historique du projet
 

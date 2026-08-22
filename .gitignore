@@ -8,6 +8,10 @@ frontend/dist/
 .venv
 .venv/*
 backups/
+data.json
+data.json.tmp
+users.json
+users.json.tmp
 # graphify knowledge graph (regenerate with `graphify update .`)
 graphify-out/
 
