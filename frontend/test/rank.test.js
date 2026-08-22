@@ -165,28 +165,29 @@ test('computeLpHistory: merges aliased accounts onto one LP entry via canonicalU
 });
 
 test('lpToTier: exact division/tier boundaries and defensive clamping at the extremes', () => {
-  assert.equal(lpToTier(999).name, 'Or I');
-  assert.equal(lpToTier(1000).name, 'Platine III');
+  // Numérotation croissante avec le LP : I = entrée du rang, III = juste avant promotion.
+  assert.equal(lpToTier(999).name, 'Or III');
+  assert.equal(lpToTier(1000).name, 'Platine I');
   assert.equal(lpToTier(1000).progressPct, 0);
   assert.equal(lpToTier(1099).progressPct, 99);
-  assert.equal(lpToTier(-500).name, 'Bronze III');
+  assert.equal(lpToTier(-500).name, 'Bronze I');
   assert.equal(lpToTier(-500).progressPct, 0);
-  assert.equal(lpToTier(999999).name, 'Légende I');
+  assert.equal(lpToTier(999999).name, 'Légende III');
   assert.equal(lpToTier(999999).progressPct, 100);
 });
 
 test('lpToTier: regression - a fractional LP between two integer band boundaries must not fall through to the top tier', () => {
   // Real bug report: a player with only 4 games (LP barely moved from BASE_LP=1000, the
-  // start of Platine III) landed at a fractional LP just under 1000 and was shown as
-  // "Légende I" - the old inclusive-integer-bounds table ([900,999] then [1000,1099]) left a
+  // start of Platine I) landed at a fractional LP just under 1000 and was shown as the
+  // top tier - the old inclusive-integer-bounds table ([900,999] then [1000,1099]) left a
   // real-valued gap between 999 and 1000 that no band matched, so .find() fell through to the
   // last (highest) tier. Any fractional value strictly inside that kind of gap must resolve
   // to the band it visually belongs to, at every internal boundary, not just this one.
-  assert.equal(lpToTier(999.5).name, 'Or I');
-  assert.equal(lpToTier(999.99).name, 'Or I');
-  assert.equal(lpToTier(1099.5).name, 'Platine III');
-  assert.equal(lpToTier(1999.5).name, 'Prodige III');
-  assert.equal(lpToTier(NaN).name, 'Bronze III'); // repli défensif sûr (le plus bas), jamais le plus haut
+  assert.equal(lpToTier(999.5).name, 'Or III');
+  assert.equal(lpToTier(999.99).name, 'Or III');
+  assert.equal(lpToTier(1099.5).name, 'Platine I');
+  assert.equal(lpToTier(1999.5).name, 'Prodige I');
+  assert.equal(lpToTier(NaN).name, 'Bronze I'); // repli défensif sûr (le plus bas), jamais le plus haut
 });
 
 test('gamesForLpScope: with a season selected, behaves like gameInSelectedRange (exact seasonId, date fallback)', () => {

@@ -23,14 +23,15 @@ export const K_OUTCOME = 28;
 export const K_PERFORMANCE = 10;
 
 // ================= PALIERS =================
-// 8 rangs, chacun avec 3 divisions (III = entrée du rang, I = juste avant promotion — même
-// convention que la plupart des jeux à ladder), chaque division large de DIVISION_WIDTH LP.
-// Première passe non calibrée (aucune population historique pour caler les bornes) — à
-// retoucher une fois une vraie saison ou deux jouées avec ce système.
+// 8 rangs, chacun avec 3 divisions (I = entrée du rang, III = juste avant promotion —
+// numérotation croissante choisie explicitement, à l'inverse de la convention descendante
+// (III puis II puis I) la plus courante dans les jeux à ladder), chaque division large de
+// DIVISION_WIDTH LP. Première passe non calibrée (aucune population historique pour caler
+// les bornes) — à retoucher une fois une vraie saison ou deux jouées avec ce système.
 const TIER_NAMES = ['Bronze', 'Argent', 'Or', 'Platine', 'Émeraude', 'Diamant', 'Prodige', 'Légende'];
 const DIVISIONS = 3;
 const DIVISION_WIDTH = 100;
-const TIER_BASE = 100; // début de Bronze III, aligné avec LP_FLOOR
+const TIER_BASE = 100; // début de Bronze I, aligné avec LP_FLOOR
 const ROMAN = { 1: 'I', 2: 'II', 3: 'III' };
 
 function slugify(name) {
@@ -38,25 +39,26 @@ function slugify(name) {
 }
 
 // Liste APLATIE de 24 paliers (8 rangs x 3 divisions), du plus bas au plus haut. Construite
-// une fois au chargement du module, pas recalculée à chaque appel de lpToTier(). Bronze III
-// est ouverte vers le bas et Légende I ouverte vers le haut (min/maxExclusive = ±Infinity) —
+// une fois au chargement du module, pas recalculée à chaque appel de lpToTier(). Bronze I
+// est ouverte vers le bas et Légende III ouverte vers le haut (min/maxExclusive = ±Infinity) —
 // sécurité défensive pour lpToTier(), même si LP_FLOOR empêche déjà tout LP réel de sortir
 // de cette plage par le bas.
 //
 // Intervalles semi-ouverts [min, maxExclusive) — PAS [min, max] avec des bornes entières :
 // le LP est une valeur flottante (les deltas Elo ne tombent presque jamais sur un entier
-// rond), donc des bornes entières inclusives des deux côtés (ex: Or I = [900,999], Platine
-// III = [1000,1099]) laissent un trou réel entre 999 et 1000 — toute valeur non-entière dans
+// rond), donc des bornes entières inclusives des deux côtés (ex: Or III = [900,999], Platine
+// I = [1000,1099]) laissent un trou réel entre 999 et 1000 — toute valeur non-entière dans
 // ce trou (ex: 999.4) ne correspond à AUCUN palier, TIERS.find() renvoie undefined, et
-// l'ancien repli retombait sur Légende I (bug réel constaté : un joueur à ~999 LP après
-// seulement 4 parties affiché en Légende I, alors que BASE_LP=1000 — début de Platine III —
-// place justement les joueurs récents pile à la lisière de ce trou). maxExclusive de chaque
-// palier == min du palier suivant par construction : aucun trou, aucun chevauchement possible.
-// naturalMin reste une borne finie (utilisée pour le calcul de progressPct) ; `max` (entier,
-// inclusif) n'est là que pour l'affichage humain d'une plage — jamais utilisé pour le matching.
+// l'ancien repli retombait sur le palier le plus haut (bug réel constaté : un joueur à ~999
+// LP après seulement 4 parties affiché tout en haut du classement, alors que BASE_LP=1000 —
+// début de Platine I — place justement les joueurs récents pile à la lisière de ce trou).
+// maxExclusive de chaque palier == min du palier suivant par construction : aucun trou,
+// aucun chevauchement possible. naturalMin reste une borne finie (utilisée pour le calcul de
+// progressPct) ; `max` (entier, inclusif) n'est là que pour l'affichage humain d'une plage —
+// jamais utilisé pour le matching.
 export const TIERS = TIER_NAMES.flatMap((tierName, tierIndex) =>
   Array.from({ length: DIVISIONS }, (_, i) => {
-    const division = DIVISIONS - i; // i=0 -> III, i=1 -> II, i=2 -> I
+    const division = i + 1; // i=0 -> I, i=1 -> II, i=2 -> III (numérotation croissante avec le LP)
     const bandIndex = tierIndex * DIVISIONS + i;
     const naturalMin = TIER_BASE + bandIndex * DIVISION_WIDTH;
     const isFirst = bandIndex === 0;
