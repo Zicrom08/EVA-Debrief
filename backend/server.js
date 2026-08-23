@@ -148,6 +148,13 @@ app.use((req, res, next) => {
   next();
 });
 
+// Résout le jeton de session quel que soit son transport : en-tête Authorization en
+// priorité (déploiement cross-origin, voir auth.bearerToken()), sinon le cookie classique
+// (déploiement même-origine, comportement historique inchangé).
+function requestToken(req) {
+  return auth.bearerToken(req) || req.cookies[auth.SESSION_COOKIE];
+}
+
 // Utilisé par login.html pour savoir s'il faut afficher "connexion", "créer le
 // premier compte admin" ou proposer un lien d'inscription — public, ne révèle
 // rien de sensible (la clé Turnstile renvoyée est la clé PUBLIQUE du widget).
@@ -171,7 +178,10 @@ app.post('/api/setup', (req, res) => {
   const user = db.createUser({ username: username.trim(), passwordSalt: salt, passwordHash: hash, role: 'admin' });
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
-  res.json({ ok: true });
+  // `token` en plus du cookie : ignoré par un frontend même-origine (cookie déjà suffisant),
+  // utilisé par un frontend cross-origin pour s'authentifier via l'en-tête Authorization à la
+  // place (voir auth.bearerToken() — le cookie seul est peu fiable sur Safari mobile, ITP).
+  res.json({ ok: true, token });
 });
 
 // Inscription publique — toujours en rôle "readonly" (jamais choisi par le
@@ -199,7 +209,7 @@ app.post('/api/register', async (req, res) => {
   const user = db.createUser({ username: username.trim(), email: email.trim(), passwordSalt: salt, passwordHash: hash, role: 'readonly' });
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
-  res.json({ ok: true });
+  res.json({ ok: true, token }); // voir /api/setup ci-dessus pour le pourquoi de ce champ
 });
 
 // Vérifie les identifiants et ouvre une session (cookie signé, voir auth.js).
@@ -213,12 +223,12 @@ app.post('/api/login', (req, res) => {
   }
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
-  res.json({ ok: true });
+  res.json({ ok: true, token }); // voir /api/setup ci-dessus pour le pourquoi de ce champ
 });
 
 // Termine la session en cours (bouton "Déconnexion" du frontend).
 app.post('/api/logout', (req, res) => {
-  auth.destroySession(req.cookies[auth.SESSION_COOKIE]);
+  auth.destroySession(requestToken(req));
   res.setHeader('Set-Cookie', auth.sessionCookieHeader('', req, 0));
   res.json({ ok: true });
 });
@@ -238,7 +248,7 @@ const PUBLIC_PATHS = new Set(['/login.html', '/logo.svg', '/api/login', '/api/se
 app.use((req, res, next) => {
   if (!isProtected()) return next(); // aucun compte créé = accès libre (setup en cours)
   if (PUBLIC_PATHS.has(req.path) || req.path.startsWith('/assets/')) return next();
-  const session = auth.getSession(req.cookies[auth.SESSION_COOKIE]);
+  const session = auth.getSession(requestToken(req));
   if (session) { req.user = session; return next(); }
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentification requise.' });

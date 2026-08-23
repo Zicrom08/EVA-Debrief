@@ -1,5 +1,14 @@
 import { state } from './state.js';
-import { apiUrl, pageUrl } from './api-base.js';
+import { apiUrl, pageUrl, getAuthToken } from './api-base.js';
+
+// En déploiement cross-origin (voir api-base.js::CROSS_ORIGIN), le jeton stocké au login est
+// envoyé via Authorization plutôt que de dépendre du cookie de session (peu fiable sur Safari
+// mobile, voir backend/auth.js::bearerToken()). Objet vide en déploiement même-origine (pas
+// de jeton stocké) : le cookie fait déjà tout le travail, comportement inchangé.
+function authHeaders() {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 // Redirige vers la page de connexion (session expirée ou absente). pageUrl(), pas l'API —
 // login.html est servie par le même hébergeur statique que celui-ci (index.html), voir
@@ -14,7 +23,7 @@ export function redirectToLogin() {
 // est à une autre origine (ex: frontend sur GitHub Pages, voir CORS_ORIGIN côté serveur) —
 // sans effet quand la requête est déjà même-origine (comportement de fetch() par défaut).
 export async function apiGet(path) {
-  const res = await fetch(apiUrl(path), { credentials: 'include' });
+  const res = await fetch(apiUrl(path), { credentials: 'include', headers: authHeaders() });
   if (res.status === 401) { redirectToLogin(); throw new Error('session expirée'); }
   if (!res.ok) throw new Error(`API ${path} → HTTP ${res.status}`);
   return res.json();
@@ -24,7 +33,7 @@ export async function apiSend(method, path, body) {
   const res = await fetch(apiUrl(path), {
     method,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: body != null ? JSON.stringify(body) : undefined,
   });
   if (res.status === 401) { redirectToLogin(); throw new Error('session expirée'); }

@@ -359,16 +359,34 @@ n'existent pas sur GitHub Pages.
 backend, définis `CORS_ORIGIN=https://<toi>.github.io` (voir
 [.env](#fichier-env-éviter-de-répéter-les-variables-à-chaque-lancement)) puis
 redémarre le service. Sans ça, le navigateur bloque les requêtes
-cross-origin (CORS), et le cookie de session ne peut de toute façon pas
-partir : `CORS_ORIGIN` bascule aussi ce cookie en `SameSite=None` côté
-serveur (`backend/auth.js`), seul réglage qui permette à un cookie de
-traverser une requête cross-site — ce qui exige à son tour `Secure`, donc un
-backend déjà en HTTPS (prérequis de toute façon, voir plus haut).
+cross-origin (CORS) et l'API refuse tout appel venant de GitHub Pages.
 
 Une fois les trois réglages faits, `https://<toi>.github.io/<repo>/`
 fonctionne exactement comme une instance auto-hébergée classique — import,
 authentification, tous les onglets — juste avec le frontend et le backend
 sur deux domaines séparés plutôt qu'un seul process qui sert les deux.
+
+**Authentification en cross-origin : jeton plutôt que cookie.** En
+déploiement même-origine (`npm start` classique), la session repose
+uniquement sur un cookie `HttpOnly` (voir [Comptes et rôles](#comptes-et-rôles)).
+Un tel cookie ne suffit plus une fois le frontend hébergé ailleurs que le
+backend : Safari (iOS et macOS), avec son réglage "Empêcher la navigation
+intersite" activé par défaut, bloque silencieusement tout cookie posé par
+une requête cross-site — même avec `SameSite=None; Secure` — ce qui se
+traduisait par une boucle de reconnexion sur mobile alors que la même app
+fonctionnait normalement sur desktop (Chrome/Firefox laissent passer ce
+cookie sans problème). Le build cross-origin (`VITE_API_BASE_URL` défini,
+donc n'importe quel build via `deploy-gh-pages.yml`) contourne ça
+automatiquement : à la connexion, le serveur renvoie aussi le jeton de
+session dans le corps JSON (en plus du cookie), le frontend le stocke dans
+`localStorage` et l'envoie ensuite via l'en-tête `Authorization: Bearer` sur
+chaque appel `/api/*` (voir `frontend/src/api-base.js::CROSS_ORIGIN` et
+`backend/auth.js::bearerToken()`) — aucune politique de cookie du navigateur
+ne s'applique à un en-tête HTTP classique. Rien à configurer : ce mécanisme
+s'active tout seul dès que `VITE_API_BASE_URL` est défini au build, et reste
+totalement inactif (aucun jeton stocké, cookie seul comme avant) en
+déploiement même-origine — où le cookie `HttpOnly` reste préférable
+(invisible au JS de la page, donc insensible à un vol de jeton par XSS).
 
 ⚠️ Limite connue : les en-têtes de sécurité (CSP, `X-Frame-Options`) posés
 par `backend/server.js` protègent les pages qu'IL sert lui-même — ils ne

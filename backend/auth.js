@@ -87,6 +87,22 @@ function destroyAllSessions() {
   sessions.clear();
 }
 
+// Jeton porté par l'en-tête "Authorization: Bearer <jeton>" plutôt que par un cookie —
+// utilisé par le frontend en déploiement cross-origin (ex: GitHub Pages + backend sur un
+// autre domaine, voir frontend/src/api-base.js::CROSS_ORIGIN). Safari (ITP, réglage
+// "Empêcher la navigation intersite", activé par défaut) bloque silencieusement tout cookie
+// posé par une requête cross-site, MÊME avec SameSite=None; Secure (bug réel constaté :
+// connexion en boucle sur mobile iOS alors que la même app fonctionne normalement sur
+// desktop) — un jeton transporté par un en-tête n'est soumis à aucune politique de cookie
+// du navigateur, donc insensible à ce blocage. Même magasin de sessions que le cookie (voir
+// createSession/getSession ci-dessus) : c'est uniquement le TRANSPORT qui diffère, jamais
+// les deux à la fois pour une même requête (server.js essaie l'un puis l'autre).
+function bearerToken(req) {
+  const header = req.headers['authorization'] || '';
+  const m = /^Bearer\s+(.+)$/.exec(header);
+  return m ? m[1] : null;
+}
+
 // Parse l'en-tête HTTP "Cookie" en objet { nom: valeur } — pas de dépendance
 // externe (cookie-parser) pour rester avec un minimum de dépendances npm.
 function parseCookies(req) {
@@ -136,6 +152,7 @@ module.exports = {
   destroySession,
   destroySessionsForUser,
   destroyAllSessions,
+  bearerToken,
   parseCookies,
   sessionCookieHeader,
 };

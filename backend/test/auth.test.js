@@ -38,6 +38,24 @@ test('destroySessionsForUser invalidates every session for that user, and only t
   assert.notEqual(auth.getSession(t3), null);
 });
 
+test('destroyAllSessions invalidates every session regardless of user', () => {
+  const t1 = auth.createSession('ua', 'admin');
+  const t2 = auth.createSession('ub', 'readonly');
+  auth.destroyAllSessions();
+  assert.equal(auth.getSession(t1), null);
+  assert.equal(auth.getSession(t2), null);
+});
+
+test('bearerToken extracts the token from a well-formed Authorization header, case-insensitive on "Bearer"', () => {
+  assert.equal(auth.bearerToken({ headers: { authorization: 'Bearer abc123' } }), 'abc123');
+});
+
+test('bearerToken returns null when the header is absent or malformed', () => {
+  assert.equal(auth.bearerToken({ headers: {} }), null);
+  assert.equal(auth.bearerToken({ headers: { authorization: 'abc123' } }), null); // pas de préfixe "Bearer "
+  assert.equal(auth.bearerToken({ headers: { authorization: 'Basic abc123' } }), null); // mauvais schéma
+});
+
 test('parseCookies parses a Cookie header into key/value pairs, URL-decoded', () => {
   const req = { headers: { cookie: 'eva_session=abc123; other=hello%20world' } };
   const cookies = auth.parseCookies(req);

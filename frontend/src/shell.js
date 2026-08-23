@@ -8,7 +8,7 @@ import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
-import { apiUrl, pageUrl } from './api-base.js';
+import { pageUrl, clearAuthToken } from './api-base.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -132,6 +132,10 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {
-  try { await fetch(apiUrl('/api/logout'), { method: 'POST', credentials: 'include' }); } catch (e) {}
+  // apiSend() (pas un fetch() brut) : embarque automatiquement l'en-tête Authorization en
+  // déploiement cross-origin, indispensable pour que le serveur retrouve LA bonne session à
+  // détruire quand le cookie n'est pas fiable (voir api-base.js::CROSS_ORIGIN).
+  try { await apiSend('POST', '/api/logout'); } catch (e) {}
+  clearAuthToken();
   window.location.href = pageUrl('login.html');
 });

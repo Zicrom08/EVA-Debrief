@@ -4,7 +4,7 @@
 // 'unsafe-inline' sur script-src (voir backend/server.js).
 // ============================================================================
 
-import { apiUrl, pageUrl } from './api-base.js';
+import { apiUrl, pageUrl, setAuthToken } from './api-base.js';
 
 const form = document.getElementById('loginForm');
 const btn = document.getElementById('loginBtn');
@@ -133,6 +133,12 @@ form.addEventListener('submit', async (e) => {
       if (mode === 'register' && window.turnstile && turnstileWidgetId != null) turnstile.reset(turnstileWidgetId);
       return;
     }
+    // Stocke le jeton renvoyé par le serveur (voir backend/server.js) — no-op en
+    // déploiement même-origine (setAuthToken() ne fait rien tant que CROSS_ORIGIN est faux),
+    // seul un frontend cross-origin (GitHub Pages) s'en sert réellement (cookie peu fiable
+    // sur Safari mobile, voir api-base.js::CROSS_ORIGIN).
+    const data = await res.json().catch(() => ({}));
+    if (data.token) setAuthToken(data.token);
     // redirige vers la page demandée à l'origine si connue (déjà absolue et correcte, voir
     // redirectToLogin() dans api.js), sinon la racine de l'app (pageUrl(''), jamais '/' en
     // dur — casserait sur un site de projet GitHub Pages, servi sous /<repo>/)
