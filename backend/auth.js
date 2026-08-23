@@ -87,6 +87,62 @@ function destroyAllSessions() {
   sessions.clear();
 }
 
+// ================= LIMITATION DES TENTATIVES DE CONNEXION (anti brute-force) =================
+// Rien n'existait avant pour ça (voir la section Sécurité du README) : un bot pouvait
+// essayer autant de mots de passe qu'il voulait sur /api/login. Compteur en mémoire par IP
+// (voir clientIp() dans server.js — la vraie IP du client, jamais une valeur que lui-même
+// pourrait falsifier sans un reverse proxy de confiance en amont). Se remet à zéro tout seul
+// dès qu'aucun échec n'est survenu depuis LOGIN_RATE_LIMIT_MINUTES : pas de purge périodique
+// nécessaire, même logique paresseuse que getSession() ci-dessus pour les sessions expirées.
+//
+// Lus à CHAQUE appel plutôt que figés dans des constantes au chargement du module (comme
+// sessionCookieHeader() lit process.env.CORS_ORIGIN dynamiquement) : les tests peuvent ainsi
+// ajuster ces seuils par cas sans avoir à recharger le module.
+function loginRateLimitConfig() {
+  return {
+    max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
+    windowMs: (Number(process.env.LOGIN_RATE_LIMIT_MINUTES) || 15) * 60 * 1000,
+  };
+}
+
+const loginAttempts = new Map(); // ip -> { count, windowStart, lockedUntil }
+
+// À vérifier AVANT de tenter de vérifier le mot de passe (server.js) — pour ne même pas
+// lancer verifyPassword() (scrypt, volontairement coûteux, voir hashPassword ci-dessus) une
+// fois l'IP bloquée. Renvoie { locked: false } ou { locked: true, retryAfterSeconds }.
+function loginRateLimitStatus(ip) {
+  const entry = loginAttempts.get(ip);
+  if (!entry || !entry.lockedUntil) return { locked: false };
+  const now = Date.now();
+  if (now >= entry.lockedUntil) {
+    loginAttempts.delete(ip); // fenêtre de blocage expirée, repart de zéro
+    return { locked: false };
+  }
+  return { locked: true, retryAfterSeconds: Math.ceil((entry.lockedUntil - now) / 1000) };
+}
+
+// Appelé sur un échec (mauvais username/mot de passe) — incrémente le compteur de cette IP ;
+// verrouille pour LOGIN_RATE_LIMIT_MINUTES une fois LOGIN_RATE_LIMIT_MAX échecs atteints DANS
+// cette même fenêtre (pas un compteur qui ne redescend jamais une fois lancé).
+function recordLoginFailure(ip) {
+  const { max, windowMs } = loginRateLimitConfig();
+  const now = Date.now();
+  let entry = loginAttempts.get(ip);
+  if (!entry || now - entry.windowStart > windowMs) {
+    entry = { count: 0, windowStart: now, lockedUntil: 0 };
+  }
+  entry.count += 1;
+  if (entry.count >= max) entry.lockedUntil = now + windowMs;
+  loginAttempts.set(ip, entry);
+}
+
+// Appelé sur une connexion réussie — un compte qui vient de prouver son mot de passe ne doit
+// pas rester pénalisé par des échecs précédents (ex: l'utilisateur lui-même s'est trompé deux
+// fois avant de retrouver son mot de passe).
+function recordLoginSuccess(ip) {
+  loginAttempts.delete(ip);
+}
+
 // Jeton porté par l'en-tête "Authorization: Bearer <jeton>" plutôt que par un cookie —
 // utilisé par le frontend en déploiement cross-origin (ex: GitHub Pages + backend sur un
 // autre domaine, voir frontend/src/api-base.js::CROSS_ORIGIN). Safari (ITP, réglage
@@ -152,6 +208,9 @@ module.exports = {
   destroySession,
   destroySessionsForUser,
   destroyAllSessions,
+  loginRateLimitStatus,
+  recordLoginFailure,
+  recordLoginSuccess,
   bearerToken,
   parseCookies,
   sessionCookieHeader,

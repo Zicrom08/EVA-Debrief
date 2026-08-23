@@ -38,6 +38,52 @@ test('destroySessionsForUser invalidates every session for that user, and only t
   assert.notEqual(auth.getSession(t3), null);
 });
 
+test('recordLoginFailure locks out an IP only once LOGIN_RATE_LIMIT_MAX failures land within the window', () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '3';
+  process.env.LOGIN_RATE_LIMIT_MINUTES = '15';
+  const ip = '1.2.3.4';
+  assert.equal(auth.loginRateLimitStatus(ip).locked, false);
+  auth.recordLoginFailure(ip);
+  auth.recordLoginFailure(ip);
+  assert.equal(auth.loginRateLimitStatus(ip).locked, false); // 2 échecs, seuil à 3
+  auth.recordLoginFailure(ip);
+  const status = auth.loginRateLimitStatus(ip);
+  assert.equal(status.locked, true);
+  assert.ok(status.retryAfterSeconds > 0 && status.retryAfterSeconds <= 15 * 60);
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+  delete process.env.LOGIN_RATE_LIMIT_MINUTES;
+});
+
+test('recordLoginSuccess clears prior failures for that IP (a legitimate mistyped password should not linger)', () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '2';
+  const ip = '5.6.7.8';
+  auth.recordLoginFailure(ip);
+  auth.recordLoginSuccess(ip);
+  auth.recordLoginFailure(ip);
+  assert.equal(auth.loginRateLimitStatus(ip).locked, false); // repart de zéro après le succès
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+});
+
+test('login rate limiting is scoped per IP, never shared across different IPs', () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '1';
+  auth.recordLoginFailure('9.9.9.9');
+  assert.equal(auth.loginRateLimitStatus('9.9.9.9').locked, true);
+  assert.equal(auth.loginRateLimitStatus('8.8.8.8').locked, false);
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+});
+
+test('loginRateLimitStatus auto-clears once the lockout window has passed', async () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '1';
+  process.env.LOGIN_RATE_LIMIT_MINUTES = String(10 / 60000); // ~10ms, pour ne pas ralentir la suite
+  const ip = '10.10.10.10';
+  auth.recordLoginFailure(ip);
+  assert.equal(auth.loginRateLimitStatus(ip).locked, true);
+  await new Promise(resolve => setTimeout(resolve, 30));
+  assert.equal(auth.loginRateLimitStatus(ip).locked, false);
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+  delete process.env.LOGIN_RATE_LIMIT_MINUTES;
+});
+
 test('destroyAllSessions invalidates every session regardless of user', () => {
   const t1 = auth.createSession('ua', 'admin');
   const t2 = auth.createSession('ub', 'readonly');

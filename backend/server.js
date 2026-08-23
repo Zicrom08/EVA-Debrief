@@ -112,6 +112,26 @@ function isRegistrationEnabled() {
   return Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY) && db.getRegistrationEnabled();
 }
 
+// TRUST_PROXY (voir .env.example) : active la confiance en X-Forwarded-For pour clientIp()
+// ci-dessous — à activer UNIQUEMENT si ce serveur tourne bien derrière un reverse proxy de
+// confiance (Caddy/nginx, voir la section HTTPS du README, Option A) qui pose lui-même cet
+// en-tête. Sans ça, n'importe quel client peut positionner X-Forwarded-For sur sa propre
+// requête (Express ne le filtre pas) et se faire passer pour une IP différente à chaque
+// tentative, ce qui contournerait trivialement le rate-limiting de /api/login ci-dessous —
+// défaut prudent (false) plutôt que de faire confiance par défaut à un en-tête falsifiable.
+const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || '');
+
+// IP réelle du client, utilisée pour le rate-limiting du login et transmise à Turnstile. Ne
+// prend que le PREMIER champ de X-Forwarded-For (celui posé par le proxy immédiat) : les
+// suivants, s'il y en a, viennent d'étapes en amont que ce proxy ne contrôle pas lui-même.
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const xff = req.headers['x-forwarded-for'];
+    if (xff) return String(xff).split(',')[0].trim();
+  }
+  return req.socket.remoteAddress;
+}
+
 // Vérifie un jeton Turnstile auprès de Cloudflare — appel réseau serveur à
 // serveur, la clé secrète ne quitte jamais ce process.
 async function verifyTurnstile(token, remoteIp) {
@@ -201,7 +221,7 @@ app.post('/api/register', async (req, res) => {
   if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.status(400).json({ error: 'Adresse email invalide.' });
   }
-  const turnstileOk = await verifyTurnstile(turnstileToken, req.headers['x-forwarded-for'] || req.socket.remoteAddress);
+  const turnstileOk = await verifyTurnstile(turnstileToken, clientIp(req));
   if (!turnstileOk) {
     return res.status(400).json({ error: 'Vérification anti-robot échouée, réessaie.' });
   }
@@ -215,15 +235,27 @@ app.post('/api/register', async (req, res) => {
   res.json({ ok: true, token }); // voir /api/setup ci-dessus pour le pourquoi de ce champ
 });
 
-// Vérifie les identifiants et ouvre une session (cookie signé, voir auth.js).
+// Vérifie les identifiants et ouvre une session (cookie signé, voir auth.js). Protégé contre
+// le brute-force par IP (voir auth.loginRateLimitStatus() — LOGIN_RATE_LIMIT_MAX tentatives
+// par LOGIN_RATE_LIMIT_MINUTES, voir .env.example) : vérifié AVANT même de lire le compte
+// pour ne pas payer le coût de verifyPassword() une fois bloqué.
 app.post('/api/login', (req, res) => {
+  const ip = clientIp(req);
+  const rateLimit = auth.loginRateLimitStatus(ip);
+  if (rateLimit.locked) {
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+    const minutes = Math.ceil(rateLimit.retryAfterSeconds / 60);
+    return res.status(429).json({ error: `Trop de tentatives de connexion. Réessaie dans ${minutes} minute(s).` });
+  }
   const { username, password } = req.body || {};
   const user = username ? db.findUserByUsername(username) : null;
   // Message générique volontaire : ne pas révéler si c'est le username ou le
   // mot de passe qui est incorrect.
   if (!user || !auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    auth.recordLoginFailure(ip);
     return res.status(401).json({ error: 'Identifiants incorrects.' });
   }
+  auth.recordLoginSuccess(ip);
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
   res.json({ ok: true, token }); // voir /api/setup ci-dessus pour le pourquoi de ce champ

@@ -663,6 +663,7 @@ server {
         proxy_pass http://localhost:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
@@ -675,6 +676,15 @@ sudo certbot --nginx -d eva.tondomaine.fr
 `certbot` réécrit automatiquement la config nginx pour ajouter le `listen
 443 ssl`, le certificat, et une redirection HTTP → HTTPS. Le renouvellement
 se fait ensuite tout seul (tâche planifiée installée par certbot).
+
+**Derrière l'un ou l'autre de ces deux reverse proxy, pense à activer
+`TRUST_PROXY=1`** (voir [.env](#fichier-env-éviter-de-répéter-les-variables-à-chaque-lancement))
+pour que la [limitation des tentatives de connexion](#️-sécurité--points-à-connaître)
+identifie chaque utilisateur par sa vraie IP plutôt que par celle du reverse
+proxy — sans ça, tout le monde semble venir de la même IP (`localhost`), et
+un seul utilisateur qui se trompe de mot de passe suffirait à bloquer tout
+le monde. Caddy pose `X-Forwarded-For` tout seul ; la config nginx
+ci-dessus l'inclut déjà.
 
 #### Avec un nom DDNS (IP dynamique) plutôt qu'un domaine classique
 
@@ -763,9 +773,17 @@ Même avec des comptes créés, garde en tête que :
   cas, pas juste caché dans l'interface) — mais un compte `admin` a un accès
   complet, donc distribue ce rôle avec parcimonie.
 - Les sessions vivent en mémoire côté serveur : elles disparaissent à
-  chaque redémarrage, et rien n'est fait pour limiter les tentatives de
-  connexion répétées (pas de rate-limiting). Pour un usage exposé sur
-  internet, ajoute quand même une couche supplémentaire si possible :
+  chaque redémarrage. `/api/login` est protégé contre le brute-force par IP
+  (`LOGIN_RATE_LIMIT_MAX` tentatives par `LOGIN_RATE_LIMIT_MINUTES`, 5/15 par
+  défaut — voir `.env.example`) : au-delà, la route répond `429` et un
+  `Retry-After` le temps que la fenêtre se réinitialise, sans même calculer
+  le hash du mot de passe fourni. **Si tu es derrière un reverse proxy,
+  active `TRUST_PROXY=1`** (voir [HTTPS](#https)) pour que cette limite
+  s'applique par vrai visiteur plutôt que par IP du proxy (qui bloquerait
+  tout le monde à la fois) — sans reverse proxy réel devant, ne l'active
+  jamais : un client pourrait alors falsifier son IP apparente et
+  contourner la limite. Pour un usage exposé sur internet, ajoute quand
+  même une couche supplémentaire si possible :
   - Garde-le sur ton réseau local ou derrière un VPN (Tailscale,
     WireGuard...) si tu n'as pas besoin d'y accéder depuis l'extérieur.
   - Utilise toujours HTTPS via un reverse proxy (voir plus haut) — sans ça,
