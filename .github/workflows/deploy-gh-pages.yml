@@ -76,7 +76,7 @@ jobs:
       # Désactive le traitement Jekyll par défaut de GitHub Pages, qui peut ignorer ou mal
       # gérer certains fichiers générés par Vite (ex: noms commençant par un underscore).
       - run: touch frontend/dist/.nojekyll
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: frontend/dist
 
