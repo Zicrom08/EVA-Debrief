@@ -1,5 +1,16 @@
+// auth.js lit/écrit sessions.json au chargement du module (voir SESSIONS_DATA_DIR/
+// SESSIONS_FILE dans auth.js, même raison que DATA_DIR dans db.js/backend/test/db.test.js) —
+// DATA_DIR doit pointer vers un dossier temporaire isolé AVANT le require, sinon cette suite
+// lirait/écrirait le vrai sessions.json du dépôt.
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eva-debrief-auth-test-'));
+process.env.DATA_DIR = tmpDir;
+
 const auth = require('../auth');
 
 test('hashPassword/verifyPassword round-trips correctly and rejects a wrong password', () => {
@@ -26,6 +37,36 @@ test('createSession / getSession / destroySession lifecycle', () => {
 test('getSession returns null for an unknown or missing token', () => {
   assert.equal(auth.getSession('nonexistent-token'), null);
   assert.equal(auth.getSession(null), null);
+});
+
+test('sessions survive a process restart (persisted to sessions.json, reloaded on require)', () => {
+  const token = auth.createSession('u-persist', 'admin');
+  delete require.cache[require.resolve('../auth')];
+  const freshAuth = require('../auth'); // simule un redémarrage : mémoire vidée, relit le disque
+
+  const session = freshAuth.getSession(token);
+  assert.ok(session);
+  assert.equal(session.userId, 'u-persist');
+  assert.equal(session.role, 'admin');
+});
+
+test('a session destroyed before restart never comes back after reload', () => {
+  const token = auth.createSession('u-gone', 'readonly');
+  auth.destroySession(token);
+  delete require.cache[require.resolve('../auth')];
+  const freshAuth = require('../auth');
+  assert.equal(freshAuth.getSession(token), null);
+});
+
+test('an already-expired session is dropped on reload rather than reappearing forever', () => {
+  const raw = fs.readFileSync(path.join(tmpDir, 'sessions.json'), 'utf-8');
+  const sessions = JSON.parse(raw);
+  sessions['expired-token'] = { userId: 'u-old', role: 'admin', expires: Date.now() - 1000 };
+  fs.writeFileSync(path.join(tmpDir, 'sessions.json'), JSON.stringify(sessions));
+
+  delete require.cache[require.resolve('../auth')];
+  const freshAuth = require('../auth');
+  assert.equal(freshAuth.getSession('expired-token'), null);
 });
 
 test('destroySessionsForUser invalidates every session for that user, and only that user', () => {

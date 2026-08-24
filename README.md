@@ -222,6 +222,7 @@ eva-debrief/
 ├── package.json                     # Orchestrateur racine (workspaces npm, scripts dev/build/start)
 ├── data.json                        # Parties/profils/équipes (généré au runtime, gitignored)
 ├── users.json                       # Comptes (généré au runtime, gitignored, séparé de data.json)
+├── sessions.json                    # Sessions ouvertes (généré au runtime, gitignored, séparé de users.json)
 ├── .env.example                     # Modèle de fichier .env (voir Installation)
 ├── .github/workflows/
 │   ├── ci.yml                        # npm test sur chaque push (hors main)/pull request
@@ -420,7 +421,7 @@ supplémentaire n'est pas active côté GitHub Pages pour l'instant.
 
 ## Où sont stockées les données
 
-Dans **deux fichiers séparés** à la racine du projet, pour pouvoir les
+Dans **trois fichiers séparés** à la racine du projet, pour pouvoir les
 sauvegarder/versionner indépendamment :
 
 - `data.json` — parties, profils de saison, équipes.
@@ -428,6 +429,14 @@ sauvegarder/versionner indépendamment :
   exprès de `data.json` : ce sont des données sensibles, pas les mêmes
   enjeux de sauvegarde (tu voudras peut-être versionner `data.json` souvent
   et `users.json` plus rarement, ou les stocker sur des supports différents).
+- `sessions.json` — sessions ouvertes (voir [Comptes et rôles](#comptes-et-rôles)).
+  Séparé aussi de `users.json` : un jeton de session volé donne un accès
+  complet SANS mot de passe, au moins aussi sensible qu'un hash. Retombe sur
+  `DATA_DIR` par défaut comme `users.json` (`SESSIONS_DATA_DIR`/
+  `SESSIONS_DATA_FILE` pour le déplacer indépendamment) — jamais concerné
+  par les sauvegardes automatiques/`GET /api/export` ci-dessous, contrairement
+  aux deux autres (une session n'a aucun intérêt à être restaurée : elle vaut
+  mieux recréée par une vraie reconnexion).
 
 Pour changer leur emplacement :
 
@@ -563,10 +572,11 @@ Comment ça marche techniquement : mots de passe hachés avec `crypto.scrypt`
 API) sans session valide est redirigée vers `/login.html` (ou reçoit une
 réponse `401` pour les appels API) ; une fois connecté, une session est créée
 (cookie `HttpOnly`, 30 jours, marqué `Secure` automatiquement si servi en
-HTTPS) et stockée en mémoire côté serveur — un redémarrage du serveur
-déconnecte tout le monde (les comptes eux, stockés dans `users.json`, survivent
-au redémarrage — voir [Où sont stockées les données](#où-sont-stockées-les-données)). Le bouton "Déconnexion" en haut à droite de l'appli met fin à
-la session à tout moment. Changer le rôle ou le mot de passe d'un compte
+HTTPS) et persistée dans `sessions.json` (voir
+[Où sont stockées les données](#où-sont-stockées-les-données)) — un
+redémarrage du serveur (déploiement, crash) ne déconnecte donc plus
+personne. Le bouton "Déconnexion" en haut à droite de l'appli met fin à la
+session à tout moment. Changer le rôle ou le mot de passe d'un compte
 invalide immédiatement ses sessions ouvertes.
 
 ⚠️ Le mot de passe circule en clair entre le navigateur et le serveur au
@@ -790,8 +800,11 @@ Même avec des comptes créés, garde en tête que :
   gérer équipes/comptes ni réinitialiser (bloqué côté serveur dans les deux
   cas, pas juste caché dans l'interface) — mais un compte `admin` a un accès
   complet, donc distribue ce rôle avec parcimonie.
-- Les sessions vivent en mémoire côté serveur : elles disparaissent à
-  chaque redémarrage. `/api/login` est protégé contre le brute-force par IP
+- Les sessions sont persistées dans `sessions.json` (voir
+  [Où sont stockées les données](#où-sont-stockées-les-données)) — un fichier
+  au moins aussi sensible que `users.json` (un jeton volé = accès complet
+  sans mot de passe) : mêmes précautions de permissions, jamais commité (voir
+  `.gitignore`). `/api/login` est protégé contre le brute-force par IP
   (`LOGIN_RATE_LIMIT_MAX` tentatives par `LOGIN_RATE_LIMIT_MINUTES`, 5/15 par
   défaut — voir `.env.example`) : au-delà, la route répond `429` et un
   `Retry-After` le temps que la fenêtre se réinitialise, sans même calculer

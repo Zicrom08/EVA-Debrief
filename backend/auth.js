@@ -16,15 +16,58 @@
 // ============================================================================
 
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 
 const SESSION_COOKIE = 'eva_session';
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours
 const ROLES = ['admin', 'contributor', 'readonly'];
 
-// Sessions valides en mémoire : token -> { userId, role, expires }.
-// Un redémarrage du serveur déconnecte tout le monde (comportement acceptable
-// pour cet usage — pas besoin de persister les sessions sur disque).
-const sessions = new Map();
+// ================= PERSISTANCE DES SESSIONS =================
+// Vivaient auparavant SEULEMENT en mémoire : un redémarrage du serveur (déploiement, crash,
+// reboot) déconnectait tout le monde d'un coup, même en pleine utilisation — gênant dès que
+// le service redémarre plus qu'occasionnellement. Persistées dans un fichier À PART de
+// data.json/users.json (SESSIONS_DATA_DIR retombe sur DATA_DIR par défaut, comme
+// USERS_DATA_DIR dans db.js) : un jeton de session volé donne un accès complet SANS mot de
+// passe, c'est une donnée au moins aussi sensible qu'un hash de mot de passe — jamais mêlée
+// aux autres fichiers, mêmes enjeux de permissions restrictives que users.json.
+//
+// Écriture atomique (tmp + rename) à chaque mutation, même raison que makePersister() dans
+// db.js : jamais de fichier à moitié écrit si le process est tué en pleine écriture.
+const SESSIONS_DATA_DIR = process.env.SESSIONS_DATA_DIR || process.env.DATA_DIR || path.join(__dirname, '..');
+const SESSIONS_FILE = path.join(SESSIONS_DATA_DIR, process.env.SESSIONS_DATA_FILE || 'sessions.json');
+
+// Ignore un fichier illisible/corrompu plutôt que de faire planter le démarrage — dans le
+// pire cas, tout le monde doit juste se reconnecter, comme avant cette fonctionnalité.
+function loadSessions() {
+  try {
+    if (!fs.existsSync(SESSIONS_FILE)) return new Map();
+    const raw = fs.readFileSync(SESSIONS_FILE, 'utf-8');
+    if (!raw.trim()) return new Map();
+    const parsed = JSON.parse(raw);
+    const now = Date.now();
+    // Jamais recharger une session déjà expirée entre-temps (serveur resté éteint plus
+    // longtemps que SESSION_TTL_MS) — sinon le fichier accumule indéfiniment de vieilles
+    // entrées mortes que rien ne purge jamais.
+    return new Map(Object.entries(parsed).filter(([, s]) => s && s.expires > now));
+  } catch (e) {
+    console.error('[auth] Impossible de lire', SESSIONS_FILE, '—', e.message);
+    return new Map();
+  }
+}
+
+function persistSessions() {
+  try {
+    const tmpFile = SESSIONS_FILE + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(Object.fromEntries(sessions)));
+    fs.renameSync(tmpFile, SESSIONS_FILE);
+  } catch (e) {
+    console.error('[auth] Impossible d\'écrire', SESSIONS_FILE, '—', e.message);
+  }
+}
+
+// Sessions valides : token -> { userId, role, expires } — voir la persistance ci-dessus.
+const sessions = loadSessions();
 
 // Hache un mot de passe avec un sel aléatoire (scrypt — pas de dépendance
 // externe type bcrypt, `crypto` fait déjà tout ce qu'il faut).
@@ -49,6 +92,7 @@ function verifyPassword(candidate, salt, hash) {
 function createSession(userId, role) {
   const token = crypto.randomBytes(32).toString('hex');
   sessions.set(token, { userId, role, expires: Date.now() + SESSION_TTL_MS });
+  persistSessions();
   return token;
 }
 
@@ -60,6 +104,7 @@ function getSession(token) {
   if (!session) return null;
   if (Date.now() > session.expires) {
     sessions.delete(token);
+    persistSessions();
     return null;
   }
   return session;
@@ -67,16 +112,18 @@ function getSession(token) {
 
 // Invalide une session précise (déconnexion).
 function destroySession(token) {
-  if (token) sessions.delete(token);
+  if (token && sessions.delete(token)) persistSessions();
 }
 
 // Invalide toutes les sessions d'un utilisateur — appelé quand un admin change
 // son rôle/mot de passe ou supprime son compte, pour ne pas laisser une
 // session déjà ouverte agir avec des droits obsolètes.
 function destroySessionsForUser(userId) {
+  let changed = false;
   for (const [token, session] of sessions) {
-    if (session.userId === userId) sessions.delete(token);
+    if (session.userId === userId) { sessions.delete(token); changed = true; }
   }
+  if (changed) persistSessions();
 }
 
 // ================= LIMITATION DES TENTATIVES DE CONNEXION (anti brute-force) =================

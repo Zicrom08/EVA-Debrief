@@ -12,6 +12,8 @@ data.json
 data.json.tmp
 users.json
 users.json.tmp
+sessions.json
+sessions.json.tmp
 # graphify knowledge graph (regenerate with `graphify update .`)
 graphify-out/
 
