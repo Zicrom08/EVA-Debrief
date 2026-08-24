@@ -259,9 +259,18 @@ eva-debrief/
 
 ## Installation
 
-Prérequis : [Node.js](https://nodejs.org/) version 18 ou plus récente (déjà
-présent sur la plupart des hébergements Node). Aucun compilateur, aucune
-base de données externe à installer.
+Prérequis : [Node.js](https://nodejs.org/) version 18 ou plus récente pour
+le **backend seul** (`npm start`, y compris en
+[mode `BACKEND_ONLY`](#déployer-le-frontend-sur-github-pages)) — déjà
+présent sur la plupart des hébergements Node. **Builder ou développer le
+frontend sur cette machine** (`npm run build`/`npm run dev`, donc le flux
+`npm start` classique ci-dessous) demande Node **20.19+ ou 22.12+** depuis
+Vite 8 (Rolldown, son nouveau bundler, utilise une API Node trop récente
+pour fonctionner sur 18/19 — erreur immédiate au démarrage, pas un simple
+avertissement). Si ta machine ne peut pas monter à niveau, passe par
+`BACKEND_ONLY=1` et laisse GitHub Actions builder le frontend à ta place
+(déjà en Node 20, voir plus bas). Aucun compilateur, aucune base de données
+externe à installer.
 
 **En production** (un seul process Node, un seul port) :
 

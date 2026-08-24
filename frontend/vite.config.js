@@ -13,7 +13,9 @@ export default defineConfig({
   base: process.env.VITE_BASE_PATH || '/',
   build: {
     outDir: 'dist',
-    rollupOptions: {
+    // rolldownOptions (pas rollupOptions) depuis Vite 8 : Rolldown remplace Rollup comme
+    // bundler de prod (voir la migration v8, GHSA-fx2h-pf6j-xcff corrigée par ce bump).
+    rolldownOptions: {
       input: {
         main: resolve(__dirname, 'index.html'),
         login: resolve(__dirname, 'login.html'),
