@@ -459,21 +459,15 @@ immédiate au démarrage s'il n'en existe pas déjà une récente (pour ne pas
 en reprendre une à chaque redémarrage en développement avec `--watch`).
 Stockées dans `BACKUP_DIR` (`data.json`, dossier `backups/`, par défaut),
 les 30 plus récentes sont conservées (`BACKUP_RETENTION`), les plus
-anciennes purgées automatiquement. Consultables, déclenchables et **restaurables** à la main depuis l'onglet
-Comptes (réservé aux admins), ou via l'API : `GET /api/backups` (liste),
-`POST /api/backups` (sauvegarde immédiate), `GET /api/backups/<nom-de-fichier>`
-(télécharger un fichier précis), `POST /api/backups/<horodatage>/restore`
-(restaurer un set précis). La restauration recharge l'état en mémoire du
-serveur et l'écrit tout de suite dans `data.json`/`users.json` — pas besoin
-de redémarrer. Elle prend elle-même, automatiquement, une sauvegarde de
-sécurité de l'état actuel juste avant d'écraser quoi que ce soit (le nouveau
-set apparaît dans la liste juste avant celui qu'on vient de restaurer), donc
-l'opération reste réversible même en cas d'erreur. Le choix se fait par
-"kind" (`data` et/ou `users`, selon ce que ce set précis contient) : **restaurer
-les comptes déconnecte tout le monde** (y compris l'admin qui déclenche
-l'action, dont le compte peut ne plus exister dans un `users.json` plus
-ancien) — l'interface distingue les deux avec un avertissement dédié plutôt
-que de forcer systématiquement les deux ensemble.
+anciennes purgées automatiquement. Consultables et déclenchables à la main
+depuis l'onglet Comptes (réservé aux admins), ou via l'API : `GET /api/backups`
+(liste), `POST /api/backups` (sauvegarde immédiate), `GET /api/backups/<nom-de-fichier>`
+(télécharger un fichier précis). **Pas de restauration depuis l'interface** —
+une tentative en usage réel a fini en verrouillage complet (comptes écrasés
+d'un coup, mot de passe compris, sans savoir à l'avance si le compte de
+l'admin qui déclenche l'action y survit) : remplacer `data.json`/`users.json`
+par les fichiers voulus à la main, puis redémarrer le serveur, reste le
+geste volontaire recommandé — plus lent, mais sans surprise possible.
 
 **Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `backend/db.js`
 stocke tout avec une écriture atomique (jamais de fichier à moitié écrit
@@ -854,7 +848,6 @@ Même avec des comptes créés, garde en tête que :
 | GET     | `/api/backups`    | admin | Sauvegardes existantes + config (`intervalHours`, `retention`) |
 | POST    | `/api/backups`    | admin | Déclenche une sauvegarde immédiate |
 | GET     | `/api/backups/:filename` | admin | Télécharge un fichier de sauvegarde précis |
-| POST    | `/api/backups/:timestamp/restore` | admin | Restaure un set `{ kinds?: ['data','users'] }` (les deux par défaut) — invalide toutes les sessions si `users` en fait partie |
 
 ("Auth requise" ne s'applique que si au moins un compte existe — sinon tout
 est ouvert le temps de créer le premier, voir [Comptes et rôles](#comptes-et-rôles).

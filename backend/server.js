@@ -647,20 +647,11 @@ app.get('/api/backups/:filename', requireAdmin, (req, res) => {
   if (!filePath) return res.status(404).json({ error: 'Sauvegarde introuvable.' });
   res.download(filePath, req.params.filename);
 });
-// Restaure un set de sauvegarde précis — voir db.restoreBackup() pour le détail (backup de
-// sécurité automatique de l'état actuel avant d'écraser quoi que ce soit, :timestamp validé
-// strictement contre le format qu'on génère nous-mêmes). `kinds` (optionnel, body JSON)
-// restreint à 'data' et/ou 'users' — les deux par défaut si présents dans ce set.
-// Si les comptes font partie de ce qui est restauré, TOUTES les sessions sont invalidées
-// (y compris celle de l'admin qui déclenche l'action, si son compte n'existe plus dans le
-// users.json restauré) : on ne peut pas savoir a priori si l'admin courant y survit encore.
-app.post('/api/backups/:timestamp/restore', requireAdmin, (req, res) => {
-  const kinds = req.body && Array.isArray(req.body.kinds) ? req.body.kinds : undefined;
-  const result = db.restoreBackup(req.params.timestamp, kinds);
-  if (!result || !result.restored.length) return res.status(404).json({ error: 'Sauvegarde introuvable ou vide.' });
-  if (result.restored.includes('users')) auth.destroyAllSessions();
-  res.json(result);
-});
+// Pas de route de restauration : une restauration écrase des comptes entiers d'un coup
+// (mots de passe compris, sans savoir à l'avance si le compte de l'admin qui déclenche
+// l'action y survit) — fonctionnalité retirée après un verrouillage complet constaté en
+// usage réel. Remplacer data.json/users.json à la main puis redémarrer le serveur reste le
+// geste volontaire recommandé (voir README, section "Où sont stockées les données").
 
 // Réinitialisation complète (vide games + snapshots + teams)
 app.delete('/api/reset', requireAdmin, (req, res) => {

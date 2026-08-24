@@ -84,14 +84,6 @@ test('loginRateLimitStatus auto-clears once the lockout window has passed', asyn
   delete process.env.LOGIN_RATE_LIMIT_MINUTES;
 });
 
-test('destroyAllSessions invalidates every session regardless of user', () => {
-  const t1 = auth.createSession('ua', 'admin');
-  const t2 = auth.createSession('ub', 'readonly');
-  auth.destroyAllSessions();
-  assert.equal(auth.getSession(t1), null);
-  assert.equal(auth.getSession(t2), null);
-});
-
 test('bearerToken extracts the token from a well-formed Authorization header, case-insensitive on "Bearer"', () => {
   assert.equal(auth.bearerToken({ headers: { authorization: 'Bearer abc123' } }), 'abc123');
 });

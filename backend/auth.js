@@ -79,14 +79,6 @@ function destroySessionsForUser(userId) {
   }
 }
 
-// Invalide TOUTES les sessions — appelé après restauration d'un backup de comptes
-// (db.restoreBackup(), voir server.js) : les userId encore en mémoire peuvent ne plus
-// exister (ou plus avoir le même rôle) dans le users.json qui vient d'être restauré,
-// donc aucune session ouverte ne doit survivre à ce remplacement complet.
-function destroyAllSessions() {
-  sessions.clear();
-}
-
 // ================= LIMITATION DES TENTATIVES DE CONNEXION (anti brute-force) =================
 // Rien n'existait avant pour ça (voir la section Sécurité du README) : un bot pouvait
 // essayer autant de mots de passe qu'il voulait sur /api/login. Compteur en mémoire par IP
@@ -207,7 +199,6 @@ module.exports = {
   getSession,
   destroySession,
   destroySessionsForUser,
-  destroyAllSessions,
   loginRateLimitStatus,
   recordLoginFailure,
   recordLoginSuccess,
