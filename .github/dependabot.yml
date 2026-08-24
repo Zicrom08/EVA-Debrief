@@ -1,0 +1,21 @@
+# Ouvre automatiquement une pull request quand une dépendance a une nouvelle version — les
+# alertes de sécurité elles-mêmes (Dependabot alerts/security updates) sont un réglage de
+# repo séparé (Settings → Security → Code security and analysis), pas configurable depuis un
+# fichier : à activer manuellement une fois, indépendamment de ce fichier-ci.
+#
+# Un seul groupe "npm" à la racine : package-lock.json y vit et couvre les deux workspaces
+# (backend + frontend, voir package.json racine) — Dependabot les détecte tous les deux
+# depuis ce point d'entrée unique, pas la peine d'une entrée par workspace.
+# ci.yml (déclenché sur toute pull request) fait tourner la suite de tests sur chaque PR
+# ouverte par Dependabot, comme sur n'importe quelle autre — aucune configuration à dupliquer.
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"

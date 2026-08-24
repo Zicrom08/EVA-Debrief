@@ -224,9 +224,11 @@ eva-debrief/
 ├── users.json                       # Comptes (généré au runtime, gitignored, séparé de data.json)
 ├── sessions.json                    # Sessions ouvertes (généré au runtime, gitignored, séparé de users.json)
 ├── .env.example                     # Modèle de fichier .env (voir Installation)
-├── .github/workflows/
-│   ├── ci.yml                        # npm test sur chaque push (hors main)/pull request
-│   └── deploy-gh-pages.yml          # npm test, puis build + publie frontend/dist sur GitHub Pages (voir plus bas)
+├── .github/
+│   ├── dependabot.yml                # PR automatiques de mise à jour des dépendances (npm + actions)
+│   └── workflows/
+│       ├── ci.yml                    # npm test sur chaque push (hors main)/pull request
+│       └── deploy-gh-pages.yml      # npm test, puis build + publie frontend/dist sur GitHub Pages (voir plus bas)
 ├── backend/
 │   ├── package.json                 # dependencies: express
 │   ├── server.js                    # Point d'entrée : routes API + fichiers statiques buildés + HTTP(S)
