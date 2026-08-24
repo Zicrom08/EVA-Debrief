@@ -224,7 +224,8 @@ eva-debrief/
 ├── users.json                       # Comptes (généré au runtime, gitignored, séparé de data.json)
 ├── .env.example                     # Modèle de fichier .env (voir Installation)
 ├── .github/workflows/
-│   └── deploy-gh-pages.yml          # Build + publie frontend/dist sur GitHub Pages (voir plus bas)
+│   ├── ci.yml                        # npm test sur chaque push (hors main)/pull request
+│   └── deploy-gh-pages.yml          # npm test, puis build + publie frontend/dist sur GitHub Pages (voir plus bas)
 ├── backend/
 │   ├── package.json                 # dependencies: express
 │   ├── server.js                    # Point d'entrée : routes API + fichiers statiques buildés + HTTP(S)
@@ -343,9 +344,12 @@ côtés.
 
 **1. Active GitHub Pages sur le repo** — Settings → Pages → Source =
 *"GitHub Actions"* (pas "Deploy from a branch"). Le workflow
-`.github/workflows/deploy-gh-pages.yml` build et publie automatiquement
-`frontend/dist` à chaque push sur `main` (ou à la demande, onglet Actions →
-"Run workflow").
+`.github/workflows/deploy-gh-pages.yml` fait tourner `npm test` (backend +
+frontend) puis build et publie automatiquement `frontend/dist` à chaque
+push sur `main` (ou à la demande, onglet Actions → "Run workflow") — la
+publication n'a jamais lieu si un test échoue. `.github/workflows/ci.yml`
+fait tourner les mêmes tests sur les autres branches et les pull requests,
+pour un retour avant même un merge vers `main`.
 
 **2. Renseigne l'URL du backend** — Settings → Secrets and variables →
 Actions → onglet **Variables** (pas Secrets, c'est une URL publique) → crée

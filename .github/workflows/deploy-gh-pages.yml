@@ -24,7 +24,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Fait tourner la suite de tests (backend + frontend, voir npm test à la racine) AVANT tout
+  # build/publication — sans ce garde-fou, rien n'empêchait un commit cassé sur main de partir
+  # en prod (ce workflow ne faisait que builder/publier, jamais npm test). Voir aussi ci.yml,
+  # qui couvre les autres branches/pull requests ; ce job-ci reste le vrai verrou du
+  # déploiement lui-même, dédoublé volontairement pour ne jamais dépendre d'un autre workflow.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm test
+
   build:
+    needs: test
     runs-on: ubuntu-latest
     # Rattaché à l'environnement "github-pages" pour que ${{ vars.API_BASE_URL }} voie AUSSI
     # une variable ajoutée depuis Settings → Environments → github-pages (facile de s'y

@@ -1,0 +1,23 @@
+# Fait tourner la suite de tests (backend + frontend, voir "test" dans le package.json
+# racine) à chaque push et pull request, sur n'importe quelle branche — retour rapide avant
+# même un merge vers main. `main` est volontairement exclue des push : deploy-gh-pages.yml
+# fait déjà tourner ces mêmes tests comme verrou du déploiement à chaque push sur cette
+# branche précise ; l'exclure ici évite de les faire tourner deux fois pour rien au même
+# endroit (une pull request vers main, elle, reste bien couverte par ce workflow-ci).
+name: CI
+
+on:
+  push:
+    branches-ignore: [main]
+  pull_request: {}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install
+      - run: npm test
