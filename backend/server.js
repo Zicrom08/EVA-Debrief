@@ -23,6 +23,13 @@ const auth = require('./auth');
 
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend', 'dist');
 
+// BACKEND_ONLY (voir .env.example) : ce process ne sert alors QUE l'API (/api/*), jamais
+// frontend/dist ni login.html — utile quand le frontend vit uniquement sur GitHub Pages (voir
+// la section "Déployer le frontend sur GitHub Pages" du README) et que ce serveur n'a donc
+// plus besoin d'être buildé/servi localement du tout. CORS_ORIGIN doit alors pointer vers
+// l'origine GitHub Pages pour que le frontend distant puisse appeler cette API.
+const BACKEND_ONLY = /^(1|true|yes)$/i.test(process.env.BACKEND_ONLY || '');
+
 const app = express();
 
 // En-têtes de sécurité, posés sur TOUTE réponse (avant les routes) — API
@@ -163,7 +170,13 @@ if (db.getAllUsers().length === 0 && process.env.EVA_ADMIN_USERNAME && process.e
 if (!isProtected()) {
   console.warn('\n⚠️  ATTENTION : aucun compte n\'a encore été créé.');
   console.warn('   Le site est actuellement accessible SANS connexion.');
-  console.warn('   Rends-toi sur /login.html pour créer le premier compte administrateur.\n');
+  if (BACKEND_ONLY) {
+    console.warn('   Ce serveur est en mode BACKEND_ONLY (pas de /login.html ici) — crée le');
+    console.warn('   premier compte depuis le frontend distant (GitHub Pages), ou directement :');
+    console.warn('   curl -X POST http://localhost:' + (process.env.PORT || 3000) + '/api/setup -H "Content-Type: application/json" -d \'{"username":"admin","password":"..."}\'\n');
+  } else {
+    console.warn('   Rends-toi sur /login.html pour créer le premier compte administrateur.\n');
+  }
 }
 
 app.use((req, res, next) => {
@@ -288,6 +301,9 @@ app.use((req, res, next) => {
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentification requise.' });
   }
+  // En mode BACKEND_ONLY, /login.html n'existe pas ici (le frontend est ailleurs, voir plus
+  // bas) — rediriger dessus donnerait juste un 404 déroutant plutôt qu'une vraie page.
+  if (BACKEND_ONLY) return res.status(404).json({ error: 'Ce serveur ne sert que l\'API — voir BACKEND_ONLY dans .env.example.' });
   return res.redirect('/login.html?next=' + encodeURIComponent(req.originalUrl));
 });
 
@@ -653,12 +669,21 @@ app.delete('/api/reset', requireAdmin, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Frontend statique
+// Frontend statique — sauté entièrement en BACKEND_ONLY (voir plus haut) : ni
+// frontend/dist ni login.html n'existent forcément sur ce serveur dans ce mode, le frontend
+// étant hébergé ailleurs (ex: GitHub Pages). Toute route non reconnue par l'API ci-dessus
+// renvoie alors un 404 explicite plutôt que d'essayer de servir un index.html absent.
 // ---------------------------------------------------------------------------
-app.use(express.static(FRONTEND_DIR));
-app.use((req, res) => {
-  res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
-});
+if (BACKEND_ONLY) {
+  app.use((req, res) => {
+    res.status(404).json({ error: 'Ce serveur ne sert que l\'API (/api/*) — le frontend est hébergé séparément.' });
+  });
+} else {
+  app.use(express.static(FRONTEND_DIR));
+  app.use((req, res) => {
+    res.sendFile(path.join(FRONTEND_DIR, 'index.html'));
+  });
+}
 
 // ---------------------------------------------------------------------------
 // Démarrage — HTTP par défaut, ou HTTPS si un certificat est fourni.

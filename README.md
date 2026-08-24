@@ -392,6 +392,26 @@ totalement inactif (aucun jeton stocké, cookie seul comme avant) en
 déploiement même-origine — où le cookie `HttpOnly` reste préférable
 (invisible au JS de la page, donc insensible à un vol de jeton par XSS).
 
+**Backend sans aucun frontend local (`BACKEND_ONLY=1`).** Une fois le
+frontend entièrement basculé sur GitHub Pages, plus besoin que ce serveur
+serve quoi que ce soit d'autre que l'API : `BACKEND_ONLY=1` (voir
+`.env.example`) désactive `express.static`/`login.html` — toute route hors
+`/api/*` répond alors un `404` JSON explicite plutôt que d'essayer de
+servir un `frontend/dist` qui n'a même plus besoin d'exister sur cette
+machine (`npm run build` devient inutile ici, `npm start` suffit après
+`npm install`). Pense à définir `CORS_ORIGIN` vers l'origine GitHub Pages
+dans tous les cas (voir réglage 3 ci-dessus) — sans ça, le frontend distant
+ne peut de toute façon pas appeler cette API. Pour créer le tout premier
+compte admin sans passer par `/login.html` (qui n'existe plus ici), utilise
+le frontend distant, ou directement :
+```bash
+curl -X POST http://localhost:3000/api/setup \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"un-mot-de-passe-solide"}'
+```
+(ou `EVA_ADMIN_USERNAME`/`EVA_ADMIN_PASSWORD` au démarrage, voir
+[Comptes et rôles](#comptes-et-rôles) — fonctionne pareil en `BACKEND_ONLY`.)
+
 ⚠️ Limite connue : les en-têtes de sécurité (CSP, `X-Frame-Options`) posés
 par `backend/server.js` protègent les pages qu'IL sert lui-même — ils ne
 s'appliquent pas aux pages servies par GitHub Pages. L'app fonctionne
