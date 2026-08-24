@@ -164,7 +164,11 @@ async function verifyTurnstile(token, remoteIp) {
 if (db.getAllUsers().length === 0 && process.env.EVA_ADMIN_USERNAME && process.env.EVA_ADMIN_PASSWORD) {
   const { salt, hash } = auth.hashPassword(process.env.EVA_ADMIN_PASSWORD);
   db.createUser({ username: process.env.EVA_ADMIN_USERNAME, passwordSalt: salt, passwordHash: hash, role: 'admin' });
-  console.log(`✅ Compte admin "${process.env.EVA_ADMIN_USERNAME}" créé depuis EVA_ADMIN_USERNAME/EVA_ADMIN_PASSWORD.`);
+  // Ne journalise QUE le nom d'utilisateur — jamais le mot de passe, même pas sa longueur ou
+  // un extrait (CodeQL flags ce bloc par prudence dès qu'un identifiant de variable contenant
+  // "PASSWORD" est visible dans le même scope, mais process.env.EVA_ADMIN_PASSWORD n'atteint
+  // jamais ce console.log — seul son NOM apparaît en toutes lettres ci-dessous, pas sa valeur).
+  console.log(`✅ Compte admin "${process.env.EVA_ADMIN_USERNAME}" créé depuis les variables d'environnement de bootstrap.`);
 }
 
 if (!isProtected()) {
@@ -223,26 +227,46 @@ app.post('/api/setup', (req, res) => {
 // Inscription publique — toujours en rôle "readonly" (jamais choisi par le
 // client), un admin promeut ensuite manuellement depuis l'onglet Comptes si
 // besoin. Fermée si Turnstile n'est pas configuré (voir isRegistrationEnabled).
+// Protégée par IP comme /api/login (voir auth.registerRateLimitStatus()) : Turnstile seul ne
+// suffit pas, un bot peut spammer cette route (validation + recherche d'username en base) à
+// volonté tant qu'il n'a pas besoin de résoudre le captcha (CodeQL: "Missing rate limiting").
 app.post('/api/register', async (req, res) => {
   if (!isRegistrationEnabled()) {
     return res.status(403).json({ error: 'Inscription désactivée.' });
   }
+  const ip = clientIp(req);
+  const rateLimit = auth.registerRateLimitStatus(ip);
+  if (rateLimit.locked) {
+    res.setHeader('Retry-After', String(rateLimit.retryAfterSeconds));
+    const minutes = Math.ceil(rateLimit.retryAfterSeconds / 60);
+    return res.status(429).json({ error: `Trop de tentatives d'inscription. Réessaie dans ${minutes} minute(s).` });
+  }
   const { username, email, password, turnstileToken } = req.body || {};
   if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
+    auth.recordRegisterFailure(ip);
     return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
   }
-  if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  // [^\s@]+ répété exclut '.' UNIQUEMENT dans le groupe qui précède immédiatement le point
+  // littéral (sinon '.' resterait autorisé des deux côtés d'un point, ambiguïté qui rend le
+  // temps de calcul polynomial sur un domaine pathologique sans aucun point — CodeQL:
+  // "Polynomial regular expression" — email vient directement du corps de la requête, donc
+  // entièrement contrôlé par l'appelant, sur une route publique non authentifiée).
+  if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(email)) {
+    auth.recordRegisterFailure(ip);
     return res.status(400).json({ error: 'Adresse email invalide.' });
   }
   const turnstileOk = await verifyTurnstile(turnstileToken, clientIp(req));
   if (!turnstileOk) {
+    auth.recordRegisterFailure(ip);
     return res.status(400).json({ error: 'Vérification anti-robot échouée, réessaie.' });
   }
   if (db.findUserByUsername(username)) {
+    auth.recordRegisterFailure(ip);
     return res.status(409).json({ error: 'Ce nom d\'utilisateur est déjà pris.' });
   }
   const { salt, hash } = auth.hashPassword(password);
   const user = db.createUser({ username: username.trim(), email: email.trim(), passwordSalt: salt, passwordHash: hash, role: 'readonly' });
+  auth.recordRegisterSuccess(ip);
   const token = auth.createSession(user.id, user.role);
   res.setHeader('Set-Cookie', auth.sessionCookieHeader(token, req, 30 * 24 * 3600));
   res.json({ ok: true, token }); // voir /api/setup ci-dessus pour le pourquoi de ce champ

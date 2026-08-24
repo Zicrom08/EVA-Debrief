@@ -298,10 +298,16 @@ function runBackupNow() {
 // strictement contre le format qu'on génère nous-mêmes (défense en profondeur contre une
 // traversée de chemin ("../../etc/passwd") si jamais ce nom vient directement d'une requête
 // HTTP — voir GET /api/backups/:filename dans server.js) — renvoie null si le format ne
-// correspond pas, ou si le fichier n'existe pas.
+// correspond pas, ou si le fichier n'existe pas. La regex suffit déjà (aucun '/', '\', '..'
+// n'est permis dans la partie variable), mais on vérifie aussi explicitement que le chemin
+// résolu reste BIEN à l'intérieur de BACKUP_DIR — deuxième barrière indépendante de la regex
+// (CodeQL: "Uncontrolled data used in path expression"), plus simple à vérifier pour un humain
+// ou un analyseur statique que la correction d'une expression régulière.
 function backupFilePath(filename) {
   if (!/^(data|users)-[0-9A-Za-z-]+\.json$/.test(String(filename))) return null;
   const p = path.join(BACKUP_DIR, filename);
+  const resolvedDir = path.resolve(BACKUP_DIR) + path.sep;
+  if (!path.resolve(p).startsWith(resolvedDir)) return null;
   return fs.existsSync(p) ? p : null;
 }
 
@@ -401,9 +407,15 @@ module.exports = {
     gamePersister.saveNow();
     return team;
   },
+  // hasOwnProperty (pas juste `if (!team)`) : state.teams est un objet {} ordinaire, donc
+  // state.teams["__proto__"] renvoie Object.prototype (un objet, donc "truthy") plutôt que
+  // undefined — sans ce garde, PUT /api/teams/__proto__ passerait le `if (!team)` et les deux
+  // lignes suivantes (team.name = ..., team.members = ...) pollueraient Object.prototype pour
+  // tout le process Node (CodeQL: "Prototype-polluting assignment" — id vient de req.params.id,
+  // entièrement contrôlé par l'appelant même si la route est réservée aux admins).
   updateTeam(id, name, members) {
+    if (!Object.prototype.hasOwnProperty.call(state.teams, id)) return null;
     const team = state.teams[id];
-    if (!team) return null;
     if (name != null) team.name = name;
     if (Array.isArray(members)) team.members = members.map(String);
     gamePersister.saveNow();
@@ -425,8 +437,11 @@ module.exports = {
     const needle = String(username || '').toLowerCase();
     return Object.values(usersState.users).find(u => u.username.toLowerCase() === needle) || null;
   },
+  // hasOwnProperty : même raison que updateTeam ci-dessous — sans lui, getUserById("__proto__")
+  // renverrait Object.prototype (truthy) plutôt que null.
   getUserById(id) {
-    return usersState.users[String(id)] || null;
+    const key = String(id);
+    return Object.prototype.hasOwnProperty.call(usersState.users, key) ? usersState.users[key] : null;
   },
   createUser({ username, email, passwordSalt, passwordHash, role }) {
     const id = genId('u');
@@ -435,9 +450,13 @@ module.exports = {
     usersPersister.saveNow();
     return user;
   },
+  // hasOwnProperty : même bug qu'updateTeam ci-dessus — usersState.users["__proto__"] renvoie
+  // Object.prototype (truthy), sans quoi PUT /api/users/__proto__ pollueraient
+  // Object.prototype.passwordSalt/passwordHash/role pour tout le process Node.
   updateUser(id, patch) {
-    const user = usersState.users[String(id)];
-    if (!user) return null;
+    const key = String(id);
+    if (!Object.prototype.hasOwnProperty.call(usersState.users, key)) return null;
+    const user = usersState.users[key];
     if (patch.passwordSalt != null) user.passwordSalt = patch.passwordSalt;
     if (patch.passwordHash != null) user.passwordHash = patch.passwordHash;
     if (patch.role != null) user.role = patch.role;

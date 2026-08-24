@@ -11,6 +11,13 @@ on:
     branches-ignore: [main]
   pull_request: {}
 
+# Principe du moindre privilège : ce workflow ne fait que lire le code et lancer les tests, il
+# n'a besoin d'écrire nulle part (CodeQL: "Workflow does not contain permissions" — sans bloc
+# explicite, le GITHUB_TOKEN du job hérite des permissions par défaut du repo, potentiellement
+# plus larges que nécessaire).
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

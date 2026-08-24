@@ -106,6 +106,25 @@ test('createUser / countAdmins / deleteUser', () => {
   assert.equal(db.countAdmins(), 0);
 });
 
+test('updateTeam("__proto__", ...) returns null instead of polluting Object.prototype', () => {
+  assert.equal(db.updateTeam('__proto__', 'pwned', ['x']), null);
+  assert.equal(({}).name, undefined);
+  assert.equal(({}).members, undefined);
+});
+
+test('updateTeam still works normally for a real team id that happens to look unusual', () => {
+  const team = db.createTeam('Escouade Charlie', ['u1']);
+  const updated = db.updateTeam(team.id, 'Escouade Delta', ['u2']);
+  assert.equal(updated.name, 'Escouade Delta');
+});
+
+test('getUserById("__proto__") / updateUser("__proto__", ...) return null instead of exposing/polluting Object.prototype', () => {
+  assert.equal(db.getUserById('__proto__'), null);
+  assert.equal(db.updateUser('__proto__', { role: 'admin', passwordSalt: 'x', passwordHash: 'y' }), null);
+  assert.equal(({}).role, undefined);
+  assert.equal(({}).passwordSalt, undefined);
+});
+
 test('getRegistrationEnabled defaults to true, setRegistrationEnabled persists the new value', () => {
   assert.equal(db.getRegistrationEnabled(), true);
   assert.equal(db.setRegistrationEnabled(false), false);

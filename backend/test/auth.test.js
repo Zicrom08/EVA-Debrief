@@ -125,6 +125,38 @@ test('loginRateLimitStatus auto-clears once the lockout window has passed', asyn
   delete process.env.LOGIN_RATE_LIMIT_MINUTES;
 });
 
+test('registerRateLimitStatus uses its own REGISTER_RATE_LIMIT_MAX, independent of LOGIN_RATE_LIMIT_MAX', () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '1';
+  process.env.REGISTER_RATE_LIMIT_MAX = '2';
+  const ip = '4.4.4.4';
+  auth.recordRegisterFailure(ip);
+  assert.equal(auth.registerRateLimitStatus(ip).locked, false); // 1 échec, seuil register à 2
+  auth.recordRegisterFailure(ip);
+  assert.equal(auth.registerRateLimitStatus(ip).locked, true);
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+  delete process.env.REGISTER_RATE_LIMIT_MAX;
+});
+
+test('login and register rate limits for the same IP never share a counter', () => {
+  process.env.LOGIN_RATE_LIMIT_MAX = '1';
+  process.env.REGISTER_RATE_LIMIT_MAX = '1';
+  const ip = '3.3.3.3';
+  auth.recordLoginFailure(ip);
+  assert.equal(auth.loginRateLimitStatus(ip).locked, true);
+  assert.equal(auth.registerRateLimitStatus(ip).locked, false); // pas affecté par l'échec de login
+  delete process.env.LOGIN_RATE_LIMIT_MAX;
+  delete process.env.REGISTER_RATE_LIMIT_MAX;
+});
+
+test('recordRegisterSuccess clears prior failures for that IP', () => {
+  process.env.REGISTER_RATE_LIMIT_MAX = '1';
+  const ip = '2.2.2.2';
+  auth.recordRegisterFailure(ip);
+  auth.recordRegisterSuccess(ip);
+  assert.equal(auth.registerRateLimitStatus(ip).locked, false);
+  delete process.env.REGISTER_RATE_LIMIT_MAX;
+});
+
 test('bearerToken extracts the token from a well-formed Authorization header, case-insensitive on "Bearer"', () => {
   assert.equal(auth.bearerToken({ headers: { authorization: 'Bearer abc123' } }), 'abc123');
 });

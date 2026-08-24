@@ -5,6 +5,7 @@
 // ============================================================================
 
 import { apiUrl, pageUrl, setAuthToken } from './api-base.js';
+import { safeNextPath } from './safe-redirect.js';
 
 const form = document.getElementById('loginForm');
 const btn = document.getElementById('loginBtn');
@@ -139,11 +140,12 @@ form.addEventListener('submit', async (e) => {
     // sur Safari mobile, voir api-base.js::CROSS_ORIGIN).
     const data = await res.json().catch(() => ({}));
     if (data.token) setAuthToken(data.token);
-    // redirige vers la page demandée à l'origine si connue (déjà absolue et correcte, voir
-    // redirectToLogin() dans api.js), sinon la racine de l'app (pageUrl(''), jamais '/' en
-    // dur — casserait sur un site de projet GitHub Pages, servi sous /<repo>/)
+    // redirige vers la page demandée à l'origine si connue et sûre (voir safeNextPath()
+    // ci-dessus — next vient de l'URL, jamais fait confiance tel quel), sinon la racine de
+    // l'app (pageUrl(''), jamais '/' en dur — casserait sur un site de projet GitHub Pages,
+    // servi sous /<repo>/)
     const params = new URLSearchParams(window.location.search);
-    window.location.href = params.get('next') || pageUrl('');
+    window.location.href = safeNextPath(params.get('next')) || pageUrl('');
   } catch (err) {
     errEl.textContent = 'Erreur de connexion au serveur.';
     btn.disabled = false;

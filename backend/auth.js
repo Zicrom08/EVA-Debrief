@@ -126,61 +126,78 @@ function destroySessionsForUser(userId) {
   if (changed) persistSessions();
 }
 
-// ================= LIMITATION DES TENTATIVES DE CONNEXION (anti brute-force) =================
-// Rien n'existait avant pour ça (voir la section Sécurité du README) : un bot pouvait
-// essayer autant de mots de passe qu'il voulait sur /api/login. Compteur en mémoire par IP
-// (voir clientIp() dans server.js — la vraie IP du client, jamais une valeur que lui-même
-// pourrait falsifier sans un reverse proxy de confiance en amont). Se remet à zéro tout seul
-// dès qu'aucun échec n'est survenu depuis LOGIN_RATE_LIMIT_MINUTES : pas de purge périodique
-// nécessaire, même logique paresseuse que getSession() ci-dessus pour les sessions expirées.
+// ================= LIMITATION DES TENTATIVES (anti brute-force / anti spam) =================
+// Rien n'existait avant pour /api/login (voir la section Sécurité du README) : un bot pouvait
+// essayer autant de mots de passe qu'il voulait. Compteur en mémoire par IP (voir clientIp()
+// dans server.js — la vraie IP du client, jamais une valeur que lui-même pourrait falsifier
+// sans un reverse proxy de confiance en amont). Se remet à zéro tout seul dès qu'aucun échec
+// n'est survenu depuis la fenêtre configurée : pas de purge périodique nécessaire, même
+// logique paresseuse que getSession() ci-dessus pour les sessions expirées.
 //
-// Lus à CHAQUE appel plutôt que figés dans des constantes au chargement du module (comme
-// sessionCookieHeader() lit process.env.CORS_ORIGIN dynamiquement) : les tests peuvent ainsi
-// ajuster ces seuils par cas sans avoir à recharger le module.
-function loginRateLimitConfig() {
+// Une seule implémentation générique (`kind` = 'login' ou 'register', clé "kind:ip") réutilisée
+// pour les deux routes : /api/register n'avait, lui, AUCUNE limite de tentatives (repéré par
+// CodeQL, "Missing rate limiting") — seul Turnstile le protégeait, qui ne coûte rien à un bot
+// tant qu'il n'a pas résolu le captcha, alors que la validation qui le précède (email, unicité
+// du username) tourne déjà à chaque requête.
+//
+// Seuils lus à CHAQUE appel plutôt que figés dans des constantes au chargement du module
+// (comme sessionCookieHeader() lit process.env.CORS_ORIGIN dynamiquement) : les tests peuvent
+// ainsi ajuster ces seuils par cas sans avoir à recharger le module.
+function rateLimitConfig(kind) {
+  const prefix = kind.toUpperCase();
   return {
-    max: Number(process.env.LOGIN_RATE_LIMIT_MAX) || 5,
-    windowMs: (Number(process.env.LOGIN_RATE_LIMIT_MINUTES) || 15) * 60 * 1000,
+    max: Number(process.env[`${prefix}_RATE_LIMIT_MAX`]) || 5,
+    windowMs: (Number(process.env[`${prefix}_RATE_LIMIT_MINUTES`]) || 15) * 60 * 1000,
   };
 }
 
-const loginAttempts = new Map(); // ip -> { count, windowStart, lockedUntil }
+const rateLimitAttempts = new Map(); // "kind:ip" -> { count, windowStart, lockedUntil }
 
-// À vérifier AVANT de tenter de vérifier le mot de passe (server.js) — pour ne même pas
-// lancer verifyPassword() (scrypt, volontairement coûteux, voir hashPassword ci-dessus) une
-// fois l'IP bloquée. Renvoie { locked: false } ou { locked: true, retryAfterSeconds }.
-function loginRateLimitStatus(ip) {
-  const entry = loginAttempts.get(ip);
+// À vérifier AVANT de tenter l'opération protégée — pour /api/login, ça évite même de lancer
+// verifyPassword() (scrypt, volontairement coûteux, voir hashPassword ci-dessus) une fois l'IP
+// bloquée. Renvoie { locked: false } ou { locked: true, retryAfterSeconds }.
+function rateLimitStatus(kind, ip) {
+  const key = `${kind}:${ip}`;
+  const entry = rateLimitAttempts.get(key);
   if (!entry || !entry.lockedUntil) return { locked: false };
   const now = Date.now();
   if (now >= entry.lockedUntil) {
-    loginAttempts.delete(ip); // fenêtre de blocage expirée, repart de zéro
+    rateLimitAttempts.delete(key); // fenêtre de blocage expirée, repart de zéro
     return { locked: false };
   }
   return { locked: true, retryAfterSeconds: Math.ceil((entry.lockedUntil - now) / 1000) };
 }
 
-// Appelé sur un échec (mauvais username/mot de passe) — incrémente le compteur de cette IP ;
-// verrouille pour LOGIN_RATE_LIMIT_MINUTES une fois LOGIN_RATE_LIMIT_MAX échecs atteints DANS
-// cette même fenêtre (pas un compteur qui ne redescend jamais une fois lancé).
-function recordLoginFailure(ip) {
-  const { max, windowMs } = loginRateLimitConfig();
+// Appelé sur un échec — incrémente le compteur de cette IP pour ce `kind` ; verrouille pour la
+// fenêtre configurée une fois le seuil atteint DANS cette même fenêtre (pas un compteur qui ne
+// redescend jamais une fois lancé).
+function recordRateLimitFailure(kind, ip) {
+  const { max, windowMs } = rateLimitConfig(kind);
+  const key = `${kind}:${ip}`;
   const now = Date.now();
-  let entry = loginAttempts.get(ip);
+  let entry = rateLimitAttempts.get(key);
   if (!entry || now - entry.windowStart > windowMs) {
     entry = { count: 0, windowStart: now, lockedUntil: 0 };
   }
   entry.count += 1;
   if (entry.count >= max) entry.lockedUntil = now + windowMs;
-  loginAttempts.set(ip, entry);
+  rateLimitAttempts.set(key, entry);
 }
 
-// Appelé sur une connexion réussie — un compte qui vient de prouver son mot de passe ne doit
-// pas rester pénalisé par des échecs précédents (ex: l'utilisateur lui-même s'est trompé deux
-// fois avant de retrouver son mot de passe).
-function recordLoginSuccess(ip) {
-  loginAttempts.delete(ip);
+// Appelé sur un succès — un compte qui vient de réussir ne doit pas rester pénalisé par des
+// échecs précédents (ex: l'utilisateur lui-même s'est trompé deux fois avant de retrouver son
+// mot de passe).
+function recordRateLimitSuccess(kind, ip) {
+  rateLimitAttempts.delete(`${kind}:${ip}`);
 }
+
+function loginRateLimitStatus(ip) { return rateLimitStatus('login', ip); }
+function recordLoginFailure(ip) { return recordRateLimitFailure('login', ip); }
+function recordLoginSuccess(ip) { return recordRateLimitSuccess('login', ip); }
+
+function registerRateLimitStatus(ip) { return rateLimitStatus('register', ip); }
+function recordRegisterFailure(ip) { return recordRateLimitFailure('register', ip); }
+function recordRegisterSuccess(ip) { return recordRateLimitSuccess('register', ip); }
 
 // Jeton porté par l'en-tête "Authorization: Bearer <jeton>" plutôt que par un cookie —
 // utilisé par le frontend en déploiement cross-origin (ex: GitHub Pages + backend sur un
@@ -192,10 +209,15 @@ function recordLoginSuccess(ip) {
 // du navigateur, donc insensible à ce blocage. Même magasin de sessions que le cookie (voir
 // createSession/getSession ci-dessus) : c'est uniquement le TRANSPORT qui diffère, jamais
 // les deux à la fois pour une même requête (server.js essaie l'un puis l'autre).
+// Découpage manuel plutôt qu'une regex (ex: /^Bearer\s+(.+)$/) : deux quantificateurs adjacents
+// dont les classes de caractères se chevauchent (\s et . se recoupent sur l'espace) créent un
+// coût polynomial sur une entrée pathologique — l'en-tête vient directement de la requête HTTP,
+// donc entièrement contrôlé par l'appelant (CodeQL: "Polynomial regular expression").
 function bearerToken(req) {
   const header = req.headers['authorization'] || '';
-  const m = /^Bearer\s+(.+)$/.exec(header);
-  return m ? m[1] : null;
+  if (!header.startsWith('Bearer ')) return null;
+  const token = header.slice('Bearer '.length).trim();
+  return token || null;
 }
 
 // Parse l'en-tête HTTP "Cookie" en objet { nom: valeur } — pas de dépendance
@@ -249,6 +271,9 @@ module.exports = {
   loginRateLimitStatus,
   recordLoginFailure,
   recordLoginSuccess,
+  registerRateLimitStatus,
+  recordRegisterFailure,
+  recordRegisterSuccess,
   bearerToken,
   parseCookies,
   sessionCookieHeader,
