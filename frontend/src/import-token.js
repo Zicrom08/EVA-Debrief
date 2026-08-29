@@ -144,47 +144,84 @@ function wirePanel(container) {
   document.getElementById('linkExtensionBtn').addEventListener('click', () => linkExtension(container));
 }
 
-// Envoie le jeton à l'extension via la poignée de main postMessage (voir browser-extension/
-// content-isolated.js) — réutilise le jeton EXISTANT s'il y en a déjà un (ne régénère que si
-// aucun n'existe encore) pour ne pas casser silencieusement une liaison userscript/extension
-// déjà en place ailleurs, cohérent avec le geste volontaire déjà exigé pour "Régénérer".
-async function linkExtension(container) {
-  const statusEl = container.querySelector('#extensionLinkStatus');
+// Round-trip postMessage vers l'extension (voir browser-extension/content-isolated.js) —
+// jamais '*' en targetOrigin, toujours l'origine exacte de la page. Résout `null` si rien ne
+// répond sous 3s (extension non installée ou pas encore injectée sur cette page).
+function requestExtensionLink(backendUrl, importToken) {
   const origin = window.location.origin;
+  return new Promise((resolve) => {
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      resolve(null);
+    }, 3000);
+    function handler(e) {
+      if (e.source !== window || e.origin !== origin) return;
+      if (!e.data || e.data.type !== 'EVA_DEBRIEF_LINK_RESULT') return;
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handler);
+      resolve(e.data);
+    }
+    window.addEventListener('message', handler);
+    window.postMessage({ type: 'EVA_DEBRIEF_LINK_REQUEST', backendUrl, importToken }, origin);
+  });
+}
+
+// Cœur du flux de liaison, indépendant de qui l'a déclenché (bouton sur la page, ou popup de
+// l'extension via le relais EVA_DEBRIEF_TRIGGER_LINK plus bas) — un seul chemin, deux points
+// d'entrée. Réutilise le jeton EXISTANT s'il y en a déjà un (ne régénère que si aucun n'existe
+// encore) pour ne pas casser silencieusement une liaison userscript/extension déjà en place
+// ailleurs, cohérent avec le geste volontaire déjà exigé pour "Régénérer". Renvoie toujours
+// { ok, error? }, jamais null — jamais laisser l'appelant deviner un cas "pas de réponse".
+async function performLink() {
   try {
     let { token } = await fetchImportToken();
     if (!token) {
       ({ token } = await regenerateImportToken());
-      renderPanelContent(container, token);
-      wirePanel(container);
-      return linkExtension(document.getElementById('importTokenPanel'));
-    }
-    const backendUrl = API_BASE || origin;
-    if (statusEl) statusEl.textContent = 'Liaison en cours…';
-    const result = await new Promise((resolve) => {
-      const timeoutId = setTimeout(() => {
-        window.removeEventListener('message', handler);
-        resolve(null);
-      }, 3000);
-      function handler(e) {
-        if (e.source !== window || e.origin !== origin) return;
-        if (!e.data || e.data.type !== 'EVA_DEBRIEF_LINK_RESULT') return;
-        clearTimeout(timeoutId);
-        window.removeEventListener('message', handler);
-        resolve(e.data);
+      const container = document.getElementById('importTokenPanel');
+      if (container) {
+        renderPanelContent(container, token);
+        wirePanel(container);
       }
-      window.addEventListener('message', handler);
-      window.postMessage({ type: 'EVA_DEBRIEF_LINK_REQUEST', backendUrl, importToken: token }, origin);
-    });
-    if (!statusEl) return;
-    if (!result) {
-      statusEl.textContent = "Extension non détectée — installe-la d'abord (voir browser-extension/README.md), puis recharge cette page.";
-    } else if (result.ok) {
-      statusEl.textContent = '✅ Extension liée avec succès. Navigue sur EVA normalement, la capture se fait automatiquement.';
-    } else {
-      statusEl.textContent = 'Échec de la liaison : ' + (result.error || 'erreur inconnue.');
     }
+    const backendUrl = API_BASE || window.location.origin;
+    const result = await requestExtensionLink(backendUrl, token);
+    if (!result) return { ok: false, error: "Extension non détectée sur cette page." };
+    return { ok: !!result.ok, error: result.error };
   } catch (e) {
-    if (statusEl) statusEl.textContent = 'Erreur lors de la liaison : ' + e.message;
+    return { ok: false, error: e.message };
   }
 }
+
+async function linkExtension(container) {
+  const statusEl = container.querySelector('#extensionLinkStatus');
+  if (statusEl) statusEl.textContent = 'Liaison en cours…';
+  const result = await performLink();
+  if (!statusEl) return;
+  if (result.ok) {
+    statusEl.textContent = '✅ Extension liée avec succès. Navigue sur EVA normalement, la capture se fait automatiquement.';
+  } else {
+    statusEl.textContent = 'Échec de la liaison : ' + (result.error || 'erreur inconnue.') +
+      (result.error === "Extension non détectée sur cette page." ? ' (voir browser-extension/README.md, puis recharge cette page)' : '');
+  }
+}
+
+// Déclenché par le popup de l'extension (bouton "Lier ce compte" dans popup.js) plutôt que par
+// un clic sur cette page — voir browser-extension/content-isolated.js pour le relais. Écouteur
+// permanent posé une seule fois au chargement du module (pas à chaque rendu du panneau, pour
+// ne pas en empiler un par connexion) ; le contrôle de rôle est refait ici à chaque déclenchement
+// puisque `state.currentUser` peut changer entre-temps (déconnexion, changement de compte).
+window.addEventListener('message', async (e) => {
+  if (e.source !== window || e.origin !== window.location.origin) return;
+  if (!e.data || e.data.type !== 'EVA_DEBRIEF_TRIGGER_LINK') return;
+  const user = state.currentUser;
+  if (!user || user.role === 'readonly') {
+    window.postMessage({
+      type: 'EVA_DEBRIEF_TRIGGER_LINK_RESULT',
+      ok: false,
+      error: "Connecte-toi sur EVA-Debrief avec un compte admin/contributor d'abord.",
+    }, e.origin);
+    return;
+  }
+  const result = await performLink();
+  window.postMessage({ type: 'EVA_DEBRIEF_TRIGGER_LINK_RESULT', ...result }, e.origin);
+});

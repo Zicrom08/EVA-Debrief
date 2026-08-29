@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<title>EVA-Debrief</title>
+<style>
+  body {
+    width: 280px;
+    margin: 0;
+    padding: 14px;
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    color: #e8ecf5;
+    background: #11151f;
+  }
+  h1 {
+    font-size: 14px;
+    margin: 0 0 10px;
+  }
+  #status, #pushStatus {
+    background: #1b2233;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+    word-break: break-all;
+  }
+  button {
+    width: 100%;
+    padding: 8px;
+    border: none;
+    border-radius: 6px;
+    background: #4f9dff;
+    color: #0b0f18;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  button:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  #linkStatus {
+    margin-top: 8px;
+    color: #9aa4b8;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+  <h1>EVA-Debrief — Collecteur</h1>
+  <div id="status">Chargement…</div>
+  <div id="pushStatus"></div>
+  <button id="linkBtn">Lier ce compte EVA-Debrief</button>
+  <div id="linkStatus"></div>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>

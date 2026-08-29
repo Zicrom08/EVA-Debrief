@@ -997,10 +997,12 @@ plutôt que par copier-coller manuel d'une URL et d'un jeton.
   Browser) → active le "mode développeur" → "Charger l'extension non
   empaquetée" → sélectionne le dossier `browser-extension/`.
 - **Liaison :** connecte-toi sur ton instance EVA-Debrief (rôle `admin` ou
-  `contributor`), onglet "+ Importer" → clique **"Lier l'extension
-  EVA-Debrief"** dans le panneau "Pont automatique". Rien d'autre à
-  configurer : l'extension récupère (ou génère, si aucun n'existe encore)
-  ton jeton d'import existant et s'auto-configure avec.
+  `contributor`), puis clique **"Lier ce compte EVA-Debrief"** — soit depuis
+  le **popup de l'extension** (icône à côté de la barre d'adresse), soit
+  depuis l'onglet "+ Importer" → panneau "Pont automatique" ; les deux
+  déclenchent le même flux. Rien d'autre à configurer : l'extension récupère
+  (ou génère, si aucun n'existe encore) ton jeton d'import existant et
+  s'auto-configure avec.
 - Diagnostic et détails techniques (pourquoi deux content scripts, pourquoi
   le push part du service worker et pas d'un content script...) : voir
   [`browser-extension/README.md`](browser-extension/README.md).

@@ -3,10 +3,17 @@
   "name": "EVA-Debrief — Collecteur automatique",
   "version": "1.0",
   "description": "Capture l'historique de parties et les stats de profil sur le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief liée. Chrome/Edge/Kiwi Browser uniquement (voir README).",
-  "permissions": ["storage"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "EVA-Debrief — Collecteur automatique",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
   },
   "content_scripts": [
     {

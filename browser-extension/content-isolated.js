@@ -58,4 +58,29 @@
       });
     }
   });
+
+  // Déclenché par le popup de l'extension (bouton "Lier ce compte" dans popup.js), quand
+  // l'utilisateur clique alors que l'onglet actif est potentiellement une instance
+  // EVA-Debrief : relaie la demande à la page elle-même, qui gère tout le flux (jeton
+  // existant ou généré, poignée de main EVA_DEBRIEF_LINK_REQUEST ci-dessus) exactement comme
+  // si le bouton "Lier l'extension EVA-Debrief" avait été cliqué sur la page — un seul chemin
+  // de liaison, déclenchable depuis deux endroits différents.
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== 'EVA_DEBRIEF_TRIGGER_LINK') return false;
+    const origin = window.location.origin;
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      sendResponse(null);
+    }, 3000);
+    function handler(e) {
+      if (e.source !== window || e.origin !== origin) return;
+      if (!e.data || e.data.type !== 'EVA_DEBRIEF_TRIGGER_LINK_RESULT') return;
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handler);
+      sendResponse(e.data);
+    }
+    window.addEventListener('message', handler);
+    window.postMessage({ type: 'EVA_DEBRIEF_TRIGGER_LINK' }, origin);
+    return true; // réponse asynchrone (round-trip avec la page)
+  });
 })();

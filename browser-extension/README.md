@@ -20,13 +20,20 @@ sur le userscript, qui fonctionne très bien pour elles.
 
 ## Liaison à ton compte EVA-Debrief
 
-1. Va sur ton instance EVA-Debrief, connecte-toi (rôle `admin` ou `contributor`).
-2. Ouvre l'onglet **"+ Importer"** — un bouton **"Lier l'extension EVA-Debrief"**
-   apparaît dans la section dédiée si l'extension est bien détectée.
-3. Clique dessus. C'est tout : plus rien à configurer.
+Deux façons équivalentes de lier l'extension — au choix, elles déclenchent exactement le
+même flux :
 
-Ensuite, navigue normalement sur le site EVA (profil, historique) — la capture et
-l'envoi se font automatiquement en arrière-plan.
+- **Depuis le popup de l'extension** (icône EVA-Debrief à côté de la barre d'adresse) :
+  ouvre l'onglet de ton instance EVA-Debrief (connecté, rôle `admin` ou `contributor`),
+  clique l'icône de l'extension, puis **"Lier ce compte EVA-Debrief"**.
+- **Depuis la page EVA-Debrief elle-même** : onglet **"+ Importer"** → bouton
+  **"Lier l'extension EVA-Debrief"** dans le panneau "Pont automatique" (affiché si
+  l'extension est détectée).
+
+Dans les deux cas : un clic, rien à copier-coller. Ensuite, navigue normalement sur le
+site EVA (profil, historique) — la capture et l'envoi se font automatiquement en
+arrière-plan. Le popup affiche aussi le statut du dernier envoi (parties/profils
+ajoutés, ou l'erreur si un push a échoué).
 
 ## Diagnostic
 
