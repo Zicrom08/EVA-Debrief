@@ -260,11 +260,19 @@ function listBackups() {
     else if (createdAt < sets[ts].createdAt) sets[ts].createdAt = createdAt;
     sets[ts].files.push({ kind, name, size: stat.size });
   });
-  // Tri par createdAt (mtime réel), pas par la chaîne `timestamp` : pour des sauvegardes
-  // normales (toutes au format ISO généré par uniqueBackupTimestamp()) les deux ordres
-  // coïncident, mais createdAt reste la source de vérité si jamais `timestamp` ne suit pas
-  // cet ordre (fichier renommé/copié à la main, restauration partielle...).
-  return Object.values(sets).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // Tri par createdAt (mtime réel) d'abord, `timestamp` en départage à égalité — pas l'un OU
+  // l'autre : createdAt reste la source de vérité si `timestamp` ne suit pas cet ordre
+  // (fichier renommé/copié à la main, restauration partielle...), mais une égalité de
+  // createdAt est réelle et fréquente (deux sauvegardes prises à quelques millisecondes
+  // d'écart, sur un filesystem dont la résolution de mtime est plus grossière que ça — vu en
+  // CI) ; sans départage, ce tri est instable et peut faire passer la sauvegarde qui vient
+  // d'être créée pour la plus ancienne, que pruneOldBackups() supprime alors immédiatement.
+  // `timestamp` reste un départage fiable dans ce cas précis : uniqueBackupTimestamp()
+  // garantit qu'il est toujours strictement croissant pour nos propres sauvegardes.
+  return Object.values(sets).sort((a, b) => {
+    const byMtime = new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    return byMtime !== 0 ? byMtime : b.timestamp.localeCompare(a.timestamp);
+  });
 }
 
 // Ne garde que les BACKUP_RETENTION sets les plus récents (listBackups() les renvoie déjà
