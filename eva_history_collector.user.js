@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      10.1
+// @version      10.2
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief si configuré (voir "PONT AUTOMATIQUE" plus bas). Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
@@ -562,18 +562,55 @@
         data: JSON.stringify({ nodes, playerStats }),
         timeout: 15000,
         onload: (res) => {
-          if (res.status >= 200 && res.status < 300) {
-            flashPanel('🔗 Envoyé à EVA-Debrief');
-          } else {
+          if (res.status < 200 || res.status >= 300) {
             console.warn('[EVA Collector] Échec du push vers EVA-Debrief, HTTP', res.status, res.responseText);
+            flashPanel(`⚠️ Échec de l'envoi à EVA-Debrief (HTTP ${res.status})`);
+            return;
+          }
+          // Un HTTP 200 ne veut pas dire que quelque chose a été AJOUTÉ (dédup, parties PvE
+          // filtrées, données invalides...) — /api/import renvoie toujours le détail exact
+          // (mêmes champs que l'écran d'import manuel d'EVA-Debrief), on l'affiche donc en
+          // toutes lettres plutôt qu'un simple "envoyé" trompeur qui masquerait un problème
+          // réel (ex: mauvais token pointant vers le mauvais compte, mauvaise URL de backend).
+          let body = {};
+          try { body = JSON.parse(res.responseText); } catch (e) { /* réponse non-JSON, tant pis */ }
+          const added = (body.addedGames || 0) + (body.addedStats || 0);
+          if (added > 0) {
+            flashPanel(`🔗 Envoyé (+${body.addedGames || 0} partie(s), +${body.addedStats || 0} profil(s))`);
+          } else {
+            flashPanel('🔗 Envoyé, mais 0 ajouté (déjà connu ou filtré — voir console)');
+            console.warn('[EVA Collector] Push accepté par EVA-Debrief mais rien de nouveau ajouté :', body);
           }
         },
-        onerror: () => console.warn('[EVA Collector] Échec du push vers EVA-Debrief (réseau).'),
-        ontimeout: () => console.warn('[EVA Collector] Push vers EVA-Debrief : délai dépassé.'),
+        onerror: () => { console.warn('[EVA Collector] Échec du push vers EVA-Debrief (réseau).'); flashPanel('⚠️ Échec de l\'envoi à EVA-Debrief (réseau)'); },
+        ontimeout: () => { console.warn('[EVA Collector] Push vers EVA-Debrief : délai dépassé.'); flashPanel('⚠️ Envoi à EVA-Debrief : délai dépassé'); },
       });
     } catch (e) {
       console.warn('[EVA Collector] Échec du push vers EVA-Debrief :', e.message);
     }
+  }
+
+  // Renvoie TOUT ce qui est stocké localement (pas juste le delta d'une capture) — utile pour
+  // deux cas que le push automatique (delta-only, voir pushToBackend) ne couvre pas : (1) des
+  // données déjà capturées AVANT d'avoir configuré le pont ne sont sinon jamais envoyées
+  // automatiquement (le delta ne regarde que ce qui vient d'être ajouté À CET INSTANT) ; (2)
+  // retenter un envoi après un échec, sans avoir à revisiter les pages EVA (revisiter ne
+  // redéclencherait rien de "neuf" pour des parties déjà connues localement).
+  function resendAll() {
+    const { url, token } = getBridgeConfig();
+    if (!url || !token) {
+      flashPanel('Configure d\'abord le pont ("⚙️ Configurer")');
+      return;
+    }
+    const nodes = Object.values(games);
+    const playerStats = [];
+    Object.values(stats).forEach((arr) => playerStats.push(...arr));
+    if (!nodes.length && !playerStats.length) {
+      flashPanel('Rien à envoyer (aucune capture locale)');
+      return;
+    }
+    flashPanel('Envoi en cours…');
+    pushToBackend({ nodes, playerStats });
   }
 
   function updateBridgeStatus() {
@@ -630,6 +667,7 @@
         <button id="eva-collector-download" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#4f9dff;color:#0a0d14;font-weight:700;cursor:pointer;">Télécharger JSON</button>
         <button id="eva-collector-copy" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">Copier le JSON</button>
         <button id="eva-collector-configure" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">⚙️ Configurer EVA-Debrief</button>
+        <button id="eva-collector-resend" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">🔄 Renvoyer tout à EVA-Debrief</button>
         <button id="eva-collector-clear" style="width:100%;padding:7px;border:none;border-radius:6px;background:#3a1c22;color:#ff9aa2;cursor:pointer;">Tout vider</button>
       </div>
     `;
@@ -650,6 +688,7 @@
     // Même fonction que le menu Tampermonkey (GM_registerMenuCommand plus haut) — ce bouton
     // reste accessible même sur les runtimes mobiles où ce menu est peu pratique à atteindre.
     panel.querySelector('#eva-collector-configure').addEventListener('click', configureBridge);
+    panel.querySelector('#eva-collector-resend').addEventListener('click', resendAll);
     panel.querySelector('#eva-collector-clear').addEventListener('click', () => {
       games = {}; stats = {};
       saveJSON(GAMES_KEY, games);
