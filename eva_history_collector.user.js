@@ -1,15 +1,20 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      9.3
-// @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA. Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
+// @version      10.0
+// @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief si configuré (voir "PONT AUTOMATIQUE" plus bas). Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
-// @grant        none
+// @grant        GM_xmlhttpRequest
+// @grant        GM_getValue
+// @grant        GM_setValue
+// @grant        GM_registerMenuCommand
 // @run-at       document-start
 // ==/UserScript==
 
 // INSTALLATION
-// 1. Installe l'extension "Tampermonkey" dans ton navigateur (Chrome, Firefox, Edge...).
+// 1. Installe l'extension "Tampermonkey" dans ton navigateur (Chrome, Firefox, Edge...) — ou,
+//    sur mobile, Kiwi Browser (Android, supporte les extensions Chrome) ou l'app "Userscripts"
+//    (iOS/Safari) : ce script fonctionne à l'identique sur les trois, aucune adaptation requise.
 // 2. Crée un nouveau script, colle tout ce fichier dedans, sauvegarde.
 // 3. (Recommandé) Remplace la ligne "@match" tout en haut par l'adresse exacte du
 //    site EVA, par exemple app.eva.gg — c'est plus propre que le filtre HOST_HINT
@@ -18,7 +23,22 @@
 //    charger / fais défiler pour déclencher les requêtes suivantes.
 // 5. Un panneau apparaît en bas à droite avec le nombre de parties et de profils
 //    capturés. Clique sur "Télécharger JSON" pour récupérer le fichier.
-// 6. Importe ce fichier dans la visionneuse.
+// 6. Importe ce fichier dans la visionneuse — OU configure le pont automatique
+//    (voir juste en dessous) pour ne plus jamais avoir à le faire manuellement.
+//
+// PONT AUTOMATIQUE VERS EVA-DEBRIEF (v10.0)
+// Une fois configuré (menu Tampermonkey "Configurer EVA-Debrief", ou le bouton "⚙️ Configurer"
+// du panneau si ce menu est peu accessible sur ton navigateur mobile), ce script envoie
+// automatiquement en arrière-plan chaque nouvelle partie/profil capturé vers ton instance
+// EVA-Debrief (POST /api/import, authentifié par un jeton d'import personnel généré depuis
+// l'onglet "+ Importer" d'EVA-Debrief — jamais ton mot de passe EVA, et ce jeton ne permet
+// QUE de pousser des parties, rien d'autre). Utilise GM_xmlhttpRequest : contourne CORS
+// nativement (aucune configuration serveur supplémentaire nécessaire), et n'envoie jamais les
+// cookies du site EVA lui-même. Entièrement optionnel : sans configuration, rien ne change —
+// "Télécharger JSON"/"Copier le JSON" restent disponibles et fonctionnent à l'identique. Un
+// échec de push (jeton révoqué, backend injoignable...) ne fait jamais planter la capture
+// locale : juste un avertissement en console, la capture continue normalement et reste
+// disponible via le téléchargement manuel.
 //
 // COMMENT CE SCRIPT RÉCUPÈRE LES CHAMPS QU'EVA A CESSÉ DE DEMANDER (depuis la v4.0)
 // Courant juillet 2026, EVA a changé les requêtes GraphQL que le site envoie
@@ -244,12 +264,16 @@
   let stats = loadJSON(STATS_KEY, {});          // { [userId]: [snapshot, ...] sorted asc }
 
   // ---------- games ----------
+  // Renvoie { added, items } plutôt qu'un simple compteur depuis la v10.0 : `items` (les
+  // nœuds réellement NEUFS de cet appel) sert au pont automatique (voir pushToBackend()) pour
+  // n'envoyer que le delta plutôt que de renvoyer tout l'historique accumulé à chaque capture.
   function mergeGameNodes(nodes, seasonId) {
-    if (!Array.isArray(nodes)) return 0;
+    if (!Array.isArray(nodes)) return { added: 0, items: [] };
     let added = 0;
+    const items = [];
     nodes.forEach((n) => {
       if (n && n.id != null) {
-        if (!games[n.id]) added++;
+        if (!games[n.id]) { added++; items.push(n); }
         // La partie elle-même ne renvoie pas son seasonId dans la réponse de l'API — on
         // l'attache nous-mêmes à partir de la variable de la requête (voir tryFireEnriched).
         // Ça permet à la visionneuse de filtrer/regrouper l'historique par saison.
@@ -258,7 +282,7 @@
       }
     });
     if (added > 0) saveJSON(GAMES_KEY, games);
-    return added;
+    return { added, items };
   }
 
   function extractGameNodes(payload) {
@@ -320,11 +344,13 @@
     // saisons confondues) qui reviennent en boucle très rapidement, et une comparaison
     // "à la dernière seulement" laisse passer ce cas A-B-A-B-A-B sans jamais rien filtrer.
     const alreadyExists = list.some((s) => ((s.seasonId != null ? s.seasonId : null) + '|' + JSON.stringify(s.statistics) + JSON.stringify(s.battleArenaStatistics) + JSON.stringify(s.experience)) === sig);
-    if (alreadyExists) return false;
+    if (alreadyExists) return null;
     list.push(snapshot);
     list.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
     saveJSON(STATS_KEY, stats);
-    return true;
+    // Renvoie le snapshot lui-même (pas juste `true`) depuis la v10.0 : sert au pont
+    // automatique (pushToBackend()) pour n'envoyer que ce qui vient d'être réellement ajouté.
+    return snapshot;
   }
 
   // ---------- dispatch ----------
@@ -348,13 +374,23 @@
       return; // réponse partielle ou non-JSON
     }
     let addedGames = 0, addedStats = 0;
+    let newGameItems = [], newStatItems = [];
     if (hasGames) {
       const nodes = extractGameNodes(json);
-      if (nodes) addedGames = mergeGameNodes(nodes, meta.seasonId);
+      if (nodes) {
+        const result = mergeGameNodes(nodes, meta.seasonId);
+        addedGames = result.added;
+        newGameItems = result.items;
+      }
     }
     if (hasStats) {
       const players = extractPlayerStats(json);
-      if (players) players.forEach((p) => { if (mergePlayerStat(p, meta.seasonId)) addedStats++; });
+      if (players) {
+        players.forEach((p) => {
+          const snapshot = mergePlayerStat(p, meta.seasonId);
+          if (snapshot) { addedStats++; newStatItems.push(snapshot); }
+        });
+      }
     }
     if (addedGames || addedStats) {
       updatePanel();
@@ -362,6 +398,10 @@
       if (addedGames) parts.push(`+${addedGames} partie(s)`);
       if (addedStats) parts.push(`+${addedStats} profil(s)`);
       flashPanel(parts.join(' · '));
+      // Pont automatique (voir "PONT AUTOMATIQUE" en tête de fichier) : n'envoie que ce qui
+      // vient d'être ajouté DANS CET APPEL, jamais tout l'historique accumulé — no-op silencieux
+      // si le pont n'est pas configuré (voir pushToBackend()).
+      pushToBackend({ nodes: newGameItems, playerStats: newStatItems });
     }
   }
 
@@ -437,6 +477,94 @@
     return origSend.call(this, body);
   };
 
+  // ---------- pont automatique vers EVA-Debrief (v10.0) ----------
+  // Config dans le magasin GM_getValue/GM_setValue (PAS localStorage, comme games/stats) :
+  // GM_* est isolé par script plutôt que par domaine, donc ce réglage (fait une fois sur EVA)
+  // reste valable même si le script tourne aussi sur d'autres pages (voir HOST_HINT) ou si le
+  // domaine EVA change légèrement — et ça évite tout risque de collision avec une clé du site
+  // lui-même dans son propre localStorage.
+  const BRIDGE_URL_KEY = 'eva_debrief_bridge_url';
+  const BRIDGE_TOKEN_KEY = 'eva_debrief_import_token';
+
+  function getBridgeConfig() {
+    return {
+      url: (GM_getValue(BRIDGE_URL_KEY, '') || '').replace(/\/+$/, ''), // sans slash final
+      token: GM_getValue(BRIDGE_TOKEN_KEY, '') || '',
+    };
+  }
+
+  // Deux points d'entrée pour la même config : le menu Tampermonkey (GM_registerMenuCommand,
+  // enregistré plus bas) ET un bouton dans le panneau — le menu est peu accessible sur certains
+  // navigateurs mobiles compatibles GM_* (Firefox Android notamment), le bouton reste lui
+  // toujours atteignable quel que soit le runtime.
+  function configureBridge() {
+    const current = getBridgeConfig();
+    const url = window.prompt(
+      'URL de ton instance EVA-Debrief (ex: https://eva.tondomaine.fr) — vide pour désactiver le pont :',
+      current.url
+    );
+    if (url === null) return; // annulé
+    const trimmedUrl = url.trim().replace(/\/+$/, '');
+    GM_setValue(BRIDGE_URL_KEY, trimmedUrl);
+    if (!trimmedUrl) {
+      GM_setValue(BRIDGE_TOKEN_KEY, '');
+      updateBridgeStatus();
+      flashPanel('Pont automatique désactivé');
+      return;
+    }
+    const token = window.prompt(
+      'Jeton d\'import (onglet "+ Importer" de ton EVA-Debrief, section "Pont automatique") :',
+      current.token
+    );
+    if (token === null) return; // annulé
+    GM_setValue(BRIDGE_TOKEN_KEY, token.trim());
+    updateBridgeStatus();
+    flashPanel('Pont automatique configuré');
+  }
+
+  // N'envoie que si le pont est configuré (opt-in strict) et qu'il y a réellement du delta à
+  // envoyer. GM_xmlhttpRequest contourne CORS nativement (contrairement à fetch() en contexte
+  // page) et n'envoie jamais les cookies du site EVA — seul le jeton d'import, dans son propre
+  // en-tête, authentifie la requête auprès d'EVA-Debrief. Ne lève jamais d'exception : un échec
+  // (jeton révoqué, backend injoignable, délai dépassé...) ne doit jamais interrompre la
+  // capture locale, qui reste de toute façon disponible via "Télécharger JSON".
+  function pushToBackend({ nodes, playerStats }) {
+    const { url, token } = getBridgeConfig();
+    if (!url || !token) return; // pont non configuré : no-op silencieux
+    if (!nodes.length && !playerStats.length) return;
+    try {
+      GM_xmlhttpRequest({
+        method: 'POST',
+        url: url + '/api/import',
+        headers: { 'Content-Type': 'application/json', 'X-Import-Token': token },
+        data: JSON.stringify({ nodes, playerStats }),
+        timeout: 15000,
+        onload: (res) => {
+          if (res.status >= 200 && res.status < 300) {
+            flashPanel('🔗 Envoyé à EVA-Debrief');
+          } else {
+            console.warn('[EVA Collector] Échec du push vers EVA-Debrief, HTTP', res.status, res.responseText);
+          }
+        },
+        onerror: () => console.warn('[EVA Collector] Échec du push vers EVA-Debrief (réseau).'),
+        ontimeout: () => console.warn('[EVA Collector] Push vers EVA-Debrief : délai dépassé.'),
+      });
+    } catch (e) {
+      console.warn('[EVA Collector] Échec du push vers EVA-Debrief :', e.message);
+    }
+  }
+
+  function updateBridgeStatus() {
+    if (!bridgeStatusEl) return;
+    const { url, token } = getBridgeConfig();
+    bridgeStatusEl.textContent = (url && token) ? '🔗 Pont : connecté' : '⚪ Pont : non configuré';
+  }
+
+  // Enregistré au chargement du script (synchrone, pas dans un callback DOMContentLoaded — les
+  // menu commands Tampermonkey doivent s'enregistrer immédiatement) : disponible dès que le
+  // script est actif sur le site EVA, sans attendre le panneau.
+  GM_registerMenuCommand('Configurer EVA-Debrief', configureBridge);
+
   // ---------- panneau flottant ----------
   // Réductible et déplaçable : utile pour le laisser en place mais hors du chemin quand on
   // navigue ailleurs sur le site (le script tourne sur tout le domaine, pas juste
@@ -444,7 +572,7 @@
   // et l'état fermé sont mémorisés dans localStorage (même clé que games/stats, donc partagés
   // entre onglets et persistants d'un rechargement à l'autre) pour ne pas avoir à tout
   // reconfigurer à chaque nouvelle page.
-  let panel, reopenBtn, gamesCountEl, statsCountEl, statusEl, bodyEl, badgeEl, toggleBtn, headerEl;
+  let panel, reopenBtn, gamesCountEl, statsCountEl, statusEl, bodyEl, badgeEl, toggleBtn, headerEl, bridgeStatusEl;
   let minimized = loadJSON(MINIMIZED_KEY, false);
   let closed = loadJSON(CLOSED_KEY, false);
   let position = loadJSON(POSITION_KEY, null); // {left, top} en px, null = position par défaut (bas-droite)
@@ -476,8 +604,10 @@
           </div>
         </div>
         <div id="eva-collector-status" style="font-size:11px;color:#3ddc84;min-height:14px;margin-bottom:8px;"></div>
+        <div id="eva-collector-bridge-status" style="font-size:11px;color:#8892a6;margin-bottom:8px;"></div>
         <button id="eva-collector-download" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#4f9dff;color:#0a0d14;font-weight:700;cursor:pointer;">Télécharger JSON</button>
         <button id="eva-collector-copy" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">Copier le JSON</button>
+        <button id="eva-collector-configure" style="width:100%;margin-bottom:6px;padding:7px;border:none;border-radius:6px;background:#232a3a;color:#e7ebf3;cursor:pointer;">⚙️ Configurer EVA-Debrief</button>
         <button id="eva-collector-clear" style="width:100%;padding:7px;border:none;border-radius:6px;background:#3a1c22;color:#ff9aa2;cursor:pointer;">Tout vider</button>
       </div>
     `;
@@ -485,6 +615,7 @@
     gamesCountEl = panel.querySelector('#eva-collector-games');
     statsCountEl = panel.querySelector('#eva-collector-stats');
     statusEl = panel.querySelector('#eva-collector-status');
+    bridgeStatusEl = panel.querySelector('#eva-collector-bridge-status');
     bodyEl = panel.querySelector('#eva-collector-body');
     badgeEl = panel.querySelector('#eva-collector-badge');
     toggleBtn = panel.querySelector('#eva-collector-toggle');
@@ -494,6 +625,9 @@
 
     panel.querySelector('#eva-collector-download').addEventListener('click', downloadJSON);
     panel.querySelector('#eva-collector-copy').addEventListener('click', copyJSON);
+    // Même fonction que le menu Tampermonkey (GM_registerMenuCommand plus haut) — ce bouton
+    // reste accessible même sur les runtimes mobiles où ce menu est peu pratique à atteindre.
+    panel.querySelector('#eva-collector-configure').addEventListener('click', configureBridge);
     panel.querySelector('#eva-collector-clear').addEventListener('click', () => {
       games = {}; stats = {};
       saveJSON(GAMES_KEY, games);
@@ -520,6 +654,7 @@
     applyMinimizedState();
     applyClosedState();
     updatePanel();
+    updateBridgeStatus();
   }
 
   function buildReopenBtn() {

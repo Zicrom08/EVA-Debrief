@@ -125,6 +125,28 @@ test('getUserById("__proto__") / updateUser("__proto__", ...) return null instea
   assert.equal(({}).passwordSalt, undefined);
 });
 
+test('createUser defaults importToken to null; updateUser sets and clears it (revocation)', () => {
+  const user = db.createUser({ username: 'tokenuser1', role: 'contributor', passwordSalt: 's', passwordHash: 'h' });
+  assert.equal(user.importToken, null);
+  const withToken = db.updateUser(user.id, { importToken: 'abc123' });
+  assert.equal(withToken.importToken, 'abc123');
+  const revoked = db.updateUser(user.id, { importToken: null }); // révocation explicite, pas juste "ne pas toucher"
+  assert.equal(revoked.importToken, null);
+});
+
+test('findUserByImportToken finds the right owner, returns null for unknown/empty/missing tokens', () => {
+  const user = db.createUser({ username: 'tokenuser2', role: 'contributor', passwordSalt: 's', passwordHash: 'h' });
+  assert.equal(db.findUserByImportToken('nope'), null);
+  assert.equal(db.findUserByImportToken(''), null);
+  assert.equal(db.findUserByImportToken(null), null);
+  db.updateUser(user.id, { importToken: 'xyz789' });
+  assert.equal(db.findUserByImportToken('xyz789').id, user.id);
+});
+
+test('findUserByImportToken("__proto__") returns null (locked-in invariant, not just incidental safety)', () => {
+  assert.equal(db.findUserByImportToken('__proto__'), null);
+});
+
 test('getRegistrationEnabled defaults to true, setRegistrationEnabled persists the new value', () => {
   assert.equal(db.getRegistrationEnabled(), true);
   assert.equal(db.setRegistrationEnabled(false), false);

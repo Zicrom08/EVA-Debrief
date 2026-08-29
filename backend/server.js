@@ -322,6 +322,15 @@ app.use((req, res, next) => {
   if (PUBLIC_PATHS.has(req.path) || req.path.startsWith('/assets/')) return next();
   const session = auth.getSession(requestToken(req));
   if (session) { req.user = session; return next(); }
+  // Seul POST /api/import peut s'authentifier par jeton d'import plutôt que par session (voir
+  // resolveImportAuth() plus bas, seul endroit qui résout réellement ce jeton) — on se contente
+  // ICI de laisser passer la requête (req.user reste vide), jamais de l'authentifier à cet
+  // endroit : sinon un jeton d'import volé authentifierait n'importe quelle autre route au même
+  // titre qu'une vraie session, ce qui viole le moindre privilège visé par ce jeton (import
+  // uniquement, jamais la liste des comptes, /api/state, etc.).
+  if (req.method === 'POST' && req.path === '/api/import' && req.headers['x-import-token']) {
+    return next();
+  }
   if (req.path.startsWith('/api/')) {
     return res.status(401).json({ error: 'Authentification requise.' });
   }
@@ -346,6 +355,40 @@ function requireImportAccess(req, res, next) {
   }
   next();
 }
+
+// Résout l'authentification de POST /api/import : une vraie session (déjà posée par le
+// middleware global ci-dessus, cookie ou Bearer — rien à faire ici) OU un jeton d'import via
+// X-Import-Token, résolu ICI ET NULLE PART AILLEURS dans le code — un jeton volé ne doit
+// jamais pouvoir authentifier autre chose que cette seule route (ni lister les comptes, ni
+// consulter /api/state, ni gérer/régénérer un jeton). Utilisé par le collecteur
+// (eva_history_collector.user.js) via GM_xmlhttpRequest — pas d'appel navigateur classique
+// concerné, donc aucun changement CORS nécessaire pour ce chemin.
+function resolveImportAuth(req, res, next) {
+  if (req.user) return next();
+  const user = db.findUserByImportToken(req.headers['x-import-token']);
+  if (!user) return res.status(401).json({ error: 'Authentification requise (session ou jeton d\'import).' });
+  req.user = { userId: user.id, role: user.role }; // même forme qu'une session, voir auth.getSession()
+  next();
+}
+
+// Jeton d'import personnel (admin/contributor uniquement, même politique que l'import
+// lui-même) — sert à authentifier le collecteur (eva_history_collector.user.js) sans jamais
+// exposer le mot de passe du compte. Ces trois routes passent par le gate global normal
+// (session uniquement, voir plus haut) : le jeton d'import ne doit jamais pouvoir se gérer
+// lui-même, seule une vraie connexion le peut.
+app.get('/api/import-token', requireImportAccess, (req, res) => {
+  const user = db.getUserById(req.user.userId);
+  res.json({ token: (user && user.importToken) || null });
+});
+app.post('/api/import-token', requireImportAccess, (req, res) => {
+  const token = auth.generateImportToken();
+  db.updateUser(req.user.userId, { importToken: token });
+  res.json({ token });
+});
+app.delete('/api/import-token', requireImportAccess, (req, res) => {
+  db.updateUser(req.user.userId, { importToken: null });
+  res.json({ ok: true });
+});
 
 // Réservé aux comptes admin (gestion des utilisateurs, des équipes, et reset).
 function requireAdmin(req, res, next) {
@@ -544,7 +587,7 @@ app.get('/api/health', (req, res) => {
 // Import : accepte le JSON collé/déposé tel quel depuis la visionneuse (ou
 // directement depuis le collecteur réseau). Déduplique les parties par id
 // (upsert) et les profils par empreinte de contenu, retire les parties PvE.
-app.post('/api/import', requireImportAccess, (req, res) => {
+app.post('/api/import', resolveImportAuth, requireImportAccess, (req, res) => {
   const { nodes, playerStats } = extractFromPayload(req.body);
 
   let addedGames = 0, updatedGames = 0, skippedPve = 0, skippedInvalid = 0;
@@ -773,4 +816,4 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 
 // Exposés pour la suite de tests (voir backend/test/server.test.js) — le reste du
 // module (routes, démarrage du serveur) n'a pas besoin d'être importable ailleurs.
-module.exports = { isPveGame, extractFromPayload };
+module.exports = { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess };

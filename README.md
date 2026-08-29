@@ -509,9 +509,10 @@ passe), chacun avec un rôle :
 
 - **admin** — accès complet : import, gestion des équipes, reset de la base,
   et gestion des comptes (onglet "Comptes", visible seulement pour ce rôle).
-- **contributor** — peut consulter et importer des données, mais ne peut ni
-  créer/modifier/supprimer une équipe, ni réinitialiser la base, ni gérer les
-  comptes.
+- **contributor** — peut consulter et importer des données (y compris via un
+  jeton d'import personnel pour le [pont automatique](#collecteur-de-données)
+  du collecteur), mais ne peut ni créer/modifier/supprimer une équipe, ni
+  réinitialiser la base, ni gérer les comptes.
 - **readonly** (lecture seule) — consultation uniquement : import, équipes,
   reset et gestion des comptes sont tous bloqués.
 
@@ -838,6 +839,14 @@ Même avec des comptes créés, garde en tête que :
   "Comptes" et supprime les comptes suspects ; n'active pas l'inscription
   publique si tu préfères garder un contrôle total sur qui a accès au site
   (dans ce cas, crée les comptes toi-même depuis l'onglet "Comptes").
+- Le **jeton d'import personnel** (pont automatique du collecteur, voir
+  [Collecteur de données](#collecteur-de-données)) n'authentifie que
+  `POST /api/import` — jamais une session complète : le perdre ne permet ni
+  de se connecter, ni de consulter/modifier quoi que ce soit d'autre.
+  Traite-le quand même avec le même soin qu'un mot de passe (ne le partage
+  pas, ne le colle pas ailleurs que dans le collecteur) ; révocable/régénérable
+  à tout moment depuis l'onglet "+ Importer", avec invalidation immédiate de
+  l'ancien.
 
 ## API
 
@@ -851,7 +860,7 @@ Même avec des comptes créés, garde en tête que :
 | GET     | `/api/me`         | oui | `{ id, username, email, role }` du compte connecté |
 | GET     | `/api/state`      | oui | Renvoie tout : parties, profils, équipes |
 | GET     | `/api/health`     | oui | Statut + compteurs |
-| POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) |
+| POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) — accepte aussi une authentification par `X-Import-Token` (voir plus bas) à la place d'une session |
 | GET     | `/api/export`     | oui | Export brut complet (sauvegarde) |
 | DELETE  | `/api/games/:id`  | admin | Supprime une partie précise (pour la réimporter après correction d'un bug d'import) |
 | GET     | `/api/teams`      | oui | Liste des équipes |
@@ -872,6 +881,9 @@ Même avec des comptes créés, garde en tête que :
 | GET     | `/api/backups`    | admin | Sauvegardes existantes + config (`intervalHours`, `retention`) |
 | POST    | `/api/backups`    | admin | Déclenche une sauvegarde immédiate |
 | GET     | `/api/backups/:filename` | admin | Télécharge un fichier de sauvegarde précis |
+| GET     | `/api/import-token` | admin/contributor | Jeton d'import personnel actuel `{ token }` (`null` si aucun) |
+| POST    | `/api/import-token` | admin/contributor | (Re)génère le jeton — invalide immédiatement l'ancien |
+| DELETE  | `/api/import-token` | admin/contributor | Révoque le jeton |
 
 ("Auth requise" ne s'applique que si au moins un compte existe — sinon tout
 est ouvert le temps de créer le premier, voir [Comptes et rôles](#comptes-et-rôles).
@@ -883,10 +895,35 @@ compte `readonly`. Les routes marquées "admin" seul sont bloquées pour
 
 `eva_history_collector.user.js` est un script [Tampermonkey](https://www.tampermonkey.net/)
 à installer dans le navigateur, sur le site EVA lui-même — pas sur ce
-serveur. Il intercepte les requêtes réseau de la page (historique de
+serveur. Fonctionne à l'identique via [Kiwi Browser](https://kiwibrowser.com/)
+(Android) ou l'app [Userscripts](https://apps.apple.com/us/app/userscripts/id1463298887)
+(iOS/Safari), aucune adaptation nécessaire — le même script, la même
+configuration. Il intercepte les requêtes réseau de la page (historique de
 parties, stats de profil) et affiche un petit panneau flottant pour
 télécharger un export JSON, à importer ensuite dans la visionneuse via
 "+ Importer".
+
+**Pont automatique (depuis la v10.0) :** plutôt que de télécharger puis
+réimporter à la main, le collecteur peut pousser directement chaque nouvelle
+donnée capturée vers ton instance EVA-Debrief, en arrière-plan, pendant que
+tu navigues normalement sur EVA. Deux réglages, à faire une seule fois :
+
+1. Depuis EVA-Debrief (onglet "+ Importer", section "Pont automatique depuis
+   le collecteur EVA" — invisible pour un compte `readonly`), génère un
+   **jeton d'import** personnel.
+2. Dans le collecteur, menu Tampermonkey "Configurer EVA-Debrief" (ou le
+   bouton "⚙️ Configurer" du panneau, si ce menu est peu accessible sur ton
+   navigateur mobile) : colle l'URL de ton instance et ce jeton.
+
+Ensuite, chaque partie/profil capturé est envoyé automatiquement via
+`GM_xmlhttpRequest` (contourne CORS nativement, aucune configuration serveur
+supplémentaire) — "Télécharger JSON"/"Copier le JSON" restent disponibles à
+l'identique, en repli si le pont n'est pas configuré ou qu'un envoi échoue
+(un échec n'interrompt jamais la capture locale, juste un avertissement en
+console). Ce jeton n'authentifie **que** `POST /api/import` (voir
+[l'API](#api)) : le perdre ne permet ni de se connecter, ni de consulter/modifier
+quoi que ce soit d'autre. Révocable/régénérable à tout moment depuis le même
+panneau, avec invalidation immédiate de l'ancien jeton.
 
 Les stats de saison sont capturées via ta page de profil **connectée**
 (`getPlayerByUserId`) — EVA a retiré les pages de profil **publiques**

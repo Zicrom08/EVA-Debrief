@@ -437,6 +437,15 @@ module.exports = {
     const needle = String(username || '').toLowerCase();
     return Object.values(usersState.users).find(u => u.username.toLowerCase() === needle) || null;
   },
+  // Recherche PAR VALEUR (comme findUserByUsername ci-dessus), jamais usersState.users[token] —
+  // pas besoin du garde hasOwnProperty utilisé par getUserById/updateUser ci-dessous (il protège
+  // contre l'INDEXATION directe par une clé fournie par l'appelant ; Object.values() ne porte
+  // lui jamais sur la chaîne de prototypes, donc "__proto__" ne peut de toute façon jamais
+  // matcher ici). Voir POST /api/import (server.js), résolu via resolveImportAuth().
+  findUserByImportToken(token) {
+    if (!token) return null;
+    return Object.values(usersState.users).find(u => u.importToken && u.importToken === token) || null;
+  },
   // hasOwnProperty : même raison que updateTeam ci-dessous — sans lui, getUserById("__proto__")
   // renverrait Object.prototype (truthy) plutôt que null.
   getUserById(id) {
@@ -445,7 +454,7 @@ module.exports = {
   },
   createUser({ username, email, passwordSalt, passwordHash, role }) {
     const id = genId('u');
-    const user = { id, username, email: email || null, passwordSalt, passwordHash, role, createdAt: new Date().toISOString() };
+    const user = { id, username, email: email || null, passwordSalt, passwordHash, role, importToken: null, createdAt: new Date().toISOString() };
     usersState.users[id] = user;
     usersPersister.saveNow();
     return user;
@@ -460,6 +469,10 @@ module.exports = {
     if (patch.passwordSalt != null) user.passwordSalt = patch.passwordSalt;
     if (patch.passwordHash != null) user.passwordHash = patch.passwordHash;
     if (patch.role != null) user.role = patch.role;
+    // `!== undefined`, pas `!= null` comme les champs ci-dessus : null EST la valeur voulue ici
+    // (révocation du jeton, voir DELETE /api/import-token) — il faut distinguer "ne touche pas
+    // à importToken" (patch.importToken absent) de "remets-le à null" (patch.importToken === null).
+    if (patch.importToken !== undefined) user.importToken = patch.importToken;
     usersPersister.saveNow();
     return user;
   },

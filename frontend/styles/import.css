@@ -20,3 +20,10 @@
 .import-help{margin-top:28px;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);font-size:12px;color:var(--muted);line-height:1.7;}
 .import-help strong{color:var(--text);}
 .import-help code{background:var(--panel-2);padding:1px 6px;border-radius:4px;color:var(--gold);}
+
+.import-token-panel:empty{display:none;}
+.import-token-panel{margin-top:28px;padding:16px;border:1px solid var(--line);border-radius:10px;background:var(--panel);}
+.import-token-panel h3{font-size:15px;margin:0 0 10px;}
+.import-token-panel p{color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 10px;}
+.import-token-row{margin:12px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.import-token-value{background:var(--panel-2);padding:6px 10px;border-radius:6px;color:var(--gold);font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;word-break:break-all;}

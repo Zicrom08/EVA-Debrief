@@ -96,6 +96,15 @@ function createSession(userId, role) {
   return token;
 }
 
+// Jeton d'import personnel (voir POST /api/import-token dans server.js) — même génération
+// que createSession() (256 bits aléatoires), mais jamais stocké dans `sessions` : ce n'est pas
+// une session, juste un secret opaque stocké sur le compte (db.js) et vérifié par
+// db.findUserByImportToken(). Reste dans ce fichier pour que toute génération aléatoire du
+// projet vive à un seul endroit.
+function generateImportToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
 // Renvoie { userId, role } si le jeton est valide et non expiré, sinon null
 // (et nettoie la session si elle est expirée).
 function getSession(token) {
@@ -265,6 +274,7 @@ module.exports = {
   hashPassword,
   verifyPassword,
   createSession,
+  generateImportToken,
   getSession,
   destroySession,
   destroySessionsForUser,

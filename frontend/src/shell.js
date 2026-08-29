@@ -9,6 +9,7 @@ import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
+import { renderImportTokenPanel } from './import-token.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -23,6 +24,7 @@ export function showApp() {
   document.getElementById('brandSub').textContent =
     `${gCount} partie(s) · ${sCount} profil(s) capturé(s) · ${storageNote}`;
   applyRolePermissions();
+  renderImportTokenPanel();
   renderPlayerPicker();
   renderMapFilterOptions();
   renderMapExcludePanel();
