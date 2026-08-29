@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      10.0
+// @version      10.1
 // @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief si configuré (voir "PONT AUTOMATIQUE" plus bas). Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @grant        unsafeWindow
 // @run-at       document-start
 // ==/UserScript==
 
@@ -146,6 +147,25 @@
   if (!location.hostname.toLowerCase().includes(HOST_HINT)) {
     return; // page non-EVA : le script ne fait strictement rien, aucun hook n'est posé.
   }
+
+  // ⚠️ RÉGRESSION CORRIGÉE EN v10.1 — NE PAS RÉINTRODUIRE : dès qu'un script Tampermonkey
+  // déclare AU MOINS UN @grant (même juste GM_getValue), Tampermonkey l'exécute dans un
+  // contexte "sandbox" isolé où `window` n'est PLUS le vrai window de la page — c'est
+  // différent du mode `@grant none` (utilisé jusqu'en v9.3), où le script tournait
+  // directement dans le contexte de la page. Conséquence concrète : `window.fetch = ...`
+  // remplaçait bien le fetch que LE SITE appelle lui-même en `@grant none`, mais dans le
+  // contexte sandboxé (depuis l'ajout des @grant du pont automatique en v10.0), cette même
+  // ligne ne fait que remplacer le fetch d'un window ISOLÉ que le site ne voit jamais — le
+  // hook s'installe sans la moindre erreur, mais n'intercepte plus RIEN (capture totalement
+  // silencieuse à zéro, confirmé en usage réel). `unsafeWindow` est la référence spéciale
+  // fournie par Tampermonkey (et les autres gestionnaires compatibles GM — Violentmonkey,
+  // l'app Userscripts iOS...) qui pointe explicitement vers le VRAI window de la page,
+  // même depuis un contexte sandboxé — c'est donc lui qu'il faut utiliser pour tout ce qui
+  // doit agir sur ce que la page voit (fetch, XMLHttpRequest), quels que soient les autres
+  // @grant déclarés. Repli sur `window` si `unsafeWindow` n'existe pas (gestionnaire qui ne
+  // sandboxe pas, ou qui ne fournit pas cette référence) : comportement alors identique à
+  // avant, jamais pire.
+  const pageWindow = typeof unsafeWindow !== 'undefined' ? unsafeWindow : window;
 
   const GAMES_KEY = 'eva_history_collector_data';
   const STATS_KEY = 'eva_history_collector_playerstats';
@@ -448,7 +468,7 @@
     // donc cette valeur est fiable à chaque appel.
     const requestSeasonId = parsed.variables && parsed.variables.seasonId != null ? parsed.variables.seasonId : null;
 
-    origFetch.call(window, url, enrichedInit)
+    origFetch.call(pageWindow, url, enrichedInit)
       .then((res) => res.text())
       .then((text) => {
         const allowStats = opName !== 'UseProfileUserOwned' || requestSeasonId != null;
@@ -458,8 +478,10 @@
   }
 
   // ---------- interception fetch() : ne touche jamais à la requête du site, en déclenche une deuxième à côté ----------
-  const origFetch = window.fetch;
-  window.fetch = function (input, init) {
+  // pageWindow, PAS window (voir l'avertissement plus haut) : c'est bien le fetch que LE SITE
+  // appelle qu'on doit remplacer, pas celui d'un contexte sandboxé que lui seul verrait.
+  const origFetch = pageWindow.fetch;
+  pageWindow.fetch = function (input, init) {
     try {
       const url = typeof input === 'string' ? input : (input && input.url);
       if (url) tryFireEnriched(url, init);
@@ -469,8 +491,8 @@
 
   // ---------- interception XMLHttpRequest : capture passive uniquement (EVA n'utilise que fetch()
   // en pratique, ceci est un filet de sécurité qui ne modifie jamais rien) ----------
-  const origSend = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.send = function (body) {
+  const origSend = pageWindow.XMLHttpRequest.prototype.send;
+  pageWindow.XMLHttpRequest.prototype.send = function (body) {
     this.addEventListener('load', function () {
       try { handleText(this.responseText, { allowStats: true, seasonId: null }); } catch (e) {}
     });
