@@ -253,6 +253,7 @@ eva-debrief/
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
 │   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
+├── browser-extension/                # Extension Chrome/Edge/Kiwi Browser (alternative au userscript, voir Collecteur de données)
 ├── eva_history_collector.user.js    # Script Tampermonkey (côté navigateur, sur le site EVA)
 └── eva_network_inspector.user.js    # Script Tampermonkey de diagnostic (journalise tout le GraphQL du site, voir Collecteur de données)
 ```
@@ -976,6 +977,33 @@ d'installation Tampermonkey, à côté du collecteur dans ce repo) pour
 diagnostiquer si ça se reproduit : il journalise sans rien modifier toutes
 les requêtes/réponses GraphQL brutes du site, utile pour repérer un nom de
 champ ou une opération qui a changé.
+
+### Extension navigateur (Chrome/Edge/Kiwi Browser)
+
+Alternative au userscript pour qui préfère éviter Tampermonkey : le dossier
+[`browser-extension/`](browser-extension/) contient une extension Manifest V3
+qui fait la même capture, mais se lie au compte EVA-Debrief **en un clic**
+plutôt que par copier-coller manuel d'une URL et d'un jeton.
+
+- **Portée v1 : Chrome, Edge et Kiwi Browser (Android) uniquement.** Pas de
+  Firefox desktop — son mode "installation temporaire" (seule option sans
+  compte développeur signé, hors scope ici) efface tout son stockage à
+  chaque redémarrage du navigateur, ce qui casserait la liaison à chaque
+  fois ; pas d'iOS non plus (nécessiterait une app native Xcode + un compte
+  développeur Apple payant). Les utilisateurs de ces plateformes restent sur
+  le userscript, qui fonctionne très bien pour elles.
+- **Installation (chargement décompressé, pas de store pour l'instant) :**
+  `chrome://extensions` (ou `edge://extensions`, ou l'équivalent dans Kiwi
+  Browser) → active le "mode développeur" → "Charger l'extension non
+  empaquetée" → sélectionne le dossier `browser-extension/`.
+- **Liaison :** connecte-toi sur ton instance EVA-Debrief (rôle `admin` ou
+  `contributor`), onglet "+ Importer" → clique **"Lier l'extension
+  EVA-Debrief"** dans le panneau "Pont automatique". Rien d'autre à
+  configurer : l'extension récupère (ou génère, si aucun n'existe encore)
+  ton jeton d'import existant et s'auto-configure avec.
+- Diagnostic et détails techniques (pourquoi deux content scripts, pourquoi
+  le push part du service worker et pas d'un content script...) : voir
+  [`browser-extension/README.md`](browser-extension/README.md).
 
 ## Historique du projet
 

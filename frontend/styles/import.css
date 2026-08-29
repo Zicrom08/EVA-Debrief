@@ -27,3 +27,4 @@
 .import-token-panel p{color:var(--muted);font-size:12px;line-height:1.6;margin:0 0 10px;}
 .import-token-row{margin:12px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .import-token-value{background:var(--panel-2);padding:6px 10px;border-radius:6px;color:var(--gold);font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;word-break:break-all;}
+.import-extension-row{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);}

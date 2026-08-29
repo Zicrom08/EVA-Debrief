@@ -1,5 +1,6 @@
 import { apiGet, apiSend } from './api.js';
 import { state } from './state.js';
+import { API_BASE } from './api-base.js';
 
 // ================= JETON D'IMPORT PERSONNEL (pont collecteur, admin/contributor) =================
 // Simples enveloppes autour de l'API — la logique elle-même (génération, révocation, contrôle
@@ -44,6 +45,30 @@ export async function renderImportTokenPanel() {
   wirePanel(container);
 }
 
+// Sonde brièvement la présence de l'extension navigateur (voir browser-extension/content-
+// isolated.js) via une poignée de main postMessage — jamais '*' en targetOrigin, toujours
+// l'origine exacte de la page. Pas de réponse sous 300ms == pas installée (cas normal et
+// attendu, pas une erreur) : le bouton reste affiché mais en état secondaire plutôt que
+// bloquant, pour ne pas gêner les utilisateurs du userscript qui n'ont pas l'extension.
+function detectExtension() {
+  return new Promise((resolve) => {
+    const origin = window.location.origin;
+    const timeoutId = setTimeout(() => {
+      window.removeEventListener('message', handler);
+      resolve(false);
+    }, 300);
+    function handler(e) {
+      if (e.source !== window || e.origin !== origin) return;
+      if (!e.data || e.data.type !== 'EVA_DEBRIEF_PONG') return;
+      clearTimeout(timeoutId);
+      window.removeEventListener('message', handler);
+      resolve(true);
+    }
+    window.addEventListener('message', handler);
+    window.postMessage({ type: 'EVA_DEBRIEF_PING' }, origin);
+  });
+}
+
 function renderPanelContent(container, token) {
   const tokenLine = token
     ? `<code class="import-token-value">${token}</code> <button class="btn small" id="copyImportTokenBtn">Copier</button>`
@@ -65,7 +90,18 @@ function renderPanelContent(container, token) {
     <div class="import-actions">
       <button class="btn small primary" id="regenImportTokenBtn">${token ? 'Régénérer' : 'Générer un jeton'}</button>
       ${token ? '<button class="btn small" id="revokeImportTokenBtn">Révoquer</button>' : ''}
+    </div>
+    <div class="import-extension-row">
+      <button class="btn small" id="linkExtensionBtn">Lier l'extension EVA-Debrief</button>
+      <div id="extensionLinkStatus" style="color:var(--muted);font-size:12px;margin-top:4px;"></div>
     </div>`;
+  detectExtension().then((detected) => {
+    const statusEl = container.querySelector('#extensionLinkStatus');
+    if (!statusEl) return;
+    if (!detected) {
+      statusEl.textContent = "Extension non détectée — installe-la d'abord (voir browser-extension/README.md), puis recharge cette page.";
+    }
+  });
 }
 
 function wirePanel(container) {
@@ -104,5 +140,51 @@ function wirePanel(container) {
         alert('Erreur lors de la révocation du jeton : ' + e.message);
       }
     });
+  }
+  document.getElementById('linkExtensionBtn').addEventListener('click', () => linkExtension(container));
+}
+
+// Envoie le jeton à l'extension via la poignée de main postMessage (voir browser-extension/
+// content-isolated.js) — réutilise le jeton EXISTANT s'il y en a déjà un (ne régénère que si
+// aucun n'existe encore) pour ne pas casser silencieusement une liaison userscript/extension
+// déjà en place ailleurs, cohérent avec le geste volontaire déjà exigé pour "Régénérer".
+async function linkExtension(container) {
+  const statusEl = container.querySelector('#extensionLinkStatus');
+  const origin = window.location.origin;
+  try {
+    let { token } = await fetchImportToken();
+    if (!token) {
+      ({ token } = await regenerateImportToken());
+      renderPanelContent(container, token);
+      wirePanel(container);
+      return linkExtension(document.getElementById('importTokenPanel'));
+    }
+    const backendUrl = API_BASE || origin;
+    if (statusEl) statusEl.textContent = 'Liaison en cours…';
+    const result = await new Promise((resolve) => {
+      const timeoutId = setTimeout(() => {
+        window.removeEventListener('message', handler);
+        resolve(null);
+      }, 3000);
+      function handler(e) {
+        if (e.source !== window || e.origin !== origin) return;
+        if (!e.data || e.data.type !== 'EVA_DEBRIEF_LINK_RESULT') return;
+        clearTimeout(timeoutId);
+        window.removeEventListener('message', handler);
+        resolve(e.data);
+      }
+      window.addEventListener('message', handler);
+      window.postMessage({ type: 'EVA_DEBRIEF_LINK_REQUEST', backendUrl, importToken: token }, origin);
+    });
+    if (!statusEl) return;
+    if (!result) {
+      statusEl.textContent = "Extension non détectée — installe-la d'abord (voir browser-extension/README.md), puis recharge cette page.";
+    } else if (result.ok) {
+      statusEl.textContent = '✅ Extension liée avec succès. Navigue sur EVA normalement, la capture se fait automatiquement.';
+    } else {
+      statusEl.textContent = 'Échec de la liaison : ' + (result.error || 'erreur inconnue.');
+    }
+  } catch (e) {
+    if (statusEl) statusEl.textContent = 'Erreur lors de la liaison : ' + e.message;
   }
 }
