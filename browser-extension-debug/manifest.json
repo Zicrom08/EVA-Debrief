@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "EVA-Debrief — Collecteur (DEBUG)",
+  "version": "1.0-debug",
+  "description": "Version de diagnostic de l'extension EVA-Debrief : journalise chaque étape (capture, relais, configuration, envoi HTTP, réponse) dans la console du service worker. Ne pas utiliser au quotidien — voir browser-extension-debug/README.md.",
+  "permissions": ["storage", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "EVA-Debrief — Collecteur (DEBUG)",
+    "default_icon": {
+      "128": "icons/icon128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-main-world.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-isolated.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "128": "icons/icon128.png"
+  }
+}

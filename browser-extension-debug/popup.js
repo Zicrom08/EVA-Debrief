@@ -11,9 +11,23 @@
 // manifest.json). D'où l'usage de l'onglet ACTIF plutôt qu'une recherche sur tous les onglets.
 // ============================================================================
 
+const LOG = '[EVA-Debrief DEBUG]';
+console.info(LOG, 'popup (debug) ouvert —', new Date().toISOString());
+
+// Jeton masqué même en debug (4 premiers + 4 derniers caractères) : quelqu'un pourrait
+// copier-coller ce log ailleurs (ex: pour me l'envoyer) sans faire attention.
+function maskToken(token) {
+  if (!token) return '(vide)';
+  if (token.length <= 10) return '***';
+  return token.slice(0, 4) + '…' + token.slice(-4) + ` (${token.length} caractères)`;
+}
+
 function getConfig() {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['backendUrl', 'importToken', 'lastPushStatus'], resolve);
+    chrome.storage.local.get(['backendUrl', 'importToken', 'lastPushStatus'], (data) => {
+      console.info(LOG, 'chrome.storage.local :', { ...data, importToken: maskToken(data.importToken) });
+      resolve(data);
+    });
   });
 }
 

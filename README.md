@@ -263,6 +263,7 @@ eva-debrief/
 │   │   └── shell.js, tabs.js, filters-ui.js, import.js, player-index.js
 │   └── dist/                          # Build de prod (généré par `npm run build`, gitignored)
 ├── browser-extension/                # Extension Chrome/Edge/Kiwi Browser (alternative au userscript, voir Collecteur de données)
+├── browser-extension-debug/          # Version instrumentée de l'extension ci-dessus, diagnostic uniquement
 ├── eva_history_collector.user.js    # Script Tampermonkey (côté navigateur, sur le site EVA)
 └── eva_network_inspector.user.js    # Script Tampermonkey de diagnostic (journalise tout le GraphQL du site, voir Collecteur de données)
 ```
@@ -1025,8 +1026,11 @@ plutôt que par copier-coller manuel d'une URL et d'un jeton.
   (ou génère, si aucun n'existe encore) ton jeton d'import existant et
   s'auto-configure avec.
 - Diagnostic et détails techniques (pourquoi deux content scripts, pourquoi
-  le push part du service worker et pas d'un content script...) : voir
-  [`browser-extension/README.md`](browser-extension/README.md).
+  le push part du service worker et pas d'un content script, le piège
+  "Accès aux sites" qui peut bloquer le push par CORS malgré
+  `host_permissions`...) : voir [`browser-extension/README.md`](browser-extension/README.md).
+  Pour un cas qui ne rentre dans aucun cas déjà connu, une version
+  instrumentée existe : [`browser-extension-debug/`](browser-extension-debug/).
 
 ## Historique du projet
 

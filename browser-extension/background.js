@@ -61,6 +61,22 @@ async function handleCapture({ nodes, playerStats }) {
   if (!backendUrl || !importToken) return; // pont non lié : no-op silencieux, strictement opt-in
   if (!(nodes && nodes.length) && !(playerStats && playerStats.length)) return;
 
+  // host_permissions ("<all_urls>", voir manifest.json) seul ne suffit PAS à exempter ce
+  // fetch() du CORS normal du web : il faut EN PLUS que "Accès aux sites" (chrome://extensions
+  // → cette extension → Détails) soit réglé sur "Sur tous les sites" — sinon Chrome applique
+  // les règles CORS classiques (preflight, Access-Control-Allow-Origin) et ce fetch échoue,
+  // sans qu'aucun message ne remonte nulle part dans l'UI de l'extension (seulement dans la
+  // console du service worker) — piège réel rencontré en usage : diagnostiqué puis corrigé.
+  // chrome.permissions.contains() vérifie le VRAI consentement runtime, pas juste ce que
+  // déclare le manifest, pour donner un message actionnable plutôt qu'un TypeError générique.
+  const originPattern = new URL(backendUrl).origin + '/*';
+  const hasPerm = await new Promise((resolve) => chrome.permissions.contains({ origins: [originPattern] }, resolve));
+  if (!hasPerm) {
+    console.error('[EVA-Debrief] Permission de site non accordée pour', originPattern, '— va dans chrome://extensions → cette extension → Détails → "Accès aux sites" → "Sur tous les sites".');
+    setLastPushStatus({ ok: false, permissionMissing: true, origin: originPattern });
+    return;
+  }
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
   try {

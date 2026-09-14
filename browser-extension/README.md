@@ -43,3 +43,17 @@ ajoutés, ou l'erreur si un push a échoué).
 - Révoquer/régénérer le jeton depuis EVA-Debrief (onglet "+ Importer") invalide
   immédiatement la liaison — reclique "Lier l'extension" pour la refaire avec un
   nouveau jeton.
+- **"Accès aux sites" doit être sur "Sur tous les sites"** — piège réel rencontré :
+  `host_permissions: ["<all_urls>"]` dans `manifest.json` ne suffit **pas** à lui seul
+  à exempter les envois du CORS normal du web. Si le réglage **"Accès aux sites"**
+  (`chrome://extensions` → cette extension → **Détails**) est sur "Sur clic" ou "Sur
+  des sites spécifiques" au lieu de **"Sur tous les sites"**, chaque envoi échoue
+  silencieusement par CORS (`blocked by CORS policy... preflight request`), visible
+  uniquement dans la console du service worker, jamais dans le popup — sauf depuis la
+  correction qui ajoute une bannière dédiée dans le popup avec un bouton pour corriger
+  ce réglage en un clic. Si le popup affiche cette bannière (ou si la console montre
+  cette erreur CORS précise), c'est la cause : passe "Accès aux sites" sur "Sur tous
+  les sites" et réessaie.
+- Une version instrumentée (`browser-extension-debug/`, journal détaillé de chaque
+  étape) existe pour diagnostiquer un cas qui ne rentre dans aucun des cas ci-dessus —
+  voir `browser-extension-debug/README.md`.
