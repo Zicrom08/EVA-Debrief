@@ -52,10 +52,21 @@ export function renderProfilMain(uid) {
       Change le filtre de saison en haut de page pour voir ses autres captures.
     </div>`;
   } else {
-    html += `<div class="detail-empty" style="margin-top:0;">
-      Aucune statistique de saison importée pour ce joueur.<br>
+    html += `<div class="detail-empty" style="margin-top:0;text-align:left;">
+      <strong>Aucune statistique de saison importée pour ce joueur.</strong><br><br>
+      Le plus simple : installe l'extension navigateur EVA-Debrief, lie-la à ce compte
+      en un clic (bouton "Lier l'extension EVA-Debrief" dans "+ Importer", ou depuis le
+      popup de l'extension elle-même), puis navigue normalement sur la page de profil
+      <strong>connectée</strong> de ce joueur sur EVA — la capture et l'envoi se font
+      ensuite automatiquement, sans rien télécharger ni réimporter à la main.
+      Voir <code>browser-extension/README.md</code> dans le dépôt pour l'installation
+      (Chrome, Edge, Kiwi Browser).<br><br>
+      <span style="color:var(--muted);font-size:12px;">
+        🔜 À venir : une version packagée de l'extension, installable en un clic
+        directement depuis ce site, sans passer par le mode développeur du navigateur.
+      </span><br><br>
       Les profils publics n'existent plus sur EVA — seule sa propre page de profil connectée
-      (<code>getPlayerByUserId</code>) peut être capturée, via "+ Importer".
+      (<code>getPlayerByUserId</code>) peut être capturée.
     </div>`;
   }
 
