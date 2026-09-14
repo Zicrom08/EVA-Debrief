@@ -27,7 +27,7 @@ export function computeSessions(games, uid, gapMinutes) {
 
 // Agrège une liste de parties pour un joueur donné (V/D, K/D, dégâts moyens, score moyen).
 export function aggregateGames(games, uid) {
-  let wins=0, losses=0, kills=0, deaths=0, assists=0, dmg=0, score=0, n=0;
+  let wins=0, losses=0, kills=0, deaths=0, assists=0, dmg=0, score=0, n=0, accSum=0, accN=0;
   games.forEach(g => {
     const p = findPlayerInGame(g, uid);
     if (!p) return;
@@ -39,6 +39,10 @@ export function aggregateGames(games, uid) {
     assists += p.data.assists || 0;
     dmg += p.data.inflictedDamage || 0;
     score += p.data.score || 0;
+    // != null (pas juste falsy) : une partie sans précision exploitable (import list-only,
+    // voir CLAUDE.md) ne doit jamais tirer la moyenne vers 0 — elle est exclue du calcul,
+    // avgAcc vaut null (jamais 0) si AUCUNE partie du lot n'a de précision exploitable.
+    if (p.data.firedAccuracy != null) { accSum += p.data.firedAccuracy; accN++; }
   });
   return {
     n, wins, losses,
@@ -47,6 +51,7 @@ export function aggregateGames(games, uid) {
     kda: deaths ? ((kills+assists)/deaths).toFixed(2) : (kills+assists).toFixed(2),
     avgDmg: n ? Math.round(dmg/n) : 0,
     avgScore: n ? Math.round(score/n) : 0,
+    avgAcc: accN ? Math.round((accSum/accN)*100) : null,
     kills, deaths, assists,
   };
 }

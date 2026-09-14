@@ -82,7 +82,7 @@ export function renderSummary(){
   if (!state.currentUid) { box.innerHTML = ''; return; }
   const games = filteredGamesArray().filter(g => findPlayerInGame(g, state.currentUid));
   if (!games.length) {
-    box.innerHTML = `${rankCellHtml()}<div class="cell" style="grid-column:span 6;"><div class="label">Joueur sélectionné</div>
+    box.innerHTML = `${rankCellHtml()}<div class="cell" style="grid-column:span 7;"><div class="label">Joueur sélectionné</div>
       <div class="value" style="font-size:16px;color:var(--muted);">Aucune partie dans la période sélectionnée pour ce joueur.</div></div>`;
     return;
   }
@@ -98,6 +98,7 @@ export function renderSummary(){
       <div class="sub">${agg.kills} kills · ${agg.deaths} morts · ${agg.assists} assists</div></div>
     <div class="cell"><div class="label">Score moyen</div><div class="value">${agg.avgScore}</div></div>
     <div class="cell"><div class="label">Dégâts moyens</div><div class="value">${agg.avgDmg}</div></div>
+    <div class="cell"><div class="label">Précision moyenne</div><div class="value">${agg.avgAcc == null ? '<span style="color:var(--muted);">n/d</span>' : agg.avgAcc + '%'}</div></div>
   `;
 }
 
