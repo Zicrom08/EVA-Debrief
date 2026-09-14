@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend, computeMatchRatings, computeMatchMvpStats } from '../src/profil/compute.js';
+import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend, computeMatchRatings, computeMatchMvpStats, bestWorstGames } from '../src/profil/compute.js';
 
 test('computeMatchMvpStats counts a game as MVP only when the player has the single best score across BOTH teams', () => {
   const games = [
@@ -45,6 +45,26 @@ test('computeMatchMvpStats skips games the player did not play, without counting
   const stats = computeMatchMvpStats(games, 'me');
   assert.equal(stats.total, 0);
   assert.equal(stats.mvpRate, 0);
+});
+
+test('bestWorstGames tracks the single game with the highest firedAccuracy', () => {
+  const games = [
+    { id: 'g1', map: { name: 'A' }, createdAt: '2026-01-01T00:00:00Z', players: [{ userId: 'me', data: { kills: 1, deaths: 1, firedAccuracy: 0.2 } }] },
+    { id: 'g2', map: { name: 'B' }, createdAt: '2026-01-02T00:00:00Z', players: [{ userId: 'me', data: { kills: 1, deaths: 1, firedAccuracy: 0.55 } }] },
+    { id: 'g3', map: { name: 'C' }, createdAt: '2026-01-03T00:00:00Z', players: [{ userId: 'me', data: { kills: 1, deaths: 1, firedAccuracy: 0.4 } }] },
+  ];
+  const { bestAcc } = bestWorstGames(games, 'me');
+  assert.equal(bestAcc.val, 0.55);
+  assert.equal(bestAcc.game.id, 'g2');
+});
+
+test('bestWorstGames never picks a game with no exploitable accuracy (null/missing), rather than defaulting it to 0%', () => {
+  const games = [
+    { id: 'g1', map: { name: 'A' }, createdAt: '2026-01-01T00:00:00Z', players: [{ userId: 'me', data: { kills: 1, deaths: 1, firedAccuracy: null } }] },
+    { id: 'g2', map: { name: 'B' }, createdAt: '2026-01-02T00:00:00Z', players: [{ userId: 'me', data: { kills: 1, deaths: 1 } }] }, // firedAccuracy absent
+  ];
+  const { bestAcc } = bestWorstGames(games, 'me');
+  assert.equal(bestAcc, null);
 });
 
 test('computeDuoNemesisStats ignores games without a team assignment instead of treating everyone as a teammate', () => {

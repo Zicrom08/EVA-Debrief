@@ -108,6 +108,7 @@ export function renderMapDeepDive(games, uid, mapsStats) {
         ${highlightCard('Meilleur K/D sur cette carte', bw.bestKD, e => e.kd.toFixed(2), 'var(--gold)')}
         ${highlightCard('Plus gros dégâts sur cette carte', bw.bestDmg, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
         ${highlightCard('Meilleur score sur cette carte', bw.bestScore, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
+        ${highlightCard('Meilleure précision sur cette carte', bw.bestAcc, e => Math.round(e.val*100)+'%', 'var(--gold)')}
         ${highlightCard('Partie la plus difficile ici', bw.worst, e => e.val.toLocaleString('fr-FR')+' pts', 'var(--loss)')}
       </div>
     </div>`;
@@ -368,6 +369,7 @@ export function renderGameAnalytics(games, uid) {
         ${highlightCard('Meilleur ratio K/D', bw.bestKD, e => e.kd.toFixed(2), 'var(--gold)')}
         ${highlightCard('Plus gros dégâts', bw.bestDmg, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
         ${highlightCard('Meilleur score', bw.bestScore, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
+        ${highlightCard('Meilleure précision', bw.bestAcc, e => Math.round(e.val*100)+'%', 'var(--gold)')}
         ${highlightCard('Partie la plus difficile', bw.worst, e => e.val.toLocaleString('fr-FR')+' pts', 'var(--loss)')}
       </div>
     </div>

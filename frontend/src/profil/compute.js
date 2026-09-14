@@ -202,7 +202,7 @@ export function computeStreaks(games, uid) {
 
 // Retrouve les meilleures/pires parties d'un joueur (meilleur K/D, plus gros dégâts, meilleur/pire score).
 export function bestWorstGames(games, uid) {
-  let bestKD = null, bestDmg = null, bestScore = null, worst = null;
+  let bestKD = null, bestDmg = null, bestScore = null, bestAcc = null, worst = null;
   games.forEach(g => {
     const p = findPlayerInGame(g, uid);
     if (!p) return;
@@ -210,9 +210,15 @@ export function bestWorstGames(games, uid) {
     if (!bestKD || kd > bestKD.kd) bestKD = { game:g, player:p, kd };
     if (!bestDmg || (p.data.inflictedDamage||0) > bestDmg.val) bestDmg = { game:g, player:p, val: p.data.inflictedDamage||0 };
     if (!bestScore || (p.data.score||0) > bestScore.val) bestScore = { game:g, player:p, val: p.data.score||0 };
+    // != null (pas juste falsy) : une partie sans précision exploitable (import list-only,
+    // voir CLAUDE.md) ne doit jamais l'emporter avec une "précision de 0%" par défaut — elle
+    // est simplement exclue du calcul, comme pour hasDamage/hasPlaytime ailleurs.
+    if (p.data.firedAccuracy != null && (!bestAcc || p.data.firedAccuracy > bestAcc.val)) {
+      bestAcc = { game:g, player:p, val: p.data.firedAccuracy };
+    }
     if (!worst || (p.data.score||0) < worst.val) worst = { game:g, player:p, val: p.data.score||0 };
   });
-  return { bestKD, bestDmg, bestScore, worst };
+  return { bestKD, bestDmg, bestScore, bestAcc, worst };
 }
 
 // Duo (synergie avec les coéquipiers) & Némésis (adversaires contre qui tu gagnes le moins) —
