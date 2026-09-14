@@ -11,6 +11,7 @@ import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } fro
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
 import { renderImportTokenPanel } from './import-token.js';
+import { renderGroupPanel, renderSelectionBar } from './game-groups.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -33,6 +34,8 @@ export function showApp() {
   updateRangeInfo();
   renderSummary();
   renderList();
+  renderGroupPanel();
+  renderSelectionBar();
   renderProfil();
   state.activeGameId = null;
   document.getElementById('detail').innerHTML =
@@ -52,6 +55,7 @@ function applyRolePermissions() {
   const isReadonly = user && user.role === 'readonly';
   const isAdmin = user && user.role === 'admin';
   document.getElementById('addMoreBtn').style.display = isReadonly ? 'none' : '';
+  document.getElementById('toggleSelectionModeBtn').style.display = isReadonly ? 'none' : '';
   document.getElementById('resetBtn').style.display = isAdmin ? '' : 'none';
   document.getElementById('comptesTabBtn').style.display = isAdmin ? '' : 'none';
 }
@@ -112,6 +116,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   }
   state.gamesById = {}; state.players = {}; state.playerStatsSnapshots = {};
   state.customTeams = {}; state.playerLinks = {}; state.playerNames = {};
+  state.matchGroups = {}; state.selectionMode = false; state.selectedGameIds = new Set();
   state.currentUid = null; state.activeGameId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
   state.dateRangeStart = null; state.dateRangeEnd = null; state.selectedSeasonId = null;
   state.excludedMaps = new Set();

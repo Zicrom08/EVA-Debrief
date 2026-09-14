@@ -4,6 +4,7 @@
 //   gamesById              { gameId -> partie brute (telle que renvoyée par l'API EVA) }
 //   playerStatsSnapshots   { userId -> [capture de profil, ...] triées par date }
 //   customTeams            { teamId -> { id, name, members: [userId, ...] } }
+//   matchGroups            { groupId -> { id, name, gameIds: [...], createdAt } } — groupes de parties (training/scrim) privés au compte connecté, voir game-groups.js
 //   playerLinks            { aliasUserId -> primaryUserId }  — fusion de comptes joueurs (voir player-links.js)
 //   playerNames             { userId canonique -> nom personnalisé }  — renommage manuel (voir player-names.js)
 //   players                { userId -> { niceNames, games } }  — reconstruit par rebuildPlayerIndex()
@@ -32,6 +33,9 @@ export const state = {
   excludedModes: new Set(),   // identifiants de mode à exclure (ex: modes PvE qui réutilisent un nom de carte PvP)
   knownModes: new Set(),      // modes déjà vus au moins une fois (pour n'appliquer le défaut auto-exclusion qu'une fois)
   customTeams: {},            // teamId -> { id, name, members:[uid,...] } — équipes créées manuellement par l'utilisateur
+  matchGroups: {},            // groupId -> { id, name, gameIds:[...], createdAt } — groupes de parties (training/scrim) privés au compte connecté, voir game-groups.js
+  selectionMode: false,       // mode "sélection de parties" actif dans Historique (case à cocher par ligne, voir historique.js/game-groups.js)
+  selectedGameIds: new Set(), // ids cochés pendant le mode sélection — état UI éphémère, jamais persisté
   teamAId: null,              // équipe sélectionnée dans l'onglet Équipes (vue principale / comparaison)
   teamBId: null,              // deuxième équipe pour la comparaison (optionnelle)
   profileCompareUid: null,    // joueur choisi pour la comparaison dans l'onglet Profil (optionnel)

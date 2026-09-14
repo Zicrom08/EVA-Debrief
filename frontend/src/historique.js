@@ -7,6 +7,20 @@ import { computeLpHistory, gamesForLpScope } from './rank.js';
 import { apiSend, loadFromServer } from './api.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
+import { renderGroupPanel, renderSelectionBar } from './game-groups.js';
+
+// Réagit aux changements de sélection déclenchés depuis game-groups.js (création/annulation
+// de sélection, "Modifier la sélection" d'un groupe existant) — voir la note dans
+// game-groups.js sur pourquoi ce fichier ne peut pas être importé par lui en retour.
+document.addEventListener('gamegroups:refresh', () => renderList());
+
+document.getElementById('toggleSelectionModeBtn').addEventListener('click', () => {
+  state.selectionMode = !state.selectionMode;
+  state.selectedGameIds = new Set();
+  renderList();
+  renderGroupPanel();
+  renderSelectionBar();
+});
 
 // ================= HISTORIQUE (list + detail) =================
 export function renderList(){
@@ -47,6 +61,7 @@ export function renderList(){
     row.className = 'game-row' + (g.id === state.activeGameId ? ' active' : '');
     row.innerHTML = `
       <div class="top-line">
+        ${state.selectionMode ? `<input type="checkbox" class="game-select-cb" ${state.selectedGameIds.has(String(g.id)) ? 'checked' : ''}>` : ''}
         <span class="map-name">${(g.map && g.map.name) || '?'}</span>
         <span class="outcome-tag ${outcome==='Victory'?'win':outcome==='Defeat'?'loss':'na'}">
           ${outcome==='Victory'?'Victoire':outcome==='Defeat'?'Défaite':'—'}
@@ -66,7 +81,15 @@ export function renderList(){
         ${lpEntry ? `<span class="lp-delta ${lpEntry.delta>=0?'lp-gain':'lp-loss'}" title="Variation de LP sur cette partie">${fmtDelta(lpEntry.delta, 0)} LP</span>` : ''}
       </div>` : ''}
     `;
-    row.addEventListener('click', ()=>{
+    row.addEventListener('click', (e) => {
+      if (state.selectionMode) {
+        const cb = row.querySelector('.game-select-cb');
+        if (e.target !== cb) cb.checked = !cb.checked;
+        const id = String(g.id);
+        if (cb.checked) state.selectedGameIds.add(id); else state.selectedGameIds.delete(id);
+        renderSelectionBar();
+        return;
+      }
       state.activeGameId = g.id;
       renderList();
       renderDetail(g);

@@ -72,6 +72,11 @@
 <div id="viewHistorique" class="view">
   <div class="layout">
     <div class="sidebar">
+      <div id="matchGroupPanel"></div>
+      <div class="selection-toolbar">
+        <button class="btn small" id="toggleSelectionModeBtn">☑ Sélectionner des parties</button>
+        <div id="selectionBar" style="display:none;"></div>
+      </div>
       <div class="filters">
         <select id="mapFilter"><option value="">Toutes les cartes</option></select>
         <select id="outcomeFilter">
@@ -148,6 +153,13 @@
   </div>
 
   <div class="import-token-panel" id="importTokenPanel"></div>
+</div>
+
+<div id="groupRecapModal" class="modal-overlay" style="display:none;">
+  <div class="modal-box">
+    <button class="modal-close" id="closeGroupRecapBtn">✕</button>
+    <div id="groupRecapContent"></div>
+  </div>
 </div>
 
 <script type="module" src="/src/main.js"></script>

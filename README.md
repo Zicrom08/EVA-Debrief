@@ -38,7 +38,12 @@ vue détail par match : bandeau de score, blocs d'équipe colorés, tableau
 K/D/A/Score/Dégâts/Précision/K-D/KDA/**Rating** (indice façon HLTV, voir
 [Rang compétitif](#fonctionnalités) ci-dessous) avec la meilleure valeur de
 chaque équipe mise en évidence — **chaque colonne est triable** en cliquant
-son en-tête (inversion du sens au deuxième clic).
+son en-tête (inversion du sens au deuxième clic). Chaque compte peut aussi
+**grouper plusieurs parties** (training, scrim) en catégories personnelles —
+via un mode sélection à cases à cocher — pour en voir les stats cumulées
+(V/D, winrate, K/D, dégâts, score) dans une fenêtre récap dédiée. Ces
+groupes sont **strictement privés au compte qui les a créés** : même un
+admin ne voit ni ne gère les groupes des autres comptes.
 
 **Suivi de performance** — agrégats par séance de jeu ou par mois (parties, V/D,
 winrate, K/D, dégâts et score moyens), avec 4 graphiques d'évolution
@@ -248,6 +253,7 @@ eva-debrief/
 │   │   ├── format.js, api.js, api-base.js, ui-prefs.js, game-filters.js, rank.js
 │   │   ├── seasons.js                 # Détection des saisons, résolution seasonId, normalisation des captures de profil
 │   │   ├── historique.js, tendances.js, comparatif.js, equipes.js, comptes.js
+│   │   ├── game-groups.js             # Groupes de parties privés par compte (training/scrim), voir Historique
 │   │   ├── player-links.js, player-names.js, team-detect.js
 │   │   ├── backups.js, settings.js    # Enveloppes API pour les panneaux admin de l'onglet Comptes
 │   │   ├── profil/                    # compute.js, charts.js, analytics-view.js, season.js, index.js
@@ -512,10 +518,18 @@ passe), chacun avec un rôle :
   et gestion des comptes (onglet "Comptes", visible seulement pour ce rôle).
 - **contributor** — peut consulter et importer des données (y compris via un
   jeton d'import personnel pour le [pont automatique](#collecteur-de-données)
-  du collecteur), mais ne peut ni créer/modifier/supprimer une équipe, ni
-  réinitialiser la base, ni gérer les comptes.
+  du collecteur) et créer ses propres groupes de parties dans Historique, mais
+  ne peut ni créer/modifier/supprimer une équipe, ni réinitialiser la base, ni
+  gérer les comptes.
 - **readonly** (lecture seule) — consultation uniquement : import, équipes,
-  reset et gestion des comptes sont tous bloqués.
+  groupes de parties, reset et gestion des comptes sont tous bloqués.
+
+Les **groupes de parties** (training/scrim, voir [Fonctionnalités](#fonctionnalités))
+sont un cas à part dans ce modèle de rôles : ils ne sont pas seulement
+réservés à un rôle, ils sont **strictement privés au compte qui les a créés**
+— même un `admin` n'a aucun accès aux groupes des autres comptes (voir
+`getGroupsForUser`/`updateGroup`/`deleteGroup` dans `backend/db.js`, qui
+vérifient le propriétaire indépendamment de tout rôle).
 
 Ces restrictions sont appliquées côté serveur (pas seulement masquées dans
 l'interface) — voir `requireImportAccess`/`requireAdmin` dans
@@ -859,7 +873,7 @@ Même avec des comptes créés, garde en tête que :
 | POST    | `/api/login`      | non | `{ username, password }` → crée une session (cookie) |
 | POST    | `/api/logout`     | non | Termine la session en cours |
 | GET     | `/api/me`         | oui | `{ id, username, email, role }` du compte connecté |
-| GET     | `/api/state`      | oui | Renvoie tout : parties, profils, équipes |
+| GET     | `/api/state`      | oui | Renvoie tout : parties, profils, équipes, et les groupes de parties du compte connecté uniquement |
 | GET     | `/api/health`     | oui | Statut + compteurs |
 | POST    | `/api/import`     | admin/contributor | Importe un JSON (mêmes formats que l'ancien import du navigateur) — accepte aussi une authentification par `X-Import-Token` (voir plus bas) à la place d'une session |
 | GET     | `/api/export`     | oui | Export brut complet (sauvegarde) |
@@ -868,6 +882,10 @@ Même avec des comptes créés, garde en tête que :
 | POST    | `/api/teams`      | admin | Crée une équipe `{ name, members: [userId,...] }` |
 | PUT     | `/api/teams/:id`  | admin | Modifie une équipe |
 | DELETE  | `/api/teams/:id`  | admin | Supprime une équipe |
+| GET     | `/api/game-groups` | admin/contributor | Groupes de parties **du compte connecté uniquement** (training/scrim) |
+| POST    | `/api/game-groups` | admin/contributor | Crée un groupe `{ name, gameIds: [...] }` |
+| PUT     | `/api/game-groups/:id` | admin/contributor | Modifie un groupe (nom et/ou liste de parties) — 404 si le groupe n'appartient pas au compte connecté |
+| DELETE  | `/api/game-groups/:id` | admin/contributor | Supprime un groupe (du compte connecté uniquement) |
 | DELETE  | `/api/reset`      | admin | Vide games/snapshots/teams (irréversible ; les comptes survivent) |
 | GET     | `/api/users`      | admin | Liste des comptes |
 | POST    | `/api/users`      | admin | Crée un compte `{ username, email?, password, role }` |

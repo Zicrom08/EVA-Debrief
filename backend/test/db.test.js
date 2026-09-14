@@ -99,6 +99,66 @@ test('createTeam / updateTeam / deleteTeam', () => {
   assert.equal(db.getAllTeams().find(t => t.id === team.id), undefined);
 });
 
+test('createGroup / updateGroup / deleteGroup', () => {
+  const group = db.createGroup('u1', 'Training lundi', ['g1', 'g2']);
+  assert.equal(group.name, 'Training lundi');
+  assert.deepEqual(group.gameIds, ['g1', 'g2']);
+  const updated = db.updateGroup('u1', group.id, { name: 'Training mardi', gameIds: ['g3'] });
+  assert.equal(updated.name, 'Training mardi');
+  assert.deepEqual(updated.gameIds, ['g3']);
+  db.deleteGroup('u1', group.id);
+  assert.equal(db.getGroupsForUser('u1').find(g => g.id === group.id), undefined);
+});
+
+test('getGroupsForUser only returns groups owned by that exact user, never all groups', () => {
+  db.createGroup('ua', 'Groupe A', []);
+  db.createGroup('ub', 'Groupe B', []);
+  const forA = db.getGroupsForUser('ua');
+  assert.ok(forA.every(g => g.ownerId === 'ua'));
+  assert.ok(forA.some(g => g.name === 'Groupe A'));
+  assert.ok(!forA.some(g => g.name === 'Groupe B'));
+});
+
+// Le test le plus important de ce fichier pour cette fonctionnalité : l'exigence explicite
+// de l'utilisateur est qu'un groupe reste invisible et intouchable par n'importe quel autre
+// compte, sans aucune exception (pas même un admin — cette politique se décide au niveau du
+// rôle côté route, mais ICI on vérifie que la fonction db elle-même ne fait AUCUNE différence
+// de rôle : le seul critère est ownerId === le compte qui appelle).
+test('a group is completely invisible and untouchable by any account other than its creator', () => {
+  const group = db.createGroup('owner1', 'Scrim privé', ['g1']);
+
+  // Un autre compte ne peut ni le modifier...
+  assert.equal(db.updateGroup('owner2', group.id, { name: 'pwned' }), null);
+  // ...ni le supprimer...
+  db.deleteGroup('owner2', group.id);
+  // ...et ne le voit jamais dans sa propre liste.
+  assert.ok(!db.getGroupsForUser('owner2').some(g => g.id === group.id));
+
+  // Le groupe original doit être resté totalement intact après ces tentatives.
+  const stillThere = db.getGroupsForUser('owner1').find(g => g.id === group.id);
+  assert.ok(stillThere);
+  assert.equal(stillThere.name, 'Scrim privé');
+  assert.deepEqual(stillThere.gameIds, ['g1']);
+});
+
+test('updateGroup("__proto__", ...) / deleteGroup(owner, "__proto__") do not pollute Object.prototype', () => {
+  assert.equal(db.updateGroup('owner1', '__proto__', { name: 'pwned' }), null);
+  assert.equal(({}).name, undefined);
+  db.deleteGroup('owner1', '__proto__');
+  assert.equal(({}).ownerId, undefined);
+});
+
+test('deleteGroupsForUser removes only that owner\'s groups, leaving other accounts\' groups untouched', () => {
+  const g1 = db.createGroup('bulk-a', 'A1', []);
+  const g2 = db.createGroup('bulk-a', 'A2', []);
+  const g3 = db.createGroup('bulk-b', 'B1', []);
+  db.deleteGroupsForUser('bulk-a');
+  assert.equal(db.getGroupsForUser('bulk-a').length, 0);
+  const forB = db.getGroupsForUser('bulk-b');
+  assert.ok(forB.some(g => g.id === g3.id));
+  assert.equal(db.getGroupsForUser('bulk-a').find(g => g.id === g1.id || g.id === g2.id), undefined);
+});
+
 test('createUser / countAdmins / deleteUser', () => {
   const admin = db.createUser({ username: 'admin1', role: 'admin', passwordSalt: 's', passwordHash: 'h' });
   assert.equal(db.countAdmins(), 1);

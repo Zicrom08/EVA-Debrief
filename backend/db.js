@@ -53,6 +53,7 @@ function emptyGameState() {
     teams: {},                // teamId -> { id, name, members: [userId,...] }
     playerLinks: {},          // aliasUserId (string) -> primaryUserId (string) — fusion de comptes joueurs (smurfs), voir linkPlayer()
     playerNames: {},          // userId canonique (string) -> nom personnalisé — renommage manuel, voir setPlayerName()
+    matchGroups: {},          // groupId -> { id, ownerId, name, gameIds:[...], createdAt } — groupes de parties (training/scrim) STRICTEMENT privés au compte créateur, voir getGroupsForUser()
   };
 }
 function emptyUsersState() {
@@ -105,6 +106,7 @@ let state = {
   teams: (legacyDataFile && legacyDataFile.teams) || {},
   playerLinks: (legacyDataFile && legacyDataFile.playerLinks) || {},
   playerNames: (legacyDataFile && legacyDataFile.playerNames) || {},
+  matchGroups: (legacyDataFile && legacyDataFile.matchGroups) || {},
 };
 const gamePersister = makePersister(DATA_FILE, () => state);
 
@@ -434,6 +436,52 @@ module.exports = {
     gamePersister.saveNow();
   },
 
+  // ---------------- Groupes de parties (training/scrim) ----------------
+  // STRICTEMENT privés par compte : contrairement aux équipes (partagées globalement), un
+  // groupe n'est jamais visible ni modifiable par quelqu'un d'autre que son créateur, MÊME
+  // UN ADMIN (voir README, Comptes et rôles). Double garde sur update/delete : hasOwnProperty
+  // (même raison que updateTeam ci-dessus — pollution de prototype CodeQL) ET
+  // group.ownerId === ownerId (isolation stricte) — les deux renvoient null en cas d'échec,
+  // pour ne jamais laisser un attaquant distinguer "id inexistant" de "id appartenant à un
+  // autre compte" (la route renvoie 404 dans les deux cas, voir server.js).
+  getGroupsForUser(ownerId) {
+    const owner = String(ownerId);
+    return Object.values(state.matchGroups).filter(gr => gr.ownerId === owner);
+  },
+  createGroup(ownerId, name, gameIds) {
+    const id = genId('mg');
+    const group = { id, ownerId: String(ownerId), name, gameIds: (gameIds || []).map(String), createdAt: new Date().toISOString() };
+    state.matchGroups[id] = group;
+    gamePersister.saveNow();
+    return group;
+  },
+  updateGroup(ownerId, id, patch) {
+    const key = String(id);
+    if (!Object.prototype.hasOwnProperty.call(state.matchGroups, key)) return null;
+    const group = state.matchGroups[key];
+    if (group.ownerId !== String(ownerId)) return null;
+    if (patch.name != null) group.name = patch.name;
+    if (Array.isArray(patch.gameIds)) group.gameIds = patch.gameIds.map(String);
+    gamePersister.saveNow();
+    return group;
+  },
+  deleteGroup(ownerId, id) {
+    const key = String(id);
+    if (!Object.prototype.hasOwnProperty.call(state.matchGroups, key)) return;
+    if (state.matchGroups[key].ownerId !== String(ownerId)) return;
+    delete state.matchGroups[key];
+    gamePersister.saveNow();
+  },
+  // Nettoyage à la suppression d'un compte (voir DELETE /api/users/:id dans server.js) — sans
+  // ça, les groupes d'un compte supprimé restent orphelins dans data.json indéfiniment.
+  deleteGroupsForUser(ownerId) {
+    const owner = String(ownerId);
+    Object.keys(state.matchGroups).forEach(id => {
+      if (state.matchGroups[id].ownerId === owner) delete state.matchGroups[id];
+    });
+    gamePersister.saveNow();
+  },
+
   // ---------------- Users (comptes + rôles) — fichier séparé, voir users.json ----------------
   // Volontairement pas dans resetAll() : le reset ne touche jamais aux comptes, seulement
   // aux données de jeu (games/snapshots/teams) — sinon un reset déconnecterait/supprimerait
@@ -576,6 +624,7 @@ module.exports = {
       games: Object.keys(state.games).length,
       snapshots: Object.values(state.playerStatsSnapshots).reduce((s, l) => s + l.length, 0),
       teams: Object.keys(state.teams).length,
+      matchGroups: Object.keys(state.matchGroups).length,
       users: Object.keys(usersState.users).length,
       dataFile: DATA_FILE,
       usersFile: USERS_DATA_FILE,

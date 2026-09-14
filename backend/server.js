@@ -456,6 +456,7 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Impossible de supprimer le dernier compte administrateur.' });
   }
   db.deleteUser(user.id);
+  db.deleteGroupsForUser(user.id); // sans ça, ses groupes de parties resteraient orphelins dans data.json indéfiniment
   auth.destroySessionsForUser(user.id);
   res.json({ ok: true });
 });
@@ -576,6 +577,10 @@ app.get('/api/state', (req, res) => {
     teams: db.getAllTeams(),
     playerLinks: db.getAllPlayerLinks(),
     playerNames: db.getAllPlayerNames(),
+    // Scopé par utilisateur, contrairement à tout le reste de cette réponse (qui est
+    // global) — voir db.js::getGroupsForUser(), les groupes de parties sont strictement
+    // privés au compte connecté.
+    matchGroups: req.user ? db.getGroupsForUser(req.user.userId) : [],
   });
 });
 
@@ -650,6 +655,51 @@ app.put('/api/teams/:id', requireAdmin, (req, res) => {
 // Suppression idempotente (pas d'erreur si l'équipe n'existe déjà plus).
 app.delete('/api/teams/:id', requireAdmin, (req, res) => {
   db.deleteTeam(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------------------------------------------------------------------------
+// Groupes de parties (training/scrim) — STRICTEMENT privés au compte connecté, voir
+// db.js::getGroupsForUser(). Contrairement aux équipes ci-dessus (partagées, réservées à
+// requireAdmin), ces routes n'ont pas de notion globale : gardées par requireImportAccess
+// (readonly exclu, même politique que l'import — créer un groupe est une action d'écriture),
+// jamais requireAdmin — chaque compte ne gère que les siens, un admin n'a ici aucun
+// privilège supplémentaire sur les groupes des autres comptes.
+// ---------------------------------------------------------------------------
+app.get('/api/game-groups', requireImportAccess, (req, res) => {
+  if (!req.user) return res.json([]); // pas de compte protégé (voir isProtected()) -> pas de req.user -> aucun groupe
+  res.json(db.getGroupsForUser(req.user.userId));
+});
+app.post('/api/game-groups', requireImportAccess, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  const { name, gameIds } = req.body || {};
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Champ requis : name (texte non vide).' });
+  }
+  if (!Array.isArray(gameIds) || !gameIds.every(id => typeof id === 'string' || typeof id === 'number')) {
+    return res.status(400).json({ error: 'Champ requis : gameIds (liste d\'identifiants).' });
+  }
+  res.json(db.createGroup(req.user.userId, name.trim(), gameIds));
+});
+// name et/ou gameIds remplacés en bloc (pas de add/remove dédiés) — le client recalcule la
+// liste complète avant d'appeler cette route, même principe que PUT /api/teams/:id.
+app.put('/api/game-groups/:id', requireImportAccess, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  const { name, gameIds } = req.body || {};
+  if (name != null && (typeof name !== 'string' || !name.trim())) {
+    return res.status(400).json({ error: 'name doit être un texte non vide.' });
+  }
+  if (gameIds != null && (!Array.isArray(gameIds) || !gameIds.every(id => typeof id === 'string' || typeof id === 'number'))) {
+    return res.status(400).json({ error: 'gameIds doit être une liste d\'identifiants.' });
+  }
+  const group = db.updateGroup(req.user.userId, req.params.id, { name: name != null ? name.trim() : undefined, gameIds });
+  // 404 générique (jamais 403) : ne révèle jamais si cet id existe mais appartient à un autre compte.
+  if (!group) return res.status(404).json({ error: 'Groupe introuvable.' });
+  res.json(group);
+});
+app.delete('/api/game-groups/:id', requireImportAccess, (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  db.deleteGroup(req.user.userId, req.params.id); // idempotent, même politique que deleteTeam
   res.json({ ok: true });
 });
 
