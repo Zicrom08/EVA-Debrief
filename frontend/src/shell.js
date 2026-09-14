@@ -4,6 +4,7 @@ import { apiSend } from './api.js';
 import { clearUiPrefs } from './ui-prefs.js';
 import { filteredGamesArray } from './game-filters.js';
 import { renderList } from './historique.js';
+import { renderProfil } from './profil/index.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
@@ -32,6 +33,7 @@ export function showApp() {
   updateRangeInfo();
   renderSummary();
   renderList();
+  renderProfil();
   state.activeGameId = null;
   document.getElementById('detail').innerHTML =
     '<div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>';
@@ -128,7 +130,9 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   document.getElementById('rangeTo').value = '';
   document.getElementById('seasonFilter').innerHTML = '<option value="">Toutes les saisons</option>';
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('viewHistorique').classList.add('active');
+  document.getElementById('viewProfil').classList.add('active');
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.tab-btn[data-tab="profil"]').classList.add('active');
   document.getElementById('brandSub').textContent = 'Aucune donnée importée';
   document.getElementById('importScreen').style.display = 'block';
 });
