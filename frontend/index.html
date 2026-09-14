@@ -20,7 +20,10 @@
   <div class="header-actions" id="headerActions" style="display:none;">
     <div class="player-select">
       <label for="playerPicker">Joueur</label>
-      <select id="playerPicker"></select>
+      <div class="combobox-wrap">
+        <input type="text" id="playerPicker" autocomplete="off" placeholder="Rechercher un joueur…">
+        <div id="playerPickerList" class="combobox-list" role="listbox" style="display:none;"></div>
+      </div>
     </div>
     <button class="btn" id="addMoreBtn">+ Importer</button>
     <button class="btn danger" id="resetBtn">Réinitialiser</button>

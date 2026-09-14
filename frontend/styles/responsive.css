@@ -16,6 +16,8 @@
   .header-actions{width:100%;}
   .player-select{width:100%;justify-content:space-between;}
   .player-select select{flex:1;min-width:0;}
+  .combobox-wrap{flex:1;min-width:0;}
+  #playerPicker{width:100%;}
 
   .tabbar{
     padding:10px 12px;gap:2px;overflow-x:auto;-webkit-overflow-scrolling:touch;

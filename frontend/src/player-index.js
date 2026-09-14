@@ -70,21 +70,74 @@ export function rebuildPlayerIndex() {
   }
 }
 
-// Construit le sélecteur "Joueur" du header, trié par nombre de parties jouées.
+// Construit le sélecteur "Joueur" du header : un champ texte filtrable (combobox maison,
+// pas de <select> brut) plutôt qu'une liste déroulante native, pour pouvoir retrouver un
+// joueur en tapant son pseudo quand il y en a trop pour les parcourir un par un — pensé pour
+// un serveur avec beaucoup de comptes suivis. `state.currentUid` reste la seule source de
+// vérité (comme avant) ; taper du texte ne fait que FILTRER la liste, il faut cliquer un
+// résultat (ou valider avec Entrée) pour changer réellement la sélection.
+function playerLabel(uid) {
+  const rec = state.players[uid];
+  if (!rec) return '';
+  return latestNiceName(rec);
+}
+
+let pickerHighlightIndex = -1;
+
 export function renderPlayerPicker() {
-  const picker = document.getElementById('playerPicker');
-  picker.innerHTML = '';
-  const sorted = Object.entries(state.players).sort((a,b)=>b[1].games-a[1].games);
-  sorted.forEach(([uid, rec])=>{
-    const opt = document.createElement('option');
-    opt.value = uid;
-    const label = rec.games > 0 ? `${latestNiceName(rec)} (${rec.games} parties)` : `${latestNiceName(rec)} (profil seul)`;
-    opt.textContent = label;
-    picker.appendChild(opt);
-  });
-  picker.value = state.currentUid;
-  picker.onchange = () => {
-    state.currentUid = picker.value;
+  const input = document.getElementById('playerPicker');
+  input.value = playerLabel(state.currentUid);
+  wirePlayerPickerEvents();
+}
+
+// Câblé une seule fois (comme les autres boutons statiques de l'app) plutôt qu'à chaque
+// rendu — sinon les listeners s'empileraient à chaque appel de renderPlayerPicker().
+let pickerWired = false;
+function wirePlayerPickerEvents() {
+  if (pickerWired) return;
+  pickerWired = true;
+  const input = document.getElementById('playerPicker');
+  const list = document.getElementById('playerPickerList');
+
+  function sortedPlayers() {
+    return Object.entries(state.players).sort((a, b) => b[1].games - a[1].games);
+  }
+
+  function showList(filterText) {
+    const needle = (filterText || '').trim().toLowerCase();
+    const matches = sortedPlayers().filter(([, rec]) => latestNiceName(rec).toLowerCase().includes(needle));
+    pickerHighlightIndex = -1;
+    if (!matches.length) {
+      list.innerHTML = '<div class="combobox-empty">Aucun joueur ne correspond.</div>';
+    } else {
+      list.innerHTML = matches.map(([uid, rec]) => {
+        const label = latestNiceName(rec);
+        const count = rec.games > 0 ? `${rec.games} parties` : 'profil seul';
+        return `<div class="combobox-item${uid === state.currentUid ? ' selected' : ''}" data-uid="${uid}" role="option">
+          <span class="name">${label}</span><span class="count">${count}</span>
+        </div>`;
+      }).join('');
+      list.querySelectorAll('.combobox-item[data-uid]').forEach(item => {
+        // mousedown (pas click) : se déclenche AVANT le blur de l'input, sinon le blur
+        // fermerait la liste en premier et le clic tomberait dans le vide.
+        item.addEventListener('mousedown', (e) => {
+          e.preventDefault();
+          selectPlayer(item.dataset.uid);
+        });
+      });
+    }
+    list.style.display = 'block';
+  }
+
+  function hideList() {
+    list.style.display = 'none';
+    pickerHighlightIndex = -1;
+  }
+
+  function selectPlayer(uid) {
+    state.currentUid = uid;
+    input.value = playerLabel(uid);
+    hideList();
     if (state.profileCompareUid === state.currentUid) state.profileCompareUid = null;
     state.mapDeepDiveSelection = null;
     persistUiPrefs();
@@ -96,7 +149,51 @@ export function renderPlayerPicker() {
     if (document.getElementById('viewTendances').classList.contains('active')) renderTrends();
     if (document.getElementById('viewProfil').classList.contains('active')) renderProfil();
     if (document.getElementById('viewComparatif').classList.contains('active')) renderComparatif();
-  };
+  }
+
+  function applyHighlight() {
+    const items = list.querySelectorAll('.combobox-item[data-uid]');
+    items.forEach((el, i) => el.classList.toggle('highlighted', i === pickerHighlightIndex));
+    if (pickerHighlightIndex >= 0 && items[pickerHighlightIndex]) {
+      items[pickerHighlightIndex].scrollIntoView({ block: 'nearest' });
+    }
+  }
+
+  input.addEventListener('focus', () => showList(input.value === playerLabel(state.currentUid) ? '' : input.value));
+  input.addEventListener('input', () => showList(input.value));
+  input.addEventListener('blur', () => {
+    // Délai court : laisse le mousedown d'un item s'exécuter avant que le blur ne referme
+    // la liste (voir le commentaire sur .combobox-item ci-dessus).
+    setTimeout(() => {
+      hideList();
+      input.value = playerLabel(state.currentUid); // annule tout texte tapé non confirmé
+    }, 150);
+  });
+  input.addEventListener('keydown', (e) => {
+    const items = list.querySelectorAll('.combobox-item[data-uid]');
+    if (e.key === 'Escape') {
+      input.blur();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (list.style.display === 'none') { showList(input.value); return; }
+      pickerHighlightIndex = Math.min(pickerHighlightIndex + 1, items.length - 1);
+      applyHighlight();
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      pickerHighlightIndex = Math.max(pickerHighlightIndex - 1, 0);
+      applyHighlight();
+      return;
+    }
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const target = pickerHighlightIndex >= 0 ? items[pickerHighlightIndex] : items[0];
+      if (target) selectPlayer(target.dataset.uid);
+    }
+  });
 }
 
 // Construit le menu déroulant de filtrage par carte de l'onglet Historique.
