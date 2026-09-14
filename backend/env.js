@@ -1,7 +1,7 @@
 // ============================================================================
 // Charge un fichier .env optionnel à la racine du repo, pour éviter de devoir
-// répéter des variables (mot de passe admin, clés Turnstile...) à chaque
-// lancement en ligne de commande. Volontairement fait main plutôt que
+// répéter des variables (mot de passe admin...) à chaque lancement en ligne
+// de commande. Volontairement fait main plutôt que
 // d'ajouter la dépendance `dotenv` — même esprit que parseCookies() dans
 // auth.js : un mini-parseur suffit, pas besoin d'une dépendance de plus pour
 // quelques lignes KEY=VALUE.

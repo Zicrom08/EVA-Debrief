@@ -15,7 +15,7 @@ import { showApp } from './shell.js';
 
 let users = [];
 let backupsData = { intervalHours: 0, retention: 0, sets: [] };
-let settingsData = { registrationEnabled: true, turnstileConfigured: false };
+let settingsData = { registrationEnabled: true };
 
 const ROLES = ['admin', 'contributor', 'readonly'];
 function roleOptionsHtml(selectedRole) {
@@ -502,17 +502,14 @@ function wireBackupsManager() {
 }
 
 // ================= INSCRIPTION PUBLIQUE (admin) =================
-// Bascule côté serveur (voir settings.js + /api/settings dans backend/server.js), séparée
-// des variables d'environnement TURNSTILE_SITE_KEY/SECRET_KEY : celles-ci restent le
-// prérequis technique (widget anti-bot configuré ou non), ce réglage ne fait que
-// fermer/rouvrir temporairement le lien d'inscription PAR-DESSUS ce prérequis, sans
-// redémarrer le serveur. Les deux doivent être vrais pour que /login.html propose le lien.
+// Bascule côté serveur (voir settings.js + /api/settings dans backend/server.js) : ferme/
+// rouvre le lien d'inscription sur /login.html sans redémarrer le serveur.
 async function refreshSettingsFromServer() {
   settingsData = await fetchSettings();
 }
 
 function renderRegistrationPanel() {
-  const { registrationEnabled, turnstileConfigured, error } = settingsData;
+  const { registrationEnabled, error } = settingsData;
   if (error) {
     return `<div class="detail-empty">Impossible de charger ce réglage : ${error}</div>`;
   }
@@ -524,11 +521,7 @@ function renderRegistrationPanel() {
       <button class="btn small ${registrationEnabled ? 'danger' : 'primary'}" id="toggleRegistrationBtn">
         ${registrationEnabled ? 'Fermer les inscriptions' : 'Ouvrir les inscriptions'}
       </button>
-    </div>
-    ${!turnstileConfigured ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
-      ⚠️ TURNSTILE_SITE_KEY/TURNSTILE_SECRET_KEY ne sont pas configurées sur le serveur — le
-      lien d'inscription reste absent de /login.html quel que soit ce réglage, voir le README.
-    </div>` : ''}`;
+    </div>`;
 }
 
 function wireRegistrationManager() {
@@ -627,7 +620,7 @@ export async function renderComptes() {
   try {
     await refreshSettingsFromServer();
   } catch (e) {
-    settingsData = { registrationEnabled: true, turnstileConfigured: false, error: e.message };
+    settingsData = { registrationEnabled: true, error: e.message };
   }
   container.innerHTML = `
     <div class="team-manager">

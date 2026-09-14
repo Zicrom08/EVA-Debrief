@@ -15,29 +15,10 @@ const usernameInput = document.getElementById('username');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const confirmInput = document.getElementById('passwordConfirm');
-const turnstileContainer = document.getElementById('turnstileContainer');
 const toggleLink = document.getElementById('toggleModeLink');
 
 let mode = 'login'; // 'login' | 'setup' | 'register'
 let registrationEnabled = false;
-let turnstileSiteKey = null;
-let turnstileWidgetId = null;
-let turnstileScriptLoading = null;
-
-// Charge le script Turnstile une seule fois, seulement quand on en a besoin
-// (mode inscription) — inutile de l'imposer aux visiteurs qui se connectent.
-function ensureTurnstileLoaded() {
-  if (window.turnstile) return Promise.resolve();
-  if (turnstileScriptLoading) return turnstileScriptLoading;
-  turnstileScriptLoading = new Promise((resolve) => {
-    const s = document.createElement('script');
-    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js';
-    s.async = true; s.defer = true;
-    s.onload = () => resolve();
-    document.head.appendChild(s);
-  });
-  return turnstileScriptLoading;
-}
 
 function idleButtonText() {
   if (mode === 'setup') return 'Créer le compte administrateur';
@@ -56,7 +37,6 @@ function updateFieldsForMode() {
       : 'Connecte-toi pour accéder au site';
   emailInput.style.display = isRegister ? 'block' : 'none';
   confirmInput.style.display = (isSetup || isRegister) ? 'block' : 'none';
-  turnstileContainer.style.display = isRegister ? 'flex' : 'none';
   passwordInput.setAttribute('autocomplete', (isSetup || isRegister) ? 'new-password' : 'current-password');
   btn.textContent = idleButtonText();
   if (!isSetup && registrationEnabled) {
@@ -64,13 +44,6 @@ function updateFieldsForMode() {
     toggleLink.textContent = isRegister ? 'Déjà un compte ? Se connecter' : 'Pas de compte ? Crée-en un';
   } else {
     toggleLink.style.display = 'none';
-  }
-  if (isRegister) {
-    ensureTurnstileLoaded().then(() => {
-      if (turnstileWidgetId == null) {
-        turnstileWidgetId = turnstile.render(turnstileContainer, { sitekey: turnstileSiteKey });
-      }
-    });
   }
 }
 
@@ -84,13 +57,12 @@ toggleLink.addEventListener('click', () => {
 
 // Détermine le mode initial : connexion classique, création du tout premier
 // compte (aucun utilisateur en base), ou si l'inscription publique est ouverte
-// (Turnstile configuré côté serveur — voir /api/auth-status).
+// (voir /api/auth-status).
 (async () => {
   try {
     const res = await fetch(apiUrl('/api/auth-status'), { credentials: 'include' });
     const status = await res.json();
     registrationEnabled = !!status.registrationEnabled;
-    turnstileSiteKey = status.turnstileSiteKey || null;
     mode = status.hasUsers ? 'login' : 'setup';
   } catch (e) { /* en cas d'échec, on part du principe qu'il faut se connecter */ }
   updateFieldsForMode();
@@ -110,11 +82,6 @@ form.addEventListener('submit', async (e) => {
   const body = { username, password };
   if (mode === 'register') {
     body.email = emailInput.value.trim();
-    body.turnstileToken = (window.turnstile && turnstileWidgetId != null) ? turnstile.getResponse(turnstileWidgetId) : '';
-    if (!body.turnstileToken) {
-      errEl.textContent = 'Complète la vérification anti-robot.';
-      return;
-    }
   }
   const endpoint = mode === 'setup' ? '/api/setup' : mode === 'register' ? '/api/register' : '/api/login';
   btn.disabled = true;
@@ -131,7 +98,6 @@ form.addEventListener('submit', async (e) => {
       errEl.textContent = j.error || 'Erreur.';
       btn.disabled = false;
       btn.textContent = idleButtonText();
-      if (mode === 'register' && window.turnstile && turnstileWidgetId != null) turnstile.reset(turnstileWidgetId);
       return;
     }
     // Stocke le jeton renvoyé par le serveur (voir backend/server.js) — no-op en

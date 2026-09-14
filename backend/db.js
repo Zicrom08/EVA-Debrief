@@ -59,7 +59,7 @@ function emptyGameState() {
 function emptyUsersState() {
   return {
     users: {},                // userId (interne, généré) -> { id, username, email, passwordSalt, passwordHash, role, createdAt }
-    registrationEnabled: true, // bascule admin (onglet Comptes) — voir isRegistrationEnabled() dans server.js, qui l'ET-combine avec la présence de TURNSTILE_SITE_KEY/SECRET_KEY (les deux doivent être vrais pour que /api/register accepte)
+    registrationEnabled: true, // bascule admin (onglet Comptes) — seul gate de /api/register, voir isRegistrationEnabled() dans server.js
   };
 }
 
@@ -121,8 +121,7 @@ const usersFileContent = readJsonFile(USERS_DATA_FILE);
 let usersState;
 if (usersFileContent) {
   // registrationEnabled absent d'un users.json antérieur à ce réglage -> true par défaut,
-  // pour préserver le comportement actuel (déjà entièrement gouverné par la présence de
-  // TURNSTILE_SITE_KEY/SECRET_KEY jusqu'ici) tant qu'un admin ne le ferme pas explicitement.
+  // tant qu'un admin ne le ferme pas explicitement.
   usersState = {
     users: usersFileContent.users || {},
     registrationEnabled: usersFileContent.registrationEnabled !== undefined ? usersFileContent.registrationEnabled : true,
@@ -540,10 +539,8 @@ module.exports = {
     return Object.values(usersState.users).filter(u => u.role === 'admin').length;
   },
 
-  // Bascule admin (onglet Comptes) pour fermer/rouvrir l'inscription publique sans toucher
-  // aux variables d'environnement ni redémarrer le serveur — voir isRegistrationEnabled()
-  // dans server.js, qui reste de toute façon fermée si TURNSTILE_SITE_KEY/SECRET_KEY ne
-  // sont pas définis, quelle que soit cette valeur.
+  // Bascule admin (onglet Comptes) pour fermer/rouvrir l'inscription publique sans
+  // redémarrer le serveur — voir isRegistrationEnabled() dans server.js.
   getRegistrationEnabled() {
     return usersState.registrationEnabled !== false; // true par défaut, y compris si absent
   },

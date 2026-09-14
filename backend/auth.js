@@ -145,9 +145,9 @@ function destroySessionsForUser(userId) {
 //
 // Une seule implémentation générique (`kind` = 'login' ou 'register', clé "kind:ip") réutilisée
 // pour les deux routes : /api/register n'avait, lui, AUCUNE limite de tentatives (repéré par
-// CodeQL, "Missing rate limiting") — seul Turnstile le protégeait, qui ne coûte rien à un bot
-// tant qu'il n'a pas résolu le captcha, alors que la validation qui le précède (email, unicité
-// du username) tourne déjà à chaque requête.
+// CodeQL, "Missing rate limiting") — à l'époque, seul le captcha Turnstile (depuis retiré) le
+// protégeait, alors que la validation qui le précède (email, unicité du username) tourne déjà
+// à chaque requête. Ce rate-limiting est désormais la SEULE protection anti-abus de la route.
 //
 // Seuils lus à CHAQUE appel plutôt que figés dans des constantes au chargement du module
 // (comme sessionCookieHeader() lit process.env.CORS_ORIGIN dynamiquement) : les tests peuvent

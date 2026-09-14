@@ -42,18 +42,14 @@ const app = express();
 //   risque bien moindre que l'exécution de script, seule à réellement
 //   permettre le vol de session/données — voir script-src ci-dessous, lui
 //   sans 'unsafe-inline').
-// - script-src/frame-src autorisent challenges.cloudflare.com : c'est le
-//   widget Turnstile de la page d'inscription (voir /api/register et
-//   frontend/src/login.js) — script + iframe qu'il charge lui-même.
 // - frame-ancestors 'none' + X-Frame-Options: DENY : ce site n'a jamais
 //   besoin d'être affiché dans une <iframe>, ni par lui-même ni ailleurs.
 const CSP = [
   "default-src 'self'",
-  "script-src 'self' https://challenges.cloudflare.com",
+  "script-src 'self'",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self'",
   "connect-src 'self'",
-  "frame-src https://challenges.cloudflare.com",
   "frame-ancestors 'none'",
   "object-src 'none'",
   "base-uri 'self'",
@@ -105,18 +101,13 @@ function isProtected() {
   return db.getAllUsers().length > 0;
 }
 
-// Inscription publique (voir /api/register plus bas) : désactivée par défaut,
-// n'existe que si ces deux variables sont définies (clé publique + secrète
-// d'un widget Cloudflare Turnstile — dash.cloudflare.com → Turnstile). Sans
-// elles, pas de lien "créer un compte" côté frontend et la route refuse tout.
-const TURNSTILE_SITE_KEY = process.env.TURNSTILE_SITE_KEY;
-const TURNSTILE_SECRET_KEY = process.env.TURNSTILE_SECRET_KEY;
-// Deux conditions doivent être vraies : Turnstile configuré (protection anti-bot, prérequis
-// technique — sans lui, jamais de lien d'inscription, quoi qu'il arrive) ET la bascule admin
-// db.getRegistrationEnabled() (réglable depuis l'onglet Comptes, voir /api/settings plus bas,
-// pour fermer temporairement les inscriptions sans toucher aux variables d'environnement).
+// Inscription publique (voir /api/register plus bas) : contrôlée uniquement par la bascule
+// admin db.getRegistrationEnabled() (réglable depuis l'onglet Comptes, voir /api/settings plus
+// bas) — plus de prérequis Cloudflare Turnstile (captcha retiré). La protection anti-bot
+// restante est le rate-limiting par IP sur /api/register lui-même (voir plus bas,
+// auth.registerRateLimitStatus()).
 function isRegistrationEnabled() {
-  return Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY) && db.getRegistrationEnabled();
+  return db.getRegistrationEnabled();
 }
 
 // TRUST_PROXY (voir .env.example) : active la confiance en X-Forwarded-For pour clientIp()
@@ -128,7 +119,7 @@ function isRegistrationEnabled() {
 // défaut prudent (false) plutôt que de faire confiance par défaut à un en-tête falsifiable.
 const TRUST_PROXY = /^(1|true|yes)$/i.test(process.env.TRUST_PROXY || '');
 
-// IP réelle du client, utilisée pour le rate-limiting du login et transmise à Turnstile. Ne
+// IP réelle du client, utilisée pour le rate-limiting du login/inscription. Ne
 // prend que le PREMIER champ de X-Forwarded-For (celui posé par le proxy immédiat) : les
 // suivants, s'il y en a, viennent d'étapes en amont que ce proxy ne contrôle pas lui-même.
 function clientIp(req) {
@@ -137,25 +128,6 @@ function clientIp(req) {
     if (xff) return String(xff).split(',')[0].trim();
   }
   return req.socket.remoteAddress;
-}
-
-// Vérifie un jeton Turnstile auprès de Cloudflare — appel réseau serveur à
-// serveur, la clé secrète ne quitte jamais ce process.
-async function verifyTurnstile(token, remoteIp) {
-  if (!token) return false;
-  try {
-    const body = new URLSearchParams({ secret: TURNSTILE_SECRET_KEY, response: token });
-    if (remoteIp) body.set('remoteip', remoteIp);
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
-      method: 'POST',
-      body,
-    });
-    const data = await res.json();
-    return data.success === true;
-  } catch (e) {
-    console.error('[turnstile] Échec de la vérification :', e.message);
-    return false;
-  }
 }
 
 // Bootstrap optionnel : si aucun compte n'existe encore et que ces deux
@@ -197,13 +169,11 @@ function requestToken(req) {
 
 // Utilisé par login.html pour savoir s'il faut afficher "connexion", "créer le
 // premier compte admin" ou proposer un lien d'inscription — public, ne révèle
-// rien de sensible (la clé Turnstile renvoyée est la clé PUBLIQUE du widget).
+// rien de sensible.
 app.get('/api/auth-status', (req, res) => {
-  const registrationEnabled = isRegistrationEnabled();
   res.json({
     hasUsers: isProtected(),
-    registrationEnabled,
-    turnstileSiteKey: registrationEnabled ? TURNSTILE_SITE_KEY : null,
+    registrationEnabled: isRegistrationEnabled(),
   });
 });
 
@@ -226,11 +196,11 @@ app.post('/api/setup', (req, res) => {
 
 // Inscription publique — toujours en rôle "readonly" (jamais choisi par le
 // client), un admin promeut ensuite manuellement depuis l'onglet Comptes si
-// besoin. Fermée si Turnstile n'est pas configuré (voir isRegistrationEnabled).
-// Protégée par IP comme /api/login (voir auth.registerRateLimitStatus()) : Turnstile seul ne
-// suffit pas, un bot peut spammer cette route (validation + recherche d'username en base) à
-// volonté tant qu'il n'a pas besoin de résoudre le captcha (CodeQL: "Missing rate limiting").
-app.post('/api/register', async (req, res) => {
+// besoin. Fermée si la bascule admin registrationEnabled est à false (voir
+// isRegistrationEnabled()). Pas de captcha (Turnstile retiré) : seule protection
+// anti-abus restante, le rate-limiting par IP ci-dessous, comme /api/login (voir
+// auth.registerRateLimitStatus() — CodeQL: "Missing rate limiting", déjà corrigé une fois).
+app.post('/api/register', (req, res) => {
   if (!isRegistrationEnabled()) {
     return res.status(403).json({ error: 'Inscription désactivée.' });
   }
@@ -241,7 +211,7 @@ app.post('/api/register', async (req, res) => {
     const minutes = Math.ceil(rateLimit.retryAfterSeconds / 60);
     return res.status(429).json({ error: `Trop de tentatives d'inscription. Réessaie dans ${minutes} minute(s).` });
   }
-  const { username, email, password, turnstileToken } = req.body || {};
+  const { username, email, password } = req.body || {};
   if (!username || typeof username !== 'string' || !password || String(password).length < 8) {
     auth.recordRegisterFailure(ip);
     return res.status(400).json({ error: 'Nom d\'utilisateur requis et mot de passe d\'au moins 8 caractères.' });
@@ -254,11 +224,6 @@ app.post('/api/register', async (req, res) => {
   if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(email)) {
     auth.recordRegisterFailure(ip);
     return res.status(400).json({ error: 'Adresse email invalide.' });
-  }
-  const turnstileOk = await verifyTurnstile(turnstileToken, clientIp(req));
-  if (!turnstileOk) {
-    auth.recordRegisterFailure(ip);
-    return res.status(400).json({ error: 'Vérification anti-robot échouée, réessaie.' });
   }
   if (db.findUserByUsername(username)) {
     auth.recordRegisterFailure(ip);
@@ -312,8 +277,7 @@ app.post('/api/logout', (req, res) => {
 // requêtes vers /login.html (du HTML, pas du JS/CSS/une image) — logo cassé
 // et script refusé ("Expected a JavaScript module but server responded with
 // text/html"). /assets/ ne contient que du code client sans rien de secret
-// (les clés Turnstile etc. viennent de l'API, jamais embarquées dans le
-// bundle) donc le rendre public entièrement est sans risque, et ça couvre
+// donc le rendre public entièrement est sans risque, et ça couvre
 // aussi bien le bundle de login.html que celui de l'app (qui, lui, ne sert
 // jamais à rien sans être authentifié pour les appels /api/* derrière).
 const PUBLIC_PATHS = new Set(['/login.html', '/logo.svg', '/api/login', '/api/setup', '/api/auth-status', '/api/register']);
@@ -462,14 +426,10 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 });
 
 // Réglages admin (pour l'instant : seulement la bascule d'inscription publique, voir onglet
-// Comptes côté frontend). turnstileConfigured renseigne l'UI sur le fait que la bascule
-// n'aura aucun effet tant que TURNSTILE_SITE_KEY/SECRET_KEY ne sont pas définis (voir
-// isRegistrationEnabled ci-dessus) — sans ça, un admin pourrait "activer" l'inscription ici
-// sans comprendre pourquoi le lien n'apparaît toujours pas sur /login.html.
+// Comptes côté frontend).
 app.get('/api/settings', requireAdmin, (req, res) => {
   res.json({
     registrationEnabled: db.getRegistrationEnabled(),
-    turnstileConfigured: Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY),
   });
 });
 
@@ -480,7 +440,6 @@ app.put('/api/settings', requireAdmin, (req, res) => {
   }
   res.json({
     registrationEnabled: db.setRegistrationEnabled(registrationEnabled),
-    turnstileConfigured: Boolean(TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY),
   });
 });
 
