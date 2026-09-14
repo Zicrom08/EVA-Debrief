@@ -1,16 +1,18 @@
 import { state } from './state.js';
 import { apiSend } from './api.js';
-import { aggregateGames } from './tendances.js';
-import { fmtDate } from './format.js';
+import { fmtDate, resolvePlayerName } from './format.js';
+import { canonicalUid } from './player-links.js';
+import { computeMatchRatings } from './profil/compute.js';
 
 // Ce module ne DOIT jamais importer historique.js (qui importe lui-même shell.js, lequel
 // touche `document` au chargement du module — voir CLAUDE.md sur les modules testables sans
 // DOM) : ça rendrait resolveGroupGames() ci-dessous impossible à tester via `node --test`
 // (crash à l'import, pas de DOM en Node). À la place, un évènement custom sur `document`
-// (voir notifyGamesSelectionChanged()) permet à historique.js d'écouter et de se re-rendre
-// lui-même sans que ce fichier ait besoin de le connaître.
-function notifyGamesSelectionChanged() {
-  document.dispatchEvent(new CustomEvent('gamegroups:refresh'));
+// (voir notifyGroupsChanged()) permet à historique.js d'écouter et de se re-rendre
+// lui-même (liste + éventuellement le panneau détail) sans que ce fichier ait besoin de le
+// connaître.
+function notifyGroupsChanged() {
+  document.dispatchEvent(new CustomEvent('gamegroups:changed'));
 }
 
 // ================= GROUPES DE PARTIES (training/scrim) — privés au compte connecté =================
@@ -36,70 +38,179 @@ export function resolveGroupGames(group, gamesById) {
   return (group.gameIds || []).map(id => gamesById[id]).filter(Boolean);
 }
 
-// ================= Panneau des groupes (liste des "catégories" du compte connecté) =================
-export function renderGroupPanel() {
-  const container = document.getElementById('matchGroupPanel');
-  if (!container) return;
-  const groups = Object.values(state.matchGroups).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+// Groupes du compte connecté, triés du plus récemment créé au plus ancien — ordre
+// d'affichage utilisé par historique.js pour les lister au-dessus des parties.
+export function sortedGroups() {
+  return Object.values(state.matchGroups).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
 
-  if (!groups.length) {
-    container.innerHTML = '';
-    return;
-  }
+// ================= Agrégation par joueur sur l'ensemble des parties d'un groupe =================
+// Contrairement à aggregateGames() (tendances.js), qui agrège UN SEUL joueur (state.currentUid)
+// sur une liste de parties, ceci agrège CHAQUE joueur ayant participé à au moins une partie du
+// groupe — c'est le pendant "aggrégé dans le temps" du roster d'un seul match (voir
+// renderMatchRosterTable dans historique.js), pas une déclinaison de aggregateGames.
+// Kills/deaths/assists : sommés (totaux sur le groupe). Score/dégâts/précision : moyennés par
+// partie jouée (mêmes conventions que aggregateGames pour score/dégâts). Rating : moyenne des
+// Ratings par match (voir computeMatchRatings dans profil/compute.js, calculé match par match
+// puis moyenné — jamais recalculé globalement, un Rating n'a de sens que relatif à UN match).
+export function computeGroupPlayerAggregates(games) {
+  const byUid = new Map();
+  games.forEach(g => {
+    const ratings = computeMatchRatings(g); // Map vide si !hasFullMatchData(g)
+    (g.players || []).forEach(p => {
+      if (!p || !p.data) return;
+      const uid = canonicalUid(p.userId);
+      if (!byUid.has(uid)) {
+        byUid.set(uid, { uid, n: 0, wins: 0, losses: 0, kills: 0, deaths: 0, assists: 0, dmgSum: 0, scoreSum: 0, accSum: 0, accN: 0, ratingSum: 0, ratingN: 0 });
+      }
+      const rec = byUid.get(uid);
+      rec.n++;
+      if (p.data.outcome === 'Victory') rec.wins++;
+      else if (p.data.outcome === 'Defeat') rec.losses++;
+      rec.kills += p.data.kills || 0;
+      rec.deaths += p.data.deaths || 0;
+      rec.assists += p.data.assists || 0;
+      rec.dmgSum += p.data.inflictedDamage || 0;
+      rec.scoreSum += p.data.score || 0;
+      if (p.data.firedAccuracy != null) { rec.accSum += p.data.firedAccuracy; rec.accN++; }
+      const rating = ratings.get(uid);
+      if (rating != null) { rec.ratingSum += rating; rec.ratingN++; }
+    });
+  });
+  return Array.from(byUid.values()).map(rec => ({
+    uid: rec.uid,
+    name: resolvePlayerName(rec.uid),
+    n: rec.n,
+    wins: rec.wins,
+    losses: rec.losses,
+    winrate: rec.n ? Math.round((rec.wins / rec.n) * 100) : 0,
+    kills: rec.kills,
+    deaths: rec.deaths,
+    assists: rec.assists,
+    kd: rec.deaths ? rec.kills / rec.deaths : rec.kills,
+    kda: rec.deaths ? (rec.kills + rec.assists) / rec.deaths : (rec.kills + rec.assists),
+    avgScore: rec.n ? Math.round(rec.scoreSum / rec.n) : 0,
+    avgDmg: rec.n ? Math.round(rec.dmgSum / rec.n) : 0,
+    avgAcc: rec.accN ? rec.accSum / rec.accN : null,
+    rating: rec.ratingN ? rec.ratingSum / rec.ratingN : null,
+  }));
+}
 
-  container.innerHTML = `
-    <div class="match-group-panel">
-      ${groups.map(g => {
-        const n = resolveGroupGames(g, state.gamesById).length;
+// Colonnes triables du tableau agrégé — même principe que ROSTER_SORT_COLUMNS/
+// SIMPLE_ROSTER_SORT_COLUMNS dans historique.js, mais sur les valeurs déjà agrégées
+// ci-dessus. État de tri séparé (state.groupRosterSort) : dupliqué plutôt que réutilisé
+// depuis historique.js, qui ne peut pas être importé ici (voir la note en haut du fichier).
+const GROUP_ROSTER_COLUMNS = [
+  { key: 'games', label: 'Parties', getValue: p => p.n },
+  { key: 'winrate', label: 'Winrate', getValue: p => p.winrate },
+  { key: 'kills', label: 'K / D / A', getValue: p => p.kills },
+  { key: 'score', label: 'Score moy.', getValue: p => p.avgScore },
+  { key: 'dmg', label: 'Dégâts moy.', getValue: p => p.avgDmg },
+  { key: 'acc', label: 'Précision moy.', getValue: p => p.avgAcc ?? -Infinity },
+  { key: 'kd', label: 'K/D', getValue: p => p.kd },
+  { key: 'kda', label: 'KDA', getValue: p => p.kda },
+  { key: 'rating', label: 'Rating moy.', getValue: p => p.rating ?? -Infinity },
+];
+
+function sortGroupRoster(players, sort) {
+  const col = GROUP_ROSTER_COLUMNS.find(c => c.key === sort.key) || GROUP_ROSTER_COLUMNS[0];
+  const mult = sort.dir === 'asc' ? 1 : -1;
+  return players.slice().sort((a, b) => mult * (col.getValue(a) - col.getValue(b)));
+}
+
+function groupSortHeaderHtml(col, sort) {
+  const active = sort.key === col.key;
+  const arrow = active ? (sort.dir === 'desc' ? ' ▼' : ' ▲') : '';
+  return `<th class="num sortable${active ? ' active' : ''}" data-sort-key="${col.key}">${col.label}${arrow}</th>`;
+}
+
+// ================= Panneau détail d'un groupe — affiché dans #detail comme un match =================
+// Remplace le modal d'origine : un groupe s'affiche désormais exactement là où s'affiche le
+// détail d'une partie (clic sur sa ligne dans la liste, voir historique.js), avec la même
+// famille de composants visuels (.match-header/table.match-roster) — juste des colonnes
+// agrégées par joueur plutôt que les valeurs brutes d'un seul match.
+export function renderGroupDetail(group) {
+  state.activeGroupId = group.id;
+  state.activeGameId = null;
+  const games = resolveGroupGames(group, state.gamesById);
+  const players = sortGroupRoster(computeGroupPlayerAggregates(games), state.groupRosterSort);
+
+  const detail = document.getElementById('detail');
+  detail.innerHTML = `
+    <div class="match-header">
+      <div>
+        <h2>📦 ${group.name}</h2>
+        <div class="tags"><span>${games.length} partie${games.length === 1 ? '' : 's'}</span><span>créé le ${fmtDate(group.createdAt)}</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="btn small" id="editGroupSelectionBtn">✏️ Modifier la sélection</button>
+        <button class="btn small" id="renameGroupBtn">✎ Renommer</button>
+        <button class="btn small danger" id="deleteGroupBtn">🗑 Supprimer</button>
+      </div>
+    </div>
+    ${!players.length ? '<div class="detail-empty">Ce groupe ne contient plus aucune partie valide (toutes ont peut-être été supprimées).</div>' : `
+    <div class="table-scroll"><table class="match-roster">
+      <thead><tr>
+        <th>Joueur</th>${GROUP_ROSTER_COLUMNS.map(col => groupSortHeaderHtml(col, state.groupRosterSort)).join('')}
+      </tr></thead>
+      <tbody>${players.map(p => {
+        const isMe = p.uid === canonicalUid(state.currentUid);
         return `
-          <div class="match-group-chip" data-group-id="${g.id}">
-            <div class="match-group-chip-main">
-              <span class="match-group-name">${g.name}</span>
-              <span class="match-group-count">${n} partie${n === 1 ? '' : 's'}</span>
-            </div>
-            <div class="match-group-actions">
-              <button class="btn tiny" data-action="recap" title="Voir le récap">📊</button>
-              <button class="btn tiny" data-action="edit" title="Modifier la sélection de parties">✏️</button>
-              <button class="btn tiny" data-action="rename" title="Renommer">✎</button>
-              <button class="btn tiny danger" data-action="delete" title="Supprimer">🗑</button>
-            </div>
-          </div>`;
-      }).join('')}
-    </div>`;
+        <tr class="${isMe ? 'me' : ''}">
+          <td class="name-cell">${p.name}${isMe ? ' <span style="color:var(--gold);font-size:11px;">(toi)</span>' : ''}</td>
+          <td class="num">${p.n}</td>
+          <td class="num">${p.winrate}% <span style="color:var(--muted);">(${p.wins}/${p.losses})</span></td>
+          <td class="num">${p.kills} / ${p.deaths} / ${p.assists}</td>
+          <td class="num">${p.avgScore}</td>
+          <td class="num">${p.avgDmg.toLocaleString('fr-FR')}</td>
+          <td class="num">${p.avgAcc != null ? Math.round(p.avgAcc * 100) + '%' : '–'}</td>
+          <td class="num ${p.kd >= 1 ? 'kd-good' : 'kd-bad'}">${p.kd.toFixed(2)}</td>
+          <td class="num ${p.kda >= 1 ? 'kd-good' : 'kd-bad'}">${p.kda.toFixed(2)}</td>
+          <td class="num ${p.rating == null ? '' : (p.rating >= 1 ? 'kd-good' : 'kd-bad')}">${p.rating == null ? '–' : p.rating.toFixed(2)}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>`}
+  `;
 
-  container.querySelectorAll('.match-group-chip').forEach(chip => {
-    const id = chip.dataset.groupId;
-    const group = state.matchGroups[id];
-    if (!group) return;
-    chip.querySelector('[data-action="recap"]').addEventListener('click', () => openGroupRecapModal(group));
-    chip.querySelector('[data-action="edit"]').addEventListener('click', () => {
-      state.selectionMode = true;
-      state.selectedGameIds = new Set((group.gameIds || []).map(String));
-      notifyGamesSelectionChanged();
-      renderGroupPanel();
-      renderSelectionBar();
+  detail.querySelectorAll('th[data-sort-key]').forEach(th => {
+    th.addEventListener('click', () => {
+      const key = th.dataset.sortKey;
+      const current = state.groupRosterSort;
+      state.groupRosterSort = { key, dir: current.key === key && current.dir === 'desc' ? 'asc' : 'desc' };
+      renderGroupDetail(group);
     });
-    chip.querySelector('[data-action="rename"]').addEventListener('click', async () => {
-      const name = prompt('Nouveau nom du groupe :', group.name);
-      if (!name || !name.trim()) return;
-      try {
-        await updateGameGroup(group.id, { name: name.trim() });
-        state.matchGroups[group.id] = { ...group, name: name.trim() };
-        renderGroupPanel();
-      } catch (e) {
-        alert('Erreur lors du renommage : ' + e.message);
-      }
-    });
-    chip.querySelector('[data-action="delete"]').addEventListener('click', async () => {
-      if (!confirm(`Supprimer le groupe "${group.name}" ? Les parties elles-mêmes ne sont pas supprimées.`)) return;
-      try {
-        await deleteGameGroup(group.id);
-        delete state.matchGroups[group.id];
-        renderGroupPanel();
-      } catch (e) {
-        alert('Erreur lors de la suppression : ' + e.message);
-      }
-    });
+  });
+
+  document.getElementById('editGroupSelectionBtn').addEventListener('click', () => {
+    state.selectionMode = true;
+    state.selectedGameIds = new Set((group.gameIds || []).map(String));
+    state.activeGroupId = null;
+    detail.innerHTML = '<div class="detail-empty">Sélectionne les parties à inclure dans ce groupe à gauche, puis clique "Créer un groupe".</div>';
+    notifyGroupsChanged();
+  });
+  document.getElementById('renameGroupBtn').addEventListener('click', async () => {
+    const name = prompt('Nouveau nom du groupe :', group.name);
+    if (!name || !name.trim()) return;
+    try {
+      const updated = await updateGameGroup(group.id, { name: name.trim() });
+      state.matchGroups[group.id] = updated;
+      renderGroupDetail(updated);
+      notifyGroupsChanged();
+    } catch (e) {
+      alert('Erreur lors du renommage : ' + e.message);
+    }
+  });
+  document.getElementById('deleteGroupBtn').addEventListener('click', async () => {
+    if (!confirm(`Supprimer le groupe "${group.name}" ? Les parties elles-mêmes ne sont pas supprimées.`)) return;
+    try {
+      await deleteGameGroup(group.id);
+      delete state.matchGroups[group.id];
+      state.activeGroupId = null;
+      detail.innerHTML = '<div class="detail-empty">Sélectionne une partie ou un groupe à gauche pour voir le détail des scores.</div>';
+      notifyGroupsChanged();
+    } catch (e) {
+      alert('Erreur lors de la suppression : ' + e.message);
+    }
   });
 }
 
@@ -128,8 +239,7 @@ export function renderSelectionBar() {
       state.matchGroups[group.id] = group;
       state.selectionMode = false;
       state.selectedGameIds = new Set();
-      notifyGamesSelectionChanged();
-      renderGroupPanel();
+      notifyGroupsChanged();
       renderSelectionBar();
     } catch (e) {
       alert('Erreur lors de la création du groupe : ' + e.message);
@@ -138,62 +248,7 @@ export function renderSelectionBar() {
   document.getElementById('cancelSelectionBtn').addEventListener('click', () => {
     state.selectionMode = false;
     state.selectedGameIds = new Set();
-    notifyGamesSelectionChanged();
-    renderGroupPanel();
+    notifyGroupsChanged();
     renderSelectionBar();
   });
-}
-
-// ================= Modal de récap (overlay en page, pas de window.open/confirm) =================
-let modalKeydownHandler = null;
-
-export function openGroupRecapModal(group) {
-  const overlay = document.getElementById('groupRecapModal');
-  const content = document.getElementById('groupRecapContent');
-  if (!overlay || !content) return;
-
-  const games = resolveGroupGames(group, state.gamesById);
-  const agg = aggregateGames(games, state.currentUid);
-  const created = group.createdAt ? fmtDate(group.createdAt) : '';
-
-  content.innerHTML = `
-    <h3 style="margin-top:0;">${group.name}</h3>
-    <p style="color:var(--muted);font-size:12px;margin-top:-8px;">
-      ${games.length} partie${games.length === 1 ? '' : 's'}${created ? ` · créé le ${created}` : ''}
-    </p>
-    ${!agg.n ? '<div class="detail-empty" style="margin-top:0;">Aucune partie de ce groupe n\'implique le joueur sélectionné (ou toutes ont été supprimées).</div>' : `
-    <div class="profile-grid">
-      <div class="cell"><div class="label">Parties</div><div class="value">${agg.n}</div></div>
-      <div class="cell"><div class="label">V / D</div><div class="value"><span class="win">${agg.wins}</span> / <span class="loss">${agg.losses}</span></div></div>
-      <div class="cell"><div class="label">Taux de victoire</div><div class="value">${agg.winrate}%</div></div>
-      <div class="cell"><div class="label">Ratio K/D</div><div class="value">${agg.kd}</div></div>
-      <div class="cell"><div class="label">KDA</div><div class="value">${agg.kda}</div></div>
-      <div class="cell"><div class="label">Dégâts moyens</div><div class="value">${agg.avgDmg}</div></div>
-      <div class="cell"><div class="label">Score moyen</div><div class="value">${agg.avgScore}</div></div>
-      <div class="cell"><div class="label">Kills / Morts / Assists</div><div class="value" style="font-size:16px;">${agg.kills} / ${agg.deaths} / ${agg.assists}</div></div>
-    </div>`}
-  `;
-
-  overlay.style.display = 'flex';
-  overlay.addEventListener('click', overlayClickHandler);
-  modalKeydownHandler = (e) => { if (e.key === 'Escape') closeGroupRecapModal(); };
-  document.addEventListener('keydown', modalKeydownHandler);
-}
-
-// Un seul listener sur l'overlay couvre à la fois le clic à l'extérieur de la boîte ET le
-// bouton ✕ (à l'intérieur, mais son clic bubble jusqu'ici) — pas besoin d'un listener séparé
-// sur le bouton lui-même, donc pas de risque de l'empiler à chaque ouverture.
-function overlayClickHandler(e) {
-  if (e.target.id === 'groupRecapModal' || e.target.id === 'closeGroupRecapBtn') closeGroupRecapModal();
-}
-
-export function closeGroupRecapModal() {
-  const overlay = document.getElementById('groupRecapModal');
-  if (!overlay) return;
-  overlay.style.display = 'none';
-  overlay.removeEventListener('click', overlayClickHandler);
-  if (modalKeydownHandler) {
-    document.removeEventListener('keydown', modalKeydownHandler);
-    modalKeydownHandler = null;
-  }
 }

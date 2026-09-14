@@ -39,11 +39,14 @@ K/D/A/Score/Dégâts/Précision/K-D/KDA/**Rating** (indice façon HLTV, voir
 [Rang compétitif](#fonctionnalités) ci-dessous) avec la meilleure valeur de
 chaque équipe mise en évidence — **chaque colonne est triable** en cliquant
 son en-tête (inversion du sens au deuxième clic). Chaque compte peut aussi
-**grouper plusieurs parties** (training, scrim) en catégories personnelles —
-via un mode sélection à cases à cocher — pour en voir les stats cumulées
-(V/D, winrate, K/D, dégâts, score) dans une fenêtre récap dédiée. Ces
-groupes sont **strictement privés au compte qui les a créés** : même un
-admin ne voit ni ne gère les groupes des autres comptes.
+**grouper plusieurs parties** (training, scrim) via un mode sélection à
+cases à cocher — le groupe apparaît ensuite dans la liste au même titre
+qu'une partie (avec un liseré doré pour le distinguer), et son détail
+s'affiche comme celui d'un match, mais avec toutes les stats **agrégées par
+joueur** sur l'ensemble des parties du groupe (parties jouées, V/D,
+winrate, K/D/A, score/dégâts/précision moyens, Rating moyen). Ces groupes
+sont **strictement privés au compte qui les a créés** : même un admin ne
+voit ni ne gère les groupes des autres comptes.
 
 **Suivi de performance** — agrégats par séance de jeu ou par mois (parties, V/D,
 winrate, K/D, dégâts et score moyens), avec 4 graphiques d'évolution

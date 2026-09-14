@@ -7,18 +7,17 @@ import { computeLpHistory, gamesForLpScope } from './rank.js';
 import { apiSend, loadFromServer } from './api.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
-import { renderGroupPanel, renderSelectionBar } from './game-groups.js';
+import { sortedGroups, resolveGroupGames, renderGroupDetail, renderSelectionBar } from './game-groups.js';
 
-// Réagit aux changements de sélection déclenchés depuis game-groups.js (création/annulation
-// de sélection, "Modifier la sélection" d'un groupe existant) — voir la note dans
-// game-groups.js sur pourquoi ce fichier ne peut pas être importé par lui en retour.
-document.addEventListener('gamegroups:refresh', () => renderList());
+// Réagit aux changements déclenchés depuis game-groups.js (création/renommage/suppression
+// d'un groupe, annulation ou modification d'une sélection) — voir la note dans game-groups.js
+// sur pourquoi ce fichier ne peut pas être importé par lui en retour.
+document.addEventListener('gamegroups:changed', () => renderList());
 
 document.getElementById('toggleSelectionModeBtn').addEventListener('click', () => {
   state.selectionMode = !state.selectionMode;
   state.selectedGameIds = new Set();
   renderList();
-  renderGroupPanel();
   renderSelectionBar();
 });
 
@@ -39,6 +38,35 @@ export function renderList(){
   const lpHistory = computeLpHistory(gamesForLpScope());
   const playerLpHistory = lpHistory.historyByUid.get(canonicalUid(state.currentUid)) || [];
   const lpDeltaByGameId = new Map(playerLpHistory.map(h => [h.gameId, h]));
+
+  // Groupes de parties (training/scrim, voir game-groups.js) : affichés en tête de liste,
+  // avant les parties individuelles — pas de sens à les intercaler par date (leur createdAt
+  // n'est pas comparable à la date d'une partie). Masqués en mode sélection : on ne peut pas
+  // mettre un groupe DANS un autre groupe, ça ne ferait qu'ajouter une case à cocher trompeuse.
+  if (!state.selectionMode) {
+    sortedGroups().forEach(group => {
+      const n = resolveGroupGames(group, state.gamesById).length;
+      const row = document.createElement('div');
+      row.className = 'game-row group-row' + (group.id === state.activeGroupId ? ' active' : '');
+      row.innerHTML = `
+        <div class="top-line">
+          <span class="map-name">📦 ${group.name}</span>
+          <span class="outcome-tag group-tag">Groupe</span>
+        </div>
+        <div class="meta-line">
+          <span>${n} partie${n === 1 ? '' : 's'}</span>
+          <span>créé le ${fmtDate(group.createdAt)}</span>
+        </div>
+      `;
+      row.addEventListener('click', () => {
+        state.activeGroupId = group.id;
+        state.activeGameId = null;
+        renderList();
+        renderGroupDetail(group);
+      });
+      list.appendChild(row);
+    });
+  }
 
   sortedGames().forEach(g=>{
     if (mapVal && (!g.map || g.map.name !== mapVal)) return;
@@ -91,6 +119,7 @@ export function renderList(){
         return;
       }
       state.activeGameId = g.id;
+      state.activeGroupId = null;
       renderList();
       renderDetail(g);
     });

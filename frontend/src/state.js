@@ -24,6 +24,7 @@ export const state = {
   playerNames: {},             // userId canonique -> nom personnalisé (renommage manuel, voir player-names.js)
   currentUid: null,
   activeGameId: null,
+  activeGroupId: null,        // groupe de parties actuellement affiché dans le panneau détail (mutuellement exclusif avec activeGameId, voir historique.js/game-groups.js)
   trendMode: 'session',
   storageAvailable: true,
   dateRangeStart: null,       // timestamp (ms) ou null = pas de borne
@@ -42,4 +43,5 @@ export const state = {
   mapDeepDiveSelection: null, // nom de la carte sélectionnée pour le "focus carte" du Profil
   profileMetric: 'kd',        // 'kd' | 'dmg' | 'score' | 'acc' — métrique affichée dans les graphiques de progression du Profil
   matchRosterSort: { key: 'score', dir: 'desc' }, // colonne/direction de tri du tableau de roster d'une partie (onglet Historique, voir historique.js) — 'score'/'desc' reproduit le tri par défaut d'origine
+  groupRosterSort: { key: 'score', dir: 'desc' }, // même principe que matchRosterSort, mais pour le tableau agrégé par joueur d'un groupe de parties (voir game-groups.js), état de tri indépendant
 };

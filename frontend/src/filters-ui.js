@@ -182,7 +182,7 @@ export function applyRangeAndRerender() {
   renderList();
   state.activeGameId = null;
   document.getElementById('detail').innerHTML =
-    '<div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>';
+    '<div class="detail-empty">Sélectionne une partie ou un groupe à gauche pour voir le détail des scores.</div>';
   const activeBtn = document.querySelector('.tab-btn.active');
   const activeTab = activeBtn ? activeBtn.dataset.tab : 'historique';
   if (activeTab === 'tendances') renderTrends();

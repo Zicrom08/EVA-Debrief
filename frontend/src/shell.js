@@ -11,7 +11,7 @@ import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } fro
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
 import { renderImportTokenPanel } from './import-token.js';
-import { renderGroupPanel, renderSelectionBar } from './game-groups.js';
+import { renderSelectionBar } from './game-groups.js';
 
 // ================= APP SHELL =================
 export function showApp() {
@@ -34,12 +34,12 @@ export function showApp() {
   updateRangeInfo();
   renderSummary();
   renderList();
-  renderGroupPanel();
   renderSelectionBar();
   renderProfil();
   state.activeGameId = null;
+  state.activeGroupId = null;
   document.getElementById('detail').innerHTML =
-    '<div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>';
+    '<div class="detail-empty">Sélectionne une partie ou un groupe à gauche pour voir le détail des scores.</div>';
 }
 
 // Affiche le compte connecté et adapte l'UI à son rôle :
@@ -117,7 +117,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   state.gamesById = {}; state.players = {}; state.playerStatsSnapshots = {};
   state.customTeams = {}; state.playerLinks = {}; state.playerNames = {};
   state.matchGroups = {}; state.selectionMode = false; state.selectedGameIds = new Set();
-  state.currentUid = null; state.activeGameId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
+  state.currentUid = null; state.activeGameId = null; state.activeGroupId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
   state.dateRangeStart = null; state.dateRangeEnd = null; state.selectedSeasonId = null;
   state.excludedMaps = new Set();
   state.excludedModes = new Set();

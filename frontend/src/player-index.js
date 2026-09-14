@@ -91,7 +91,7 @@ export function renderPlayerPicker() {
     renderSummary();
     renderList();
     document.getElementById('detail').innerHTML =
-      '<div class="detail-empty">Sélectionne une partie à gauche pour voir le détail des scores.</div>';
+      '<div class="detail-empty">Sélectionne une partie ou un groupe à gauche pour voir le détail des scores.</div>';
     state.activeGameId = null;
     if (document.getElementById('viewTendances').classList.contains('active')) renderTrends();
     if (document.getElementById('viewProfil').classList.contains('active')) renderProfil();
