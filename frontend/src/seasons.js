@@ -89,14 +89,27 @@ export function displaySeasonId(rawSeasonId) {
 // player-links.js) — les captures de profil sont stockées par compte EVA brut et ne
 // sont JAMAIS fusionnées entre elles (contrairement aux parties, où findPlayerInGame()
 // résout déjà l'identité canonique), donc il faut explicitement rassembler celles de
-// chaque alias en plus de celles du compte canonique. Triées par capturedAt croissant,
-// comme state.playerStatsSnapshots[uid] l'est individuellement (voir api.js).
+// chaque alias en plus de celles du compte canonique.
+//
+// Triées D'ABORD par numéro de saison (croissant — comme ids.sort((a,b)=>a-b) dans
+// computeSeasons() ci-dessus, seasonId est déjà traité comme monotone partout dans ce
+// fichier), capturedAt en repli SEULEMENT au sein d'une même saison. capturedAt seul
+// suffisait tant que les imports arrivaient dans l'ordre chronologique du jeu, mais
+// importer une VIEILLE saison APRÈS avoir déjà la saison en cours (capturedAt de cette
+// vieille capture = aujourd'hui, alors que sa saison est plus ancienne) la plaçait sinon
+// en toute fin de liste et faisait détecter à tort une "nouvelle saison" à
+// renderEvolutionTable() (voir profil/season.js) — bug réel rencontré en pratique.
 function allSnapshotsFor(uid) {
   const canon = canonicalUid(uid);
   const ids = [canon, ...aliasesOf(canon)];
   const combined = [];
   ids.forEach(id => { (state.playerStatsSnapshots[id] || []).forEach(s => combined.push(s)); });
-  return combined.sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
+  return combined.sort((a, b) => {
+    const sidA = snapshotSeasonId(a);
+    const sidB = snapshotSeasonId(b);
+    if (sidA != null && sidB != null && sidA !== sidB) return sidA - sidB;
+    return new Date(a.capturedAt) - new Date(b.capturedAt);
+  });
 }
 
 // Captures de profil d'un joueur pour la sélection courante : filtrage exact par
@@ -210,7 +223,7 @@ export function seasonCardBaseline(uid, inRange) {
   const latestSeason = snapshotSeasonId(latest);
   if (latestSeason == null) return null;
 
-  const all = allSnapshotsFor(uid); // alias fusionnés compris, triés asc par capturedAt
+  const all = allSnapshotsFor(uid); // alias fusionnés compris, triés par saison puis capturedAt (voir allSnapshotsFor)
   const windowStartT = new Date(inRange[0].capturedAt).getTime();
   const before = all.filter(s => {
     const sid = snapshotSeasonId(s);

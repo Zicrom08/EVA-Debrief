@@ -62,3 +62,26 @@ test('filteredSnapshotsForUser gathers snapshots from merged aliases too, not ju
   assert.ok(new Date(snaps[0].capturedAt) < new Date(snaps[1].capturedAt));
   state.playerLinks = {};
 });
+
+// Régression : importer une VIEILLE saison APRÈS avoir déjà la saison en cours donne à cette
+// vieille capture un capturedAt PLUS RÉCENT (le moment où on l'a importée) que son numéro de
+// saison ne le suggère. Un tri par capturedAt seul la plaçait donc en toute fin de liste,
+// faisant détecter à tort une "nouvelle saison" par renderEvolutionTable() (voir
+// profil/season.js) juste après la dernière capture de la saison en cours.
+test('filteredSnapshotsForUser orders snapshots by SEASON first, not just capturedAt — importing an old season after the current one must not reorder it to the end', () => {
+  state.playerStatsSnapshots = {
+    p1: [
+      // Saison en cours (8), capturée il y a un moment.
+      { capturedAt: '2026-03-01T00:00:00Z', seasonId: 8 },
+      // Vieille saison (5), importée AUJOURD'HUI (capturedAt le plus récent de tous), donc
+      // APRÈS la saison en cours dans le temps réel — mais elle doit rester trouvée AVANT
+      // dans la liste, puisque saison 5 précède saison 8.
+      { capturedAt: '2026-06-01T00:00:00Z', seasonId: 5 },
+    ],
+  };
+  state.selectedSeasonId = null;
+  state.dateRangeStart = null;
+  state.dateRangeEnd = null;
+  const snaps = filteredSnapshotsForUser('p1');
+  assert.deepEqual(snaps.map(s => s.seasonId), [5, 8]);
+});
