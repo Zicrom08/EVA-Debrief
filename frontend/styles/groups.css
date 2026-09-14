@@ -7,8 +7,20 @@
 .game-row.group-row.active{border-left-color:var(--gold);}
 .outcome-tag.group-tag{background:rgba(255,200,87,0.15);color:var(--gold);}
 
-.selection-toolbar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;}
-#selectionBar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+/* Même padding horizontal que .sidebar .filters juste en dessous (historique.css /
+   shell.css), pour que ce bloc ne soit pas plaqué contre les bords de la sidebar
+   pendant que le reste l'est. */
+.selection-toolbar{padding:12px 14px;}
+#toggleSelectionModeBtn{display:block;width:100%;}
+
+/* Compteur au-dessus, boutons dans leur propre rangée en dessous : évite de tasser du
+   texte et deux boutons sur une seule ligne dans une sidebar de 360px — surtout que
+   "Créer un groupe" a besoin de place pour rester lisible sans se faire couper. */
+#selectionBar{display:flex;flex-direction:column;gap:8px;}
 .selection-count{color:var(--muted);font-size:12px;}
+.selection-actions{display:flex;gap:8px;}
+.selection-actions .btn{flex:1;}
+
+.btn:disabled{opacity:0.5;cursor:default;pointer-events:none;}
 
 .game-select-cb{margin-right:8px;}

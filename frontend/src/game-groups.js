@@ -187,6 +187,7 @@ export function renderGroupDetail(group) {
     state.activeGroupId = null;
     detail.innerHTML = '<div class="detail-empty">Sélectionne les parties à inclure dans ce groupe à gauche, puis clique "Créer un groupe".</div>';
     notifyGroupsChanged();
+    renderSelectionBar();
   });
   document.getElementById('renameGroupBtn').addEventListener('click', async () => {
     const name = prompt('Nouveau nom du groupe :', group.name);
@@ -215,9 +216,17 @@ export function renderGroupDetail(group) {
 }
 
 // ================= Mode sélection : barre d'action (compteur + créer/annuler) =================
+// Mutuellement exclusif avec #toggleSelectionModeBtn (voir historique.js) : celui-ci reste
+// affiché quand le mode sélection est inactif, et se masque dès qu'il l'est — sinon "☑
+// Sélectionner des parties" (qui n'a plus rien à activer) et "Annuler" (juste à côté, dans
+// #selectionBar) se retrouvent affichés côte à côte, deux façons redondantes et déroutantes
+// de faire à peu près la même chose. Seul point d'entrée du mode sélection = ce bouton ;
+// seul point de sortie une fois dedans = "Annuler" (ou "Créer un groupe" avec succès).
 export function renderSelectionBar() {
   const bar = document.getElementById('selectionBar');
+  const toggleBtn = document.getElementById('toggleSelectionModeBtn');
   if (!bar) return;
+  if (toggleBtn) toggleBtn.style.display = state.selectionMode ? 'none' : '';
   if (!state.selectionMode) {
     bar.style.display = 'none';
     bar.innerHTML = '';
@@ -227,8 +236,10 @@ export function renderSelectionBar() {
   const n = state.selectedGameIds.size;
   bar.innerHTML = `
     <span class="selection-count">${n} partie${n === 1 ? '' : 's'} sélectionnée${n === 1 ? '' : 's'}</span>
-    <button class="btn small primary" id="createGroupFromSelectionBtn" ${n === 0 ? 'disabled' : ''}>Créer un groupe</button>
-    <button class="btn small" id="cancelSelectionBtn">Annuler</button>
+    <div class="selection-actions">
+      <button class="btn small primary" id="createGroupFromSelectionBtn" ${n === 0 ? 'disabled' : ''}>Créer un groupe</button>
+      <button class="btn small" id="cancelSelectionBtn">Annuler</button>
+    </div>
   `;
   document.getElementById('createGroupFromSelectionBtn').addEventListener('click', async () => {
     if (!state.selectedGameIds.size) return;
