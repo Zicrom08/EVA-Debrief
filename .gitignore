@@ -4,6 +4,8 @@ node_modules/
 *.old
 CLAUDE.md
 frontend/dist/
+browser-extension.zip
+browser-extension-debug.zip
 .env
 .venv
 .venv/*
