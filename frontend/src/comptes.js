@@ -3,7 +3,7 @@ import { apiGet, apiSend, loadFromServer } from './api.js';
 import { roleLabel, resolvePlayerName, nameFreshness, fmtDate } from './format.js';
 import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
-import { detectTeamsFromNicknames } from './team-detect.js';
+import { detectTeamsFromNicknames, currentTagForPlayer } from './team-detect.js';
 import { fetchBackups, backupNow, downloadBackup } from './backups.js';
 import { fetchSettings, updateRegistrationEnabled } from './settings.js';
 import { rebuildPlayerIndex } from './player-index.js';
@@ -326,6 +326,20 @@ function newMembersFor(candidate, existingTeam) {
   return candidate.members.map(m => m.uid).filter(uid => !existingTeam.members.includes(uid));
 }
 
+// Membres déjà dans l'équipe existante dont on SAIT (via currentTagForPlayer — voir
+// team-detect.js) qu'ils ne portent plus ce tag désormais (changement d'équipe, ou tag
+// retiré). Les membres dont le pseudo actuel est inconnu (undefined, jamais aucune partie
+// avec niceName importée) NE sont PAS retirés : on ne peut rien affirmer sur eux — ça couvre
+// aussi bien un membre ajouté manuellement qui n'a jamais porté de tag que quelqu'un dont les
+// dernières parties n'ont simplement pas de niceName.
+function leftMembersFor(tagKey, existingTeam) {
+  if (!existingTeam) return [];
+  return existingTeam.members.filter(uid => {
+    const current = currentTagForPlayer(uid);
+    return current !== undefined && current !== tagKey;
+  });
+}
+
 function renderTeamDetectionPanel() {
   const candidates = detectTeamsFromNicknames();
   if (!candidates.length) {
@@ -338,15 +352,19 @@ function renderTeamDetectionPanel() {
   const rows = candidates.map(c => {
     const existing = findExistingTeamForTag(c.tag);
     const newUids = newMembersFor(c, existing);
+    const leftUids = existing ? leftMembersFor(c.tag.toLowerCase(), existing) : [];
     const memberNames = c.members.map(m => resolvePlayerName(m.uid)).join(', ');
 
     let status, actionHtml;
     if (!existing) {
       status = `Nouvelle équipe (${c.members.length} joueur(s))`;
       actionHtml = `<button class="btn small primary" data-create-detected-team="${c.tag}">Créer</button>`;
-    } else if (newUids.length) {
-      status = `Équipe "${existing.name}" existante — ${newUids.length} nouveau(x) membre(s)`;
-      actionHtml = `<button class="btn small primary" data-update-detected-team="${c.tag}">Ajouter</button>`;
+    } else if (newUids.length || leftUids.length) {
+      const parts = [];
+      if (newUids.length) parts.push(`${newUids.length} nouveau(x)`);
+      if (leftUids.length) parts.push(`${leftUids.length} parti(s) : ${leftUids.map(resolvePlayerName).join(', ')}`);
+      status = `Équipe "${existing.name}" existante — ${parts.join(' · ')}`;
+      actionHtml = `<button class="btn small primary" data-update-detected-team="${c.tag}">Mettre à jour</button>`;
     } else {
       status = `Équipe "${existing.name}" déjà à jour`;
       actionHtml = '';
@@ -363,7 +381,7 @@ function renderTeamDetectionPanel() {
 
   const hasActionable = candidates.some(c => {
     const existing = findExistingTeamForTag(c.tag);
-    return !existing || newMembersFor(c, existing).length;
+    return !existing || newMembersFor(c, existing).length || leftMembersFor(c.tag.toLowerCase(), existing).length;
   });
 
   return `
@@ -374,8 +392,14 @@ function renderTeamDetectionPanel() {
     ${hasActionable ? `<button class="btn small" id="applyAllDetectedTeamsBtn" style="margin-top:10px;">Tout créer / mettre à jour</button>` : ''}`;
 }
 
-// Crée l'équipe si elle n'existe pas encore, sinon lui ajoute les membres détectés
-// manquants. Utilisé à la fois par les boutons par ligne et par "Tout créer / mettre à jour".
+// Crée l'équipe si elle n'existe pas encore, sinon la RÉCONCILIE avec le pseudo actuel de
+// chaque joueur : ajoute les membres nouvellement détectés sous ce tag ET retire ceux dont on
+// sait positivement (currentTagForPlayer, voir team-detect.js) qu'ils ne le portent plus —
+// un simple ajout ne suffisait pas, un joueur qui change d'équipe restait alors listé dans
+// l'ancienne indéfiniment (bug signalé). Les membres sans info exploitable sur leur pseudo
+// actuel (jamais ajoutés automatiquement, ou aucune partie récente avec niceName) restent en
+// place, voir leftMembersFor(). Utilisé à la fois par les boutons par ligne et par
+// "Tout créer / mettre à jour".
 async function applyDetectedTeam(tag) {
   const candidate = detectTeamsFromNicknames().find(c => c.tag === tag);
   if (!candidate) return;
@@ -385,8 +409,10 @@ async function applyDetectedTeam(tag) {
     return;
   }
   const newUids = newMembersFor(candidate, existing);
-  if (newUids.length) {
-    await apiSend('PUT', `/api/teams/${existing.id}`, { members: [...existing.members, ...newUids] });
+  const leftUids = leftMembersFor(tag.toLowerCase(), existing);
+  if (newUids.length || leftUids.length) {
+    const members = existing.members.filter(uid => !leftUids.includes(uid)).concat(newUids);
+    await apiSend('PUT', `/api/teams/${existing.id}`, { members });
   }
 }
 

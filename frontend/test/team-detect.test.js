@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { detectTeamsFromNicknames } from '../src/team-detect.js';
+import { detectTeamsFromNicknames, currentTagForPlayer } from '../src/team-detect.js';
 
 function resetState() {
   state.gamesById = {};
@@ -72,6 +72,42 @@ test('resolves merged aliases to their canonical uid before grouping', () => {
   const teams = detectTeamsFromNicknames();
   assert.equal(teams.length, 1);
   assert.deepEqual(teams[0].members.map(m => m.uid).sort(), ['u1', 'u2']); // pas 'aliasOfU1'
+});
+
+test('currentTagForPlayer returns the tag from the player\'s most recent nickname, lowercased', () => {
+  resetState();
+  state.gamesById = {
+    g1: game('g1', '2026-01-01T00:00:00Z', [['u1', 'ALPHAxJoueur1']]),
+  };
+  assert.equal(currentTagForPlayer('u1'), 'alpha');
+});
+
+test('currentTagForPlayer returns null (not undefined) when the player\'s current nickname carries no tag — we KNOW they have none', () => {
+  resetState();
+  state.gamesById = {
+    g1: game('g1', '2026-01-01T00:00:00Z', [['u1', 'ALPHAxJoueur1']]),
+    g2: game('g2', '2026-02-01T00:00:00Z', [['u1', 'Joueur1']]), // a quitté le tag depuis
+  };
+  assert.equal(currentTagForPlayer('u1'), null);
+});
+
+test('currentTagForPlayer returns undefined (not null) when nothing is known about the player\'s current nickname', () => {
+  resetState();
+  assert.equal(currentTagForPlayer('never-seen'), undefined);
+});
+
+test('currentTagForPlayer reflects a team CHANGE: the player\'s new tag, not their old one, even though both tags still meet the 2-member threshold', () => {
+  resetState();
+  state.gamesById = {
+    g1: game('g1', '2026-01-01T00:00:00Z', [['u1', 'ALPHAxJoueur1'], ['u2', 'ALPHAxJoueur2']]),
+    // u1 rejoint BETA ensuite (ALPHA et BETA ont chacune encore >= 2 membres après ça)
+    g2: game('g2', '2026-02-01T00:00:00Z', [['u1', 'BETAxJoueur1'], ['u3', 'BETAxJoueur3']]),
+  };
+  assert.equal(currentTagForPlayer('u1'), 'beta');
+  const teams = detectTeamsFromNicknames();
+  const alpha = teams.find(t => t.tag.toLowerCase() === 'alpha');
+  // u1 ne doit plus être listé dans ALPHA maintenant que son pseudo le plus récent est sous BETA.
+  assert.ok(!alpha || !alpha.members.some(m => m.uid === 'u1'));
 });
 
 test('sorts detected teams by member count descending', () => {

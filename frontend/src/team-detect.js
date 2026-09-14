@@ -67,3 +67,21 @@ export function detectTeamsFromNicknames() {
     .filter(t => t.members.length >= MIN_TEAM_MEMBERS)
     .sort((a, b) => b.members.length - a.members.length);
 }
+
+// Tag actuel d'un joueur d'après son pseudo brut le plus récent — INDÉPENDANT du seuil
+// MIN_TEAM_MEMBERS (contrairement à detectTeamsFromNicknames() ci-dessus, qui ne retient que
+// les tags partagés par au moins 2 joueurs). Sert à réconcilier une équipe déjà persistée côté
+// serveur (voir comptes.js::applyDetectedTeam()) : il faut pouvoir affirmer qu'un joueur a
+// QUITTÉ un tag même s'il en est désormais le seul porteur (donc absent de tout candidat).
+//
+// Renvoie undefined si on n'a AUCUNE info exploitable sur son pseudo actuel (aucune partie
+// avec niceName importée pour ce joueur) — à distinguer explicitement de null (on SAIT que son
+// pseudo actuel ne porte plus aucun tag). Cette distinction est ce qui permet de ne jamais
+// retirer à tort un membre ajouté manuellement (jamais eu de tag observable) tout en retirant
+// bien un membre dont on sait positivement qu'il a changé/quitté son tag.
+export function currentTagForPlayer(uid) {
+  const latest = latestRawNicknames()[uid];
+  if (!latest) return undefined;
+  const m = TEAM_TAG_RE.exec(latest.name);
+  return m ? m[1].toLowerCase() : null;
+}
