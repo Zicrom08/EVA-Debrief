@@ -9,6 +9,24 @@ avoir à copier-coller une URL ou un jeton à la main.
 (section "Collecteur de données") pour le détail des raisons. Ces plateformes restent
 sur le userscript, qui fonctionne très bien pour elles.
 
+## ⚠️ Domaines ciblés en dur dans `manifest.json`
+
+Contrairement à une première version qui utilisait `<all_urls>` (portée universelle,
+mais ambiguë vis-à-vis du réglage runtime "Accès aux sites" — voir Diagnostic
+ci-dessous), `manifest.json` liste maintenant **explicitement** les trois domaines
+réellement utilisés (`host_permissions` + `content_scripts.matches`) :
+
+- `https://app.eva.gg/*` — le site EVA lui-même (capture).
+- `https://zicrom08.github.io/*` — le frontend EVA-Debrief (GitHub Pages).
+- `https://zicrom.ddns.net/*` — le backend EVA-Debrief (l'API `/api/import`).
+
+**Si ton déploiement EVA-Debrief vit à une autre adresse** (backend et/ou frontend
+différents de ceux-ci), l'extension ne capturera ni ne poussera RIEN tant que tu n'as
+pas remplacé ces trois URLs par les tiennes dans `manifest.json` (les deux clés
+`host_permissions` et `content_scripts[].matches`, à garder synchronisées) avant de
+charger l'extension. Chrome n'affiche alors aucune erreur visible — les content
+scripts s'injectent simplement pas sur un domaine non listé, silencieusement.
+
 ## Installation (chargement décompressé — pas de store pour l'instant)
 
 1. Ouvre `chrome://extensions` (ou `edge://extensions`, ou l'équivalent dans Kiwi
@@ -43,20 +61,17 @@ ajoutés, ou l'erreur si un push a échoué).
 - Révoquer/régénérer le jeton depuis EVA-Debrief (onglet "+ Importer") invalide
   immédiatement la liaison — reclique "Lier l'extension" pour la refaire avec un
   nouveau jeton.
-- **"Accès aux sites" doit être sur "Sur tous les sites"** — piège réel rencontré :
-  `host_permissions: ["<all_urls>"]` dans `manifest.json` ne suffit **pas** à lui seul
-  à exempter les envois du CORS normal du web. Si le réglage **"Accès aux sites"**
-  (`chrome://extensions` → cette extension → **Détails**) est sur "Sur clic" ou "Sur
-  des sites spécifiques" au lieu de **"Sur tous les sites"**, chaque envoi échoue
-  silencieusement par CORS (`blocked by CORS policy... preflight request`), visible
-  uniquement dans la console du service worker, jamais dans le popup — sauf depuis la
-  correction qui ajoute une bannière dédiée dans le popup avec un bouton pour corriger
-  ce réglage en un clic. Si le popup affiche cette bannière (ou si la console montre
-  cette erreur CORS précise), c'est la cause : passe "Accès aux sites" sur "Sur tous
-  les sites" et réessaie. **"Sur des sites spécifiques" avec le bon domaine sélectionné
-  ne suffit PAS non plus** (confirmé en pratique) — seul "Sur tous les sites" fonctionne
-  de façon fiable, même si le domaine du backend est déjà correctement listé dans les
-  sites spécifiques.
+- **"Accès aux sites" doit couvrir les 3 domaines listés dans `manifest.json`**
+  (`chrome://extensions` → cette extension → **Détails** → "Accès aux sites") — piège
+  réel rencontré : avec l'ancienne version en `<all_urls>`, `host_permissions` seul ne
+  suffisait **pas** à exempter les envois du CORS normal du web tant que ce réglage
+  runtime n'était pas sur **"Sur tous les sites"** — "Sur des sites spécifiques", même
+  avec le bon domaine sélectionné, ne suffisait pas non plus (confirmé en pratique).
+  Depuis que `manifest.json` déclare des domaines précis plutôt que `<all_urls>`
+  (voir plus haut), Chrome accorde normalement l'accès à ces domaines exacts au
+  chargement, sans cette ambiguïté — si le popup affiche quand même la bannière rouge
+  "Accès aux sites" (ou si la console montre `blocked by CORS policy... preflight
+  request`), vérifie ce réglage manuellement et republie-le sur ces 3 domaines si besoin.
 - Une version instrumentée (`browser-extension-debug/`, journal détaillé de chaque
   étape) existe pour diagnostiquer un cas qui ne rentre dans aucun des cas ci-dessus —
   voir `browser-extension-debug/README.md`.

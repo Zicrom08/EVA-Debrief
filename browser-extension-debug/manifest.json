@@ -4,7 +4,11 @@
   "version": "1.0.0",
   "description": "Version de diagnostic de l'extension EVA-Debrief : journalise chaque étape (capture, relais, configuration, envoi HTTP, réponse) dans la console du service worker. Ne pas utiliser au quotidien — voir browser-extension-debug/README.md.",
   "permissions": ["storage", "activeTab"],
-  "host_permissions": ["<all_urls>"],
+  "host_permissions": [
+    "https://app.eva.gg/*",
+    "https://zicrom08.github.io/*",
+    "https://zicrom.ddns.net/*"
+  ],
   "background": {
     "service_worker": "background.js"
   },
@@ -17,13 +21,13 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://app.eva.gg/*"],
       "js": ["content-main-world.js"],
       "world": "MAIN",
       "run_at": "document_start"
     },
     {
-      "matches": ["<all_urls>"],
+      "matches": ["https://app.eva.gg/*", "https://zicrom08.github.io/*", "https://zicrom.ddns.net/*"],
       "js": ["content-isolated.js"],
       "run_at": "document_idle"
     }

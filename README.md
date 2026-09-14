@@ -1017,7 +1017,10 @@ plutôt que par copier-coller manuel d'une URL et d'un jeton.
 - **Installation (chargement décompressé, pas de store pour l'instant) :**
   `chrome://extensions` (ou `edge://extensions`, ou l'équivalent dans Kiwi
   Browser) → active le "mode développeur" → "Charger l'extension non
-  empaquetée" → sélectionne le dossier `browser-extension/`.
+  empaquetée" → sélectionne le dossier `browser-extension/`. ⚠️
+  `manifest.json` cible des domaines précis (pas `<all_urls>`) — adapte-les
+  à ton propre déploiement avant de charger l'extension si ce n'est pas déjà
+  fait (voir [`browser-extension/README.md`](browser-extension/README.md)).
 - **Liaison :** connecte-toi sur ton instance EVA-Debrief (rôle `admin` ou
   `contributor`), puis clique **"Lier ce compte EVA-Debrief"** — soit depuis
   le **popup de l'extension** (icône à côté de la barre d'adresse), soit
