@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { findPlayerInGame } from './format.js';
 
-// ================= FILTRE DE PÉRIODE (s'applique à Historique / Tendances / Profil / Comparatif) =================
+// ================= FILTRE DE PÉRIODE (s'applique à Historique / Suivi de performance / Profil / Comparatif) =================
 export function inDateRange(iso) {
   const t = new Date(iso).getTime();
   if (state.dateRangeStart != null && t < state.dateRangeStart) return false;

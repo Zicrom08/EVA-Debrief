@@ -40,7 +40,7 @@ K/D/A/Score/Dégâts/Précision/K-D/KDA/**Rating** (indice façon HLTV, voir
 chaque équipe mise en évidence — **chaque colonne est triable** en cliquant
 son en-tête (inversion du sens au deuxième clic).
 
-**Tendances** — agrégats par séance de jeu ou par mois (parties, V/D,
+**Suivi de performance** — agrégats par séance de jeu ou par mois (parties, V/D,
 winrate, K/D, dégâts et score moyens), avec 4 graphiques d'évolution
 correspondants (taux de victoire, ratio K/D, dégâts moyens, score moyen).
 

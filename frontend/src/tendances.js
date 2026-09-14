@@ -51,7 +51,7 @@ export function aggregateGames(games, uid) {
   };
 }
 
-// Construit les 4 graphiques d'évolution de l'onglet Tendances (taux de victoire, K/D,
+// Construit les 4 graphiques d'évolution de l'onglet Suivi de performance (taux de victoire, K/D,
 // dégâts moyens, score moyen) à partir des lignes déjà agrégées par séance/mois (voir
 // renderTrends) — `rows` y est trié du plus récent au plus ancien pour le tableau, donc on
 // le parcourt à l'envers ici pour afficher les courbes chronologiquement (gauche = plus
@@ -113,7 +113,7 @@ function buildTrendCharts(rows) {
     </div>`;
 }
 
-// Construit l'onglet Tendances (agrégats par séance de jeu ou par mois, sous forme de
+// Construit l'onglet Suivi de performance (agrégats par séance de jeu ou par mois, sous forme de
 // graphiques d'évolution puis de tableau détaillé).
 export function renderTrends() {
   const wrap = document.getElementById('trendTableWrap');

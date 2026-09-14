@@ -23,7 +23,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
 document.getElementById('trendBySession').addEventListener('click', () => setTrendMode('session'));
 document.getElementById('trendByMonth').addEventListener('click', () => setTrendMode('month'));
-// Bascule l'agrégation de l'onglet Tendances entre "par séance" et "par mois".
+// Bascule l'agrégation de l'onglet Suivi de performance entre "par séance" et "par mois".
 export function setTrendMode(mode) {
   state.trendMode = mode;
   document.getElementById('trendBySession').classList.toggle('active', mode === 'session');
