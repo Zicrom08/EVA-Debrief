@@ -53,7 +53,10 @@ ajoutés, ou l'erreur si un push a échoué).
   correction qui ajoute une bannière dédiée dans le popup avec un bouton pour corriger
   ce réglage en un clic. Si le popup affiche cette bannière (ou si la console montre
   cette erreur CORS précise), c'est la cause : passe "Accès aux sites" sur "Sur tous
-  les sites" et réessaie.
+  les sites" et réessaie. **"Sur des sites spécifiques" avec le bon domaine sélectionné
+  ne suffit PAS non plus** (confirmé en pratique) — seul "Sur tous les sites" fonctionne
+  de façon fiable, même si le domaine du backend est déjà correctement listé dans les
+  sites spécifiques.
 - Une version instrumentée (`browser-extension-debug/`, journal détaillé de chaque
   étape) existe pour diagnostiquer un cas qui ne rentre dans aucun des cas ci-dessus —
   voir `browser-extension-debug/README.md`.
