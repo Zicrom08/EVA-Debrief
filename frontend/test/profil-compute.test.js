@@ -1,6 +1,51 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend, computeMatchRatings } from '../src/profil/compute.js';
+import { computeDuoNemesisStats, computeStreaks, computeKDDistribution, computeContributionTrend, computeMatchRatings, computeMatchMvpStats } from '../src/profil/compute.js';
+
+test('computeMatchMvpStats counts a game as MVP only when the player has the single best score across BOTH teams', () => {
+  const games = [
+    // "me" a le meilleur score de son équipe, mais PAS de la partie entière (l'adversaire fait mieux) -> pas MVP.
+    { data: {}, players: [
+      { userId: 'me', data: { team: 'ALLIANCE', score: 2000 } },
+      { userId: 'teammate', data: { team: 'ALLIANCE', score: 500 } },
+      { userId: 'enemy', data: { team: 'REBELS', score: 3000 } },
+    ] },
+    // "me" a bien le meilleur score tous camps confondus -> MVP.
+    { data: {}, players: [
+      { userId: 'me', data: { team: 'ALLIANCE', score: 5000 } },
+      { userId: 'teammate', data: { team: 'ALLIANCE', score: 100 } },
+      { userId: 'enemy', data: { team: 'REBELS', score: 200 } },
+    ] },
+  ];
+  const stats = computeMatchMvpStats(games, 'me');
+  assert.equal(stats.total, 2);
+  assert.equal(stats.mvpRate, 50);
+  assert.deepEqual(stats.dist, [
+    { label: 'MVP de la partie', n: 1 },
+    { label: 'Pas MVP', n: 1 },
+  ]);
+});
+
+test('computeMatchMvpStats falls back to the isMvp flag on reduced-format games (no full match data)', () => {
+  const games = [
+    { players: [
+      { userId: 'me', isMvp: true, data: { kills: 1 } },
+      { userId: 'other', isMvp: false, data: { kills: 99 } },
+    ] },
+  ];
+  const stats = computeMatchMvpStats(games, 'me');
+  assert.equal(stats.total, 1);
+  assert.equal(stats.mvpRate, 100);
+});
+
+test('computeMatchMvpStats skips games the player did not play, without counting them', () => {
+  const games = [
+    { data: {}, players: [{ userId: 'someone-else', data: { team: 'ALLIANCE', score: 100 } }] },
+  ];
+  const stats = computeMatchMvpStats(games, 'me');
+  assert.equal(stats.total, 0);
+  assert.equal(stats.mvpRate, 0);
+});
 
 test('computeDuoNemesisStats ignores games without a team assignment instead of treating everyone as a teammate', () => {
   // Regression test for the bug documented in CLAUDE.md: p.data.team === x.data.team

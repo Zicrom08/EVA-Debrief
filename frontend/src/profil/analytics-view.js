@@ -6,7 +6,7 @@ import { renderProfil } from './index.js';
 import {
   metricValue, rollingAverage, computeRollingWinRate, computeMapStats, computeModeStats,
   computeDayOfWeekStats, computeTimeOfDayStats, computeSessionFatigue, computeKDDistribution,
-  computeStreaks, bestWorstGames, computeDuoNemesisStats, computeRankStats,
+  computeStreaks, bestWorstGames, computeDuoNemesisStats, computeRankStats, computeMatchMvpStats,
   computeContributionTrend, computeDamageContributionTrend, computeDamageTeamStats,
   computeEfficiencyStats, computeImpactScore,
   computeRatingBaseline, computeRating,
@@ -168,6 +168,9 @@ export function renderGameAnalytics(games, uid) {
   const kdDistRows = kdDist.map(b => distRow(b.label, b.n, kdDistMax)).join('');
   const rankDistMax = Math.max(...rankStats.dist.map(b => b.n), 1);
   const rankRows = rankStats.dist.map(b => distRow(b.label, b.n, rankDistMax)).join('');
+  const matchMvpStats = computeMatchMvpStats(games, uid);
+  const matchMvpDistMax = Math.max(...matchMvpStats.dist.map(b => b.n), 1);
+  const matchMvpRows = matchMvpStats.dist.map(b => distRow(b.label, b.n, matchMvpDistMax)).join('');
 
   const duoNemesis = computeDuoNemesisStats(games, uid, 3);
   const duoRows = duoNemesis.duoArr.slice(0, 5)
@@ -269,14 +272,14 @@ export function renderGameAnalytics(games, uid) {
         <div class="bar-list">${rankRows}</div>
       </div>
       <div>
-        <div class="section-title">Contribution au score d'équipe</div>
-        <div class="chart-card">${contribChart}</div>
+        <div class="section-title">Classement MVP de la partie</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          À quelle fréquence tu es le meilleur joueur de la partie ENTIÈRE, tous camps
+          confondus — plus exigeant qu'être 1er de ta propre équipe (voir "Classement dans
+          l'équipe" à gauche).
+        </div>
+        <div class="bar-list">${matchMvpRows}</div>
       </div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Contribution aux dégâts d'équipe</div>
-      <div class="chart-card">${dmgContribChart}</div>
     </div>
 
     <div class="analytics-section">
@@ -286,6 +289,16 @@ export function renderGameAnalytics(games, uid) {
         <div class="streak-card"><div class="streak-label">Tes dégâts moyens / partie</div><div class="streak-value">${dmgTeamStats.avgPlayerDmg.toLocaleString('fr-FR')}</div></div>
         <div class="streak-card"><div class="streak-label">Ta part moyenne des dégâts</div><div class="streak-value" style="color:var(--gold)">${dmgTeamStats.avgContribPct}%</div></div>
       </div>
+    </div>
+
+    <div class="analytics-section">
+      <div class="section-title">Contribution au score d'équipe</div>
+      <div class="chart-card">${contribChart}</div>
+    </div>
+
+    <div class="analytics-section">
+      <div class="section-title">Contribution aux dégâts d'équipe</div>
+      <div class="chart-card">${dmgContribChart}</div>
     </div>
 
     <div class="analytics-grid-2">

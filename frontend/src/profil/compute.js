@@ -1,4 +1,4 @@
-import { findPlayerInGame, resolvePlayerName, hasFullMatchData } from '../format.js';
+import { findPlayerInGame, resolvePlayerName, hasFullMatchData, findMvp } from '../format.js';
 import { computeSessions } from '../tendances.js';
 import { canonicalUid } from '../player-links.js';
 
@@ -282,6 +282,29 @@ export function computeRankStats(games, uid) {
   Object.entries(counts).forEach(([r, n]) => { if (Number(r) > 4) rest += n; });
   if (rest > 0) dist.push({ label: 'Rang 5+', n: rest });
   const mvpCount = counts[1] || 0;
+  const mvpRate = total ? Math.round((mvpCount / total) * 100) : 0;
+  return { dist, total, mvpRate };
+}
+
+// Taux de MVP DE LA PARTIE (le meilleur joueur tous camps confondus, voir findMvp() dans
+// format.js) — distinct du "MVP équipe" de computeRankStats ci-dessus, qui ne classe le
+// joueur qu'au sein de sa propre équipe (p.data.rank, fourni tel quel par EVA). Être 1er de
+// son équipe n'implique pas d'être LE meilleur joueur de la partie entière : deux mesures
+// complémentaires, affichées côte à côte dans le Profil (voir analytics-view.js). Comparaison
+// par référence (mvp === p) plutôt que par uid : les deux viennent du même g.players, une
+// égalité de référence est plus simple et évite de re-résoudre l'alias canonique deux fois.
+export function computeMatchMvpStats(games, uid) {
+  let mvpCount = 0, total = 0;
+  games.forEach(g => {
+    const p = findPlayerInGame(g, uid);
+    if (!p) return;
+    total++;
+    if (findMvp(g) === p) mvpCount++;
+  });
+  const dist = [
+    { label: 'MVP de la partie', n: mvpCount },
+    { label: 'Pas MVP', n: total - mvpCount },
+  ];
   const mvpRate = total ? Math.round((mvpCount / total) * 100) : 0;
   return { dist, total, mvpRate };
 }
