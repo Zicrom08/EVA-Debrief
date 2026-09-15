@@ -52,7 +52,7 @@ function applyRolePermissions() {
   if (label) label.textContent = user ? `${user.username} (${roleLabel(user.role)})` : '';
   const isReadonly = user && user.role === 'readonly';
   const isAdmin = user && user.role === 'admin';
-  document.getElementById('importTabBtn').style.display = isReadonly ? 'none' : '';
+  document.getElementById('addMoreBtn').style.display = isReadonly ? 'none' : '';
   document.getElementById('toggleSelectionModeBtn').style.display = isReadonly ? 'none' : '';
   document.getElementById('resetBtn').style.display = isAdmin ? '' : 'none';
   document.getElementById('comptesTabBtn').style.display = isAdmin ? '' : 'none';
@@ -106,6 +106,11 @@ export function renderSummary(){
     <div class="cell"><div class="label">Précision moyenne</div><div class="value">${agg.avgAcc == null ? '<span style="color:var(--muted);">n/d</span>' : agg.avgAcc + '%'}</div></div>
   `;
 }
+
+// Bouton du header (visible dès que l'app est affichée) — juste un raccourci vers l'onglet
+// "+ Importer" (voir tabs.js::activateTab()), qui porte tout le contenu réel depuis le
+// dernier remaniement ; plus de scrollIntoView vers un bloc en bas de page.
+document.getElementById('addMoreBtn').addEventListener('click', () => activateTab('import'));
 
 document.getElementById('resetBtn').addEventListener('click', async () => {
   if (!confirm('Vider TOUTES les données stockées sur le serveur (parties, profils, équipes) ? Cette action est irréversible et concerne tout le monde qui utilise ce serveur.')) return;
