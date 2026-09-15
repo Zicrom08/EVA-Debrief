@@ -1,6 +1,7 @@
 @import "styles/tokens.css";
 @import "styles/base.css";
 @import "styles/shell.css";
+@import "styles/changelog.css";
 @import "styles/tables.css";
 @import "styles/historique.css";
 @import "styles/groups.css";

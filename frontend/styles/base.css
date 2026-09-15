@@ -82,6 +82,9 @@ header{
 .btn.primary{background:var(--alliance);color:#0a0d14;border-color:var(--alliance);font-weight:700;}
 .btn.primary:hover{filter:brightness(1.08);}
 .btn.danger{background:transparent;color:var(--loss);border-color:#3a1c22;}
+/* Bouton carré à glyphe unique (ex: 🆕 changelog, voir changelog.css) — par opposition à
+   .btn seul, taillé pour du texte. */
+.icon-btn{padding:8px 10px;font-size:15px;line-height:1;}
 .btn.small{padding:6px 12px;font-size:12px;}
 .btn.active{background:var(--alliance);color:#0a0d14;border-color:var(--alliance);font-weight:700;}
 

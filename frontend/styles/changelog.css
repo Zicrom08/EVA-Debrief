@@ -1,0 +1,29 @@
+/* Infobulle "dernières nouveautés" du header (voir frontend/src/changelog.js). Positionnée en
+   absolu par rapport à .changelog-wrap (le seul ancêtre en position:relative), pas par
+   rapport au bouton lui-même : évite tout calcul JS de position, se recale seul si le
+   contenu grandit. Alignée à droite (right:0) pour ne jamais déborder hors de la fenêtre,
+   le bouton étant tout à droite du header. */
+.changelog-wrap{position:relative;display:inline-flex;}
+.changelog-tooltip{
+  position:absolute;top:calc(100% + 10px);right:0;z-index:50;
+  width:320px;max-width:calc(100vw - 32px);max-height:min(420px, 70vh);overflow-y:auto;
+  background:var(--panel);border:1px solid var(--line);border-radius:10px;
+  padding:14px 16px;box-shadow:0 10px 28px rgba(0,0,0,0.45);
+  font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+/* Petite flèche pointant vers le bouton, effet "vrai tooltip" plutôt qu'un panneau flottant sans lien visuel. */
+.changelog-tooltip::before{
+  content:'';position:absolute;top:-6px;right:14px;width:12px;height:12px;
+  background:var(--panel);border-left:1px solid var(--line);border-top:1px solid var(--line);
+  transform:rotate(45deg);
+}
+.changelog-title{font-weight:700;font-size:13px;margin-bottom:10px;color:var(--text);}
+.changelog-group{margin-bottom:12px;}
+.changelog-group:last-child{margin-bottom:0;}
+.changelog-date{
+  font-size:11px;color:var(--gold);text-transform:capitalize;
+  font-weight:600;margin-bottom:4px;
+}
+.changelog-group ul{margin:0;padding-left:18px;}
+.changelog-group li{font-size:12.5px;color:var(--muted);line-height:1.5;margin-bottom:4px;}
+.changelog-group li:last-child{margin-bottom:0;}

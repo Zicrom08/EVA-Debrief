@@ -26,6 +26,7 @@
 //   tabs.js          bascule entre onglets
 //   filters-ui.js    barre de filtres (période, exclusion cartes/modes)
 //   import.js        écran d'import (glisser-déposer, coller du JSON)
+//   changelog.js     infobulle "dernières nouveautés" du header
 // ============================================================================
 
 import { state } from './state.js';
@@ -37,6 +38,7 @@ import { showApp } from './shell.js';
 import './tabs.js';
 import './filters-ui.js';
 import './import.js';
+import './changelog.js';
 
 // ================= DÉMARRAGE : chargement des données depuis le serveur =================
 (async function init() {
