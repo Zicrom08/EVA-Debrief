@@ -186,9 +186,8 @@ export function renderSeasonCard(snaps, baseline, games) {
 // Construit le tableau d'évolution entre chaque capture successive du profil (toutes les stats de saison, dont la distance parcourue).
 export function renderEvolutionTable(snaps) {
   const rowsArr = [];
-  for (let i = 1; i < snaps.length; i++) {
-    const prevExp = snaps[i-1].experience || {};
-    const curExp = snaps[i].experience || {};
+  let i = 1;
+  while (i < snaps.length) {
     const prevSid = snapshotSeasonId(snaps[i-1]);
     const curSid = snapshotSeasonId(snaps[i]);
 
@@ -197,19 +196,47 @@ export function renderEvolutionTable(snaps) {
     // absurdes (compteurs remis à zéro) plutôt qu'une vraie régression. On le signale
     // explicitement au lieu de calculer une évolution qui n'a pas de sens ici.
     if (prevSid != null && curSid != null && prevSid !== curSid) {
-      rowsArr.push(`
-      <tr>
-        <td class="name-cell">${fmtDateShort(snaps[i-1].capturedAt)} → ${fmtDateShort(snaps[i].capturedAt)}</td>
-        <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
-          Nouvelle saison (${displaySeasonId(prevSid)} → ${displaySeasonId(curSid)}) — compteurs remis à zéro, pas de delta calculé.
-        </td>
-      </tr>`);
+      // Étend la plage tant que CHAQUE paire consécutive est ELLE AUSSI une transition (une
+      // suite de saisons qui n'ont chacune qu'une seule capture connue, sans aucune ligne de
+      // delta réel entre elles) — pour fusionner toute cette plage en UNE SEULE ligne plutôt
+      // que d'en afficher une par saison traversée. Rencontré en pratique lors d'un premier
+      // import massif : plusieurs anciennes saisons n'ayant chacune qu'une capture isolée
+      // noyaient le tableau sous des lignes "Nouvelle saison" à répétition.
+      const left = i - 1;
+      let right = i;
+      while (right + 1 < snaps.length) {
+        const sidCur = snapshotSeasonId(snaps[right]);
+        const sidNext = snapshotSeasonId(snaps[right + 1]);
+        if (sidCur != null && sidNext != null && sidCur !== sidNext) right++;
+        else break;
+      }
+      const seasonsCrossed = right - left;
+      if (seasonsCrossed <= 1) {
+        rowsArr.push(`
+        <tr>
+          <td class="name-cell">${fmtDateShort(snaps[left].capturedAt)} → ${fmtDateShort(snaps[right].capturedAt)}</td>
+          <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
+            Nouvelle saison (${displaySeasonId(prevSid)} → ${displaySeasonId(snapshotSeasonId(snaps[right]))}) — compteurs remis à zéro, pas de delta calculé.
+          </td>
+        </tr>`);
+      } else {
+        rowsArr.push(`
+        <tr>
+          <td class="name-cell">${fmtDateShort(snaps[left].capturedAt)} → ${fmtDateShort(snaps[right].capturedAt)}</td>
+          <td class="num" colspan="14" style="text-align:left;color:var(--muted);font-style:italic;">
+            ${seasonsCrossed} changements de saison (${displaySeasonId(prevSid)} → ${displaySeasonId(snapshotSeasonId(snaps[right]))}) — une seule capture par saison sur cette plage, aucun delta calculable.
+          </td>
+        </tr>`);
+      }
+      i = right + 1;
       continue;
     }
 
+    const prevExp = snaps[i-1].experience || {};
+    const curExp = snaps[i].experience || {};
     const prev = normalizeSnapshotStats(snaps[i-1]);
     const cur = normalizeSnapshotStats(snaps[i]);
-    if (!prev || !cur) continue; // capture sans aucune stat exploitable (fragment isolé) — rien à comparer
+    if (!prev || !cur) { i++; continue; } // capture sans aucune stat exploitable (fragment isolé) — rien à comparer
     // Le nouveau format d'EVA (battleArenaStatistics) ne fournit plus le temps de jeu ni
     // les dégâts : un delta n'a de sens que si les DEUX captures les fournissent.
     const hasPlaytime = prev.hasPlaytime && cur.hasPlaytime;
@@ -251,6 +278,7 @@ export function renderEvolutionTable(snaps) {
         <td class="num">${dBestStreak>0 ? fmtDelta(dBestStreak) : '—'}</td>
         <td class="num">${dBestDmg==null ? NA : (dBestDmg>0 ? fmtDelta(dBestDmg) : '—')}</td>
       </tr>`);
+    i++;
   }
   const rows = rowsArr.reverse().join('');
   return `
