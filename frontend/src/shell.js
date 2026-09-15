@@ -79,7 +79,14 @@ function rankCellHtml() {
 // ================= SUMMARY =================
 export function renderSummary(){
   const box = document.getElementById('summary');
-  if (!state.currentUid) { box.innerHTML = ''; return; }
+  if (!state.currentUid) {
+    box.innerHTML = `<div class="cell" style="grid-column:1/-1;">
+      <div class="value" style="font-size:16px;font-weight:500;color:var(--muted);">
+        👆 Sélectionne un joueur dans la barre en haut pour voir ses statistiques.
+      </div>
+    </div>`;
+    return;
+  }
   const games = filteredGamesArray().filter(g => findPlayerInGame(g, state.currentUid));
   if (!games.length) {
     box.innerHTML = `${rankCellHtml()}<div class="cell" style="grid-column:span 7;"><div class="label">Joueur sélectionné</div>

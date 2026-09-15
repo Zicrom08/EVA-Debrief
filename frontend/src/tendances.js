@@ -126,7 +126,12 @@ export function renderTrends() {
   const uid = state.currentUid;
   const games = filteredGamesArray();
 
-  if (!uid || !games.some(g => findPlayerInGame(g, uid))) {
+  if (!uid) {
+    wrap.innerHTML = '<div class="detail-empty">👆 Sélectionne un joueur en haut de la page pour voir son suivi de performance.</div>';
+    if (chartsWrap) chartsWrap.innerHTML = '';
+    return;
+  }
+  if (!games.some(g => findPlayerInGame(g, uid))) {
     wrap.innerHTML = '<div class="detail-empty">Aucune partie dans la période sélectionnée pour ce joueur.</div>';
     if (chartsWrap) chartsWrap.innerHTML = '';
     return;

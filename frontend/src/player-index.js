@@ -64,9 +64,14 @@ export function rebuildPlayerIndex() {
   // complète des parties et des snapshots ci-dessus, pour toujours l'emporter.
   applyPlayerNameOverrides(state.players);
 
-  const sorted = Object.entries(state.players).sort((a,b)=>b[1].games-a[1].games);
-  if (!state.currentUid || !state.players[state.currentUid]) {
-    state.currentUid = sorted.length ? sorted[0][0] : null;
+  // Ne présélectionne PLUS automatiquement "le joueur avec le plus de parties" — demande
+  // explicite : arriver sur le site sans joueur choisi, avec une invite visuelle à en
+  // rechercher un (voir wirePlayerPickerEvents() plus bas, .needs-player dans base.css).
+  // Seule la VALIDITÉ de la sélection actuelle est encore vérifiée ici : un uid qui ne
+  // correspond plus à personne (joueur fusionné/supprimé depuis la dernière sélection) est
+  // réinitialisé à null, jamais remplacé par un choix automatique.
+  if (state.currentUid && !state.players[state.currentUid]) {
+    state.currentUid = null;
   }
 }
 
@@ -87,6 +92,7 @@ let pickerHighlightIndex = -1;
 export function renderPlayerPicker() {
   const input = document.getElementById('playerPicker');
   input.value = playerLabel(state.currentUid);
+  input.classList.toggle('needs-player', !state.currentUid);
   wirePlayerPickerEvents();
 }
 
@@ -137,6 +143,7 @@ function wirePlayerPickerEvents() {
   function selectPlayer(uid) {
     state.currentUid = uid;
     input.value = playerLabel(uid);
+    input.classList.remove('needs-player');
     hideList();
     if (state.profileCompareUid === state.currentUid) state.profileCompareUid = null;
     state.mapDeepDiveSelection = null;

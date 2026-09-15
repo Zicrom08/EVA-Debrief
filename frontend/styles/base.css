@@ -41,6 +41,16 @@ header{
   font-size:13px;width:220px;max-width:100%;
 }
 #playerPicker:focus{outline:none;border-color:var(--gold);}
+/* Invite visuelle : aucun joueur sélectionné à l'arrivée sur le site (voir
+   player-index.js::rebuildPlayerIndex(), qui ne présélectionne plus personne
+   automatiquement) — pulsation dorée pour attirer l'œil vers ce champ tant qu'aucun choix
+   n'a été fait. Retirée dès qu'un joueur est sélectionné (voir renderPlayerPicker()). */
+@keyframes playerPickerPulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(255,200,87,0.55);border-color:var(--gold);}
+  50%{box-shadow:0 0 0 7px rgba(255,200,87,0);border-color:var(--line);}
+}
+#playerPicker.needs-player{animation:playerPickerPulse 1.7s ease-in-out infinite;}
+#playerPicker.needs-player::placeholder{color:var(--gold);}
 .combobox-list{
   position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;
   background:var(--panel);border:1px solid var(--line);border-radius:8px;

@@ -35,7 +35,11 @@ export function renderProfilMain(uid) {
 
   let html = '';
 
-  if (snaps && snaps.length) {
+  if (!uid) {
+    html += `<div class="detail-empty" style="margin-top:0;">
+      👆 Sélectionne un joueur dans la barre en haut de la page pour voir son profil.
+    </div>`;
+  } else if (snaps && snaps.length) {
     html += renderSeasonCard(snaps, baseline, games);
     if (snaps.length > 1) {
       html += renderEvolutionTable(snaps);

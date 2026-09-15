@@ -8,11 +8,14 @@ import { state } from './state.js';
 // au rechargement.
 const UI_PREFS_KEY = 'eva_ui_prefs_v1';
 
-// Sauvegarde les préférences d'affichage (joueur sélectionné, filtres...) dans le localStorage du navigateur — les données elles-mêmes vivent sur le serveur, ceci ne concerne que le confort d'affichage.
+// Sauvegarde les préférences d'affichage (filtres...) dans le localStorage du navigateur —
+// les données elles-mêmes vivent sur le serveur, ceci ne concerne que le confort d'affichage.
+// currentUid n'est PLUS persisté ici volontairement : le joueur sélectionné doit repartir de
+// zéro à chaque arrivée sur le site (voir player-index.js::rebuildPlayerIndex()), pas être
+// restauré silencieusement d'une session à l'autre.
 export function persistUiPrefs() {
   try {
     localStorage.setItem(UI_PREFS_KEY, JSON.stringify({
-      currentUid: state.currentUid,
       excludedMaps: Array.from(state.excludedMaps),
       excludedModes: Array.from(state.excludedModes),
       knownModes: Array.from(state.knownModes),
@@ -23,13 +26,12 @@ export function persistUiPrefs() {
     state.storageAvailable = false;
   }
 }
-// Recharge les préférences d'affichage sauvegardées au démarrage.
+// Recharge les préférences d'affichage sauvegardées au démarrage (jamais currentUid, voir plus haut).
 export function restoreUiPrefs() {
   try {
     const raw = localStorage.getItem(UI_PREFS_KEY);
     if (!raw) return;
     const saved = JSON.parse(raw);
-    state.currentUid = saved.currentUid || null;
     state.excludedMaps = new Set(saved.excludedMaps || []);
     state.excludedModes = new Set(saved.excludedModes || []);
     state.knownModes = new Set(saved.knownModes || []);
