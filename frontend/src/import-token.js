@@ -1,6 +1,6 @@
 import { apiGet, apiSend } from './api.js';
 import { state } from './state.js';
-import { API_BASE } from './api-base.js';
+import { API_BASE, pageUrl } from './api-base.js';
 
 // ================= JETON D'IMPORT PERSONNEL (pont collecteur, admin/contributor) =================
 // Simples enveloppes autour de l'API — la logique elle-même (génération, révocation, contrôle
@@ -93,7 +93,7 @@ function renderPanelContent(container, token) {
     </div>
     <div class="import-extension-row">
       <div class="import-extension-actions">
-        <a class="btn small" href="/downloads/eva-debrief-extension.zip" download>⬇️ Télécharger l'extension (.zip)</a>
+        <a class="btn small" href="${pageUrl('downloads/eva-debrief-extension.zip')}" download>⬇️ Télécharger l'extension (.zip)</a>
         <button class="btn small" id="linkExtensionBtn">Lier l'extension EVA-Debrief</button>
       </div>
       <div id="extensionLinkStatus" style="color:var(--muted);font-size:12px;margin-top:4px;"></div>
