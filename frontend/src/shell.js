@@ -4,18 +4,16 @@ import { apiSend } from './api.js';
 import { clearUiPrefs } from './ui-prefs.js';
 import { filteredGamesArray } from './game-filters.js';
 import { renderList, renderCompositionPanel } from './historique.js';
-import { renderProfil } from './profil/index.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
 import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } from './filters-ui.js';
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
-import { renderImportTokenPanel } from './import-token.js';
 import { renderSelectionBar } from './game-groups.js';
+import { activateTab } from './tabs.js';
 
 // ================= APP SHELL =================
 export function showApp() {
-  document.getElementById('importScreen').style.display = 'none';
   document.getElementById('headerActions').style.display = 'flex';
   document.getElementById('summary').style.display = 'grid';
   document.getElementById('tabbar').style.display = 'flex';
@@ -26,7 +24,6 @@ export function showApp() {
   document.getElementById('brandSub').textContent =
     `${gCount} partie(s) · ${sCount} profil(s) capturé(s) · ${storageNote}`;
   applyRolePermissions();
-  renderImportTokenPanel();
   renderPlayerPicker();
   renderMapFilterOptions();
   renderMapExcludePanel();
@@ -36,7 +33,7 @@ export function showApp() {
   renderCompositionPanel();
   renderList();
   renderSelectionBar();
-  renderProfil();
+  activateTab('profil'); // toujours l'onglet d'atterrissage — voir tabs.js
   state.activeGameId = null;
   state.activeGroupId = null;
   document.getElementById('detail').innerHTML =
@@ -55,7 +52,7 @@ function applyRolePermissions() {
   if (label) label.textContent = user ? `${user.username} (${roleLabel(user.role)})` : '';
   const isReadonly = user && user.role === 'readonly';
   const isAdmin = user && user.role === 'admin';
-  document.getElementById('addMoreBtn').style.display = isReadonly ? 'none' : '';
+  document.getElementById('importTabBtn').style.display = isReadonly ? 'none' : '';
   document.getElementById('toggleSelectionModeBtn').style.display = isReadonly ? 'none' : '';
   document.getElementById('resetBtn').style.display = isAdmin ? '' : 'none';
   document.getElementById('comptesTabBtn').style.display = isAdmin ? '' : 'none';
@@ -110,11 +107,6 @@ export function renderSummary(){
   `;
 }
 
-document.getElementById('addMoreBtn').addEventListener('click', () => {
-  document.getElementById('importScreen').style.display = 'block';
-  document.getElementById('importScreen').scrollIntoView({behavior:'smooth'});
-});
-
 document.getElementById('resetBtn').addEventListener('click', async () => {
   if (!confirm('Vider TOUTES les données stockées sur le serveur (parties, profils, équipes) ? Cette action est irréversible et concerne tout le monde qui utilise ce serveur.')) return;
   try {
@@ -144,12 +136,8 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   document.getElementById('rangeFrom').value = '';
   document.getElementById('rangeTo').value = '';
   document.getElementById('seasonFilter').innerHTML = '<option value="">Toutes les saisons</option>';
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById('viewProfil').classList.add('active');
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelector('.tab-btn[data-tab="profil"]').classList.add('active');
+  activateTab('import'); // revient à l'état "fraîchement installé" (voir tabs.js/index.html)
   document.getElementById('brandSub').textContent = 'Aucune donnée importée';
-  document.getElementById('importScreen').style.display = 'block';
 });
 
 document.getElementById('logoutBtn').addEventListener('click', async () => {

@@ -22,10 +22,11 @@ export async function revokeImportToken() {
   return apiSend('DELETE', '/api/import-token');
 }
 
-// Rendu + câblage du panneau dans #importScreen (voir frontend/index.html). Invisible pour un
-// compte readonly (même contrôle de rôle qu'ailleurs dans l'app, voir applyRolePermissions()
-// dans shell.js) : readonly n'a de toute façon pas le droit de pousser des données (voir
-// requireImportAccess côté serveur), pas la peine de lui montrer un jeton inutilisable.
+// Rendu + câblage du panneau dans l'onglet "+ Importer" (#viewImport, voir frontend/index.html
+// et tabs.js::activateTab()). Invisible pour un compte readonly (même contrôle de rôle qu'ailleurs
+// dans l'app, voir applyRolePermissions() dans shell.js) : readonly n'a de toute façon pas le
+// droit de pousser des données (voir requireImportAccess côté serveur), pas la peine de lui
+// montrer un jeton inutilisable.
 export async function renderImportTokenPanel() {
   const container = document.getElementById('importTokenPanel');
   if (!container) return;

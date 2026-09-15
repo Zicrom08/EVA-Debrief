@@ -26,7 +26,6 @@
       </div>
     </div>
     <button class="btn" id="setDefaultPlayerBtn" type="button">Définir par défaut</button>
-    <button class="btn" id="addMoreBtn">+ Importer</button>
     <button class="btn danger" id="resetBtn">Réinitialiser</button>
     <span id="currentUserLabel" style="color:var(--muted);font-size:12px;"></span>
     <div class="changelog-wrap">
@@ -40,11 +39,12 @@
 <div id="summary" class="summary" style="display:none;"></div>
 
 <div id="tabbar" class="tabbar" style="display:none;">
-  <button class="tab-btn active" data-tab="profil">Profil</button>
+  <button class="tab-btn" data-tab="profil">Profil</button>
   <button class="tab-btn" data-tab="historique">Historique</button>
   <button class="tab-btn" data-tab="tendances">Suivi de performance</button>
   <button class="tab-btn" data-tab="comparatif">Comparatif</button>
   <button class="tab-btn" data-tab="equipes">Équipes</button>
+  <button class="tab-btn active" id="importTabBtn" data-tab="import" style="display:none;">+ Importer</button>
   <button class="tab-btn" id="comptesTabBtn" data-tab="comptes" style="display:none;">Comptes</button>
 </div>
 
@@ -73,7 +73,7 @@
 
 <div id="mapExcludePanel" class="map-exclude-panel" style="display:none;"></div>
 
-<div id="viewProfil" class="view active">
+<div id="viewProfil" class="view">
   <div class="profile-wrap" id="profilContent"></div>
 </div>
 
@@ -125,18 +125,20 @@
   <div class="profile-wrap" id="comptesContent"></div>
 </div>
 
-<div id="importScreen" class="import-wrap">
-  <h2>Importer tes données</h2>
-  <p>La capture se fait normalement toute seule, en arrière-plan, une fois le collecteur (script ou
-    extension navigateur) lié à ton compte ci-dessous. L'import JSON manuel reste disponible pour un
-    besoin ponctuel (première partie d'historique, dépannage…), mais n'est plus la méthode mise en avant.</p>
+<div id="viewImport" class="view active">
+  <div class="import-wrap">
+    <h2>Importer tes données</h2>
+    <p>La capture se fait normalement toute seule, en arrière-plan, une fois le collecteur (script ou
+      extension navigateur) lié à ton compte ci-dessous. L'import JSON manuel reste disponible pour un
+      besoin ponctuel (première partie d'historique, dépannage…), mais n'est plus la méthode mise en avant.</p>
 
-  <div class="import-error" id="importScreenError"></div>
+    <div class="import-error" id="importScreenError"></div>
 
-  <div class="import-token-panel" id="importTokenPanel"></div>
+    <div class="import-token-panel" id="importTokenPanel"></div>
 
-  <div class="import-manual-toggle">
-    <button class="btn small" id="manualImportToggleBtn" type="button">Import manuel (fichier / JSON collé) ▾</button>
+    <div class="import-manual-toggle">
+      <button class="btn small" id="manualImportToggleBtn" type="button">Import manuel (fichier / JSON collé) ▾</button>
+    </div>
   </div>
 </div>
 

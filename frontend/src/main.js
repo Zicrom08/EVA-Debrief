@@ -25,8 +25,8 @@
 //   shell.js         coquille de l'app (résumé, boutons du header)
 //   tabs.js          bascule entre onglets
 //   filters-ui.js    barre de filtres (période, exclusion cartes/modes)
-//   import.js        écran d'import : "pont automatique" (jeton, extension) mis en avant par
-//                     défaut, import JSON manuel (glisser-déposer, coller) replié dans un modal
+//   import.js        onglet "+ Importer" : "pont automatique" (jeton, extension) mis en avant,
+//                     import JSON manuel (glisser-déposer, coller) replié dans un modal
 //   changelog.js     infobulle "dernières nouveautés" du header
 // ============================================================================
 
@@ -59,7 +59,7 @@ import './changelog.js';
     return;
   }
   // Rendu même sans aucune donnée encore importée : c'est désormais la méthode mise en avant par
-  // défaut dans #importScreen (voir index.html), donc un compte admin/contributor tout juste créé
+  // défaut dans l'onglet "+ Importer" (#viewImport, voir index.html), donc un compte admin/contributor tout juste créé
   // doit pouvoir générer son jeton et lier le collecteur sans devoir d'abord passer par un import
   // JSON manuel pour "débloquer" l'écran normal (showApp()).
   renderImportTokenPanel();
