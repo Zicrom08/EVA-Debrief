@@ -1,4 +1,39 @@
 .profile-wrap{padding:24px 32px;max-width:1440px;}
+
+/* Fil d'ancres sticky du Profil (voir renderProfileNav()/wireProfileNav() dans
+   frontend/src/profil/index.js) — collé en haut de la fenêtre au défilement (le header/la
+   barre d'onglets/la barre de filtres ne sont PAS sticky dans cette app, donc rien d'autre
+   ne reste au-dessus une fois qu'on a défilé). Fond identique au fond de page (var(--bg))
+   pour rester visuellement cohérent une fois collé, sans bande de couleur incongrue. */
+.profile-nav{
+  position:sticky;top:0;z-index:6;
+  display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;
+  background:var(--bg);border-bottom:1px solid var(--line);
+  padding:10px 0;margin-bottom:24px;
+}
+.profile-nav-link{
+  flex-shrink:0;padding:7px 14px;border-radius:20px;
+  background:var(--panel);border:1px solid var(--line);color:var(--muted);
+  font-size:12px;font-weight:600;text-decoration:none;white-space:nowrap;
+  font-family:-apple-system,'Segoe UI',Roboto,sans-serif;
+  transition:background .12s ease,color .12s ease,border-color .12s ease;
+}
+.profile-nav-link:hover{background:var(--panel-2);color:var(--text);}
+.profile-nav-link.active{background:var(--alliance);color:#0a0d14;border-color:var(--alliance);font-weight:700;}
+
+/* Grands groupes thématiques (Vue d'ensemble / Performance / Progression / Classements /
+   Cartes & habitudes / Duels & synergies) — un cran au-dessus de .section-title (qui reste
+   utilisé pour les sous-sections À L'INTÉRIEUR d'un groupe, voir analytics.css). scroll-margin-top
+   compense la nav sticky ci-dessus pour un ancrage natif correct (clic direct sur un lien
+   #hash, retour navigateur) même avant que wireProfileNav() n'ait calculé son propre offset. */
+.profile-group{margin-top:44px;scroll-margin-top:70px;}
+.profile-group:first-child{margin-top:0;}
+.profile-group-title{
+  font-family:'Segoe UI',system-ui,-apple-system,sans-serif;
+  font-size:20px;font-weight:800;color:var(--gold);
+  margin:0 0 18px;padding-bottom:10px;border-bottom:2px solid var(--line);
+}
+
 .profile-layout{display:flex; gap:28px; align-items:flex-start;}
 .profile-main{flex:1; min-width:0; max-width:920px;}
 .profile-compare{width:420px; flex-shrink:0;}

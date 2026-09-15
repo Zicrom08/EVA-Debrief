@@ -33,6 +33,11 @@
   .profile-wrap{padding:16px 16px;}
   .trends-wrap{padding:16px 16px;}
 
+  .profile-nav{padding:8px 0;gap:4px;-webkit-overflow-scrolling:touch;}
+  .profile-nav-link{padding:6px 12px;font-size:11px;}
+  .profile-group{margin-top:32px;}
+  .profile-group-title{font-size:17px;}
+
   .scoreboard{padding:18px 14px;gap:10px;border-radius:10px;}
   .team-score .pts{font-size:32px;}
   .team-score .name{font-size:11px;}

@@ -181,198 +181,223 @@ export function renderGameAnalytics(games, uid) {
 
   const mapDeepDiveHtml = renderMapDeepDive(games, uid, mapsStats);
 
+  // Regroupé en sections thématiques avec en-tête + ancre (voir PROFILE_NAV_GROUPS ci-dessous
+  // et renderProfileNav() dans index.js) plutôt qu'un long flux plat de ~15 blocs — l'ordre
+  // de certains blocs a été réarrangé pour rapprocher les contenus de même nature (les deux
+  // graphiques de contribution d'équipe rejoignent "Progression", par exemple), sans changer
+  // le contenu de chaque bloc lui-même.
   return `
-    <div class="analytics-section">
-      <div class="section-title">Séries</div>
-      <div class="streak-row">
-        <div class="streak-card"><div class="streak-label">Série en cours</div><div class="streak-value" style="color:${streakColor}">${streakLabel}</div></div>
-        <div class="streak-card"><div class="streak-label">Meilleure série de victoires</div><div class="streak-value" style="color:var(--win)">${streaks.bestWin}</div></div>
-        <div class="streak-card"><div class="streak-label">Pire série de défaites</div><div class="streak-value" style="color:var(--loss)">${streaks.worstLoss}</div></div>
-      </div>
-    </div>
+    <section class="profile-group" id="pg-performance">
+      <h2 class="profile-group-title">Performance</h2>
 
-    <div class="analytics-section">
-      <div class="section-title">Rating (façon HLTV)</div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Inspiré du Rating HLTV (CS) : combine kills, morts, dégâts, assists et score en un seul
-        chiffre plutôt que de se fier au seul K/D. 1.00 = performance moyenne parmi tous les
-        joueurs croisés sur la période (même population que le classement Comparatif), au-dessus
-        = meilleur que la moyenne. EVA n'a pas de round/KAST/trade-kill comme CS, donc c'est une
-        adaptation par partie — pas le calcul HLTV exact.
+      <div class="analytics-section">
+        <div class="section-title">Séries</div>
+        <div class="streak-row">
+          <div class="streak-card"><div class="streak-label">Série en cours</div><div class="streak-value" style="color:${streakColor}">${streakLabel}</div></div>
+          <div class="streak-card"><div class="streak-label">Meilleure série de victoires</div><div class="streak-value" style="color:var(--win)">${streaks.bestWin}</div></div>
+          <div class="streak-card"><div class="streak-label">Pire série de défaites</div><div class="streak-value" style="color:var(--loss)">${streaks.worstLoss}</div></div>
+        </div>
       </div>
-      ${rating.rating == null ? `<div class="hl-empty">Pas assez de données sur la période pour calculer un rating.</div>` : `
-      <div class="streak-card" style="max-width:220px;margin-bottom:14px;">
-        <div class="streak-label">Rating</div>
-        <div class="streak-value ${rating.rating>=1?'kd-good':'kd-bad'}" style="font-size:32px;">${rating.rating.toFixed(2)}</div>
-      </div>
-      <div class="profile-grid">
-        <div class="cell"><div class="label">Kills</div><div class="value ${rating.components.kills>=1?'kd-good':'kd-bad'}">×${rating.components.kills.toFixed(2)}</div></div>
-        <div class="cell"><div class="label">Morts (inversé)</div><div class="value ${rating.components.deaths>=1?'kd-good':'kd-bad'}">×${rating.components.deaths.toFixed(2)}</div></div>
-        <div class="cell"><div class="label">Dégâts</div><div class="value ${rating.components.dmg>=1?'kd-good':'kd-bad'}">×${rating.components.dmg.toFixed(2)}</div></div>
-        <div class="cell"><div class="label">Assists</div><div class="value ${rating.components.assists>=1?'kd-good':'kd-bad'}">×${rating.components.assists.toFixed(2)}</div></div>
-        <div class="cell"><div class="label">Score</div><div class="value ${rating.components.score>=1?'kd-good':'kd-bad'}">×${rating.components.score.toFixed(2)}</div></div>
-      </div>`}
-    </div>
 
-    <div class="analytics-section">
-      <div class="section-title">Score d'impact</div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Pondère le taux de victoire et la contribution aux dégâts d'équipe (par rapport à ta
-        juste part vu la taille de l'équipe) — mesure l'impact sur les victoires, pas la
-        performance individuelle brute (voir "Efficacité" plus bas pour ça).
+      <div class="analytics-section">
+        <div class="section-title">Rating (façon HLTV)</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          Inspiré du Rating HLTV (CS) : combine kills, morts, dégâts, assists et score en un seul
+          chiffre plutôt que de se fier au seul K/D. 1.00 = performance moyenne parmi tous les
+          joueurs croisés sur la période (même population que le classement Comparatif), au-dessus
+          = meilleur que la moyenne. EVA n'a pas de round/KAST/trade-kill comme CS, donc c'est une
+          adaptation par partie — pas le calcul HLTV exact.
+        </div>
+        ${rating.rating == null ? `<div class="hl-empty">Pas assez de données sur la période pour calculer un rating.</div>` : `
+        <div class="streak-card" style="max-width:220px;margin-bottom:14px;">
+          <div class="streak-label">Rating</div>
+          <div class="streak-value ${rating.rating>=1?'kd-good':'kd-bad'}" style="font-size:32px;">${rating.rating.toFixed(2)}</div>
+        </div>
+        <div class="profile-grid">
+          <div class="cell"><div class="label">Kills</div><div class="value ${rating.components.kills>=1?'kd-good':'kd-bad'}">×${rating.components.kills.toFixed(2)}</div></div>
+          <div class="cell"><div class="label">Morts (inversé)</div><div class="value ${rating.components.deaths>=1?'kd-good':'kd-bad'}">×${rating.components.deaths.toFixed(2)}</div></div>
+          <div class="cell"><div class="label">Dégâts</div><div class="value ${rating.components.dmg>=1?'kd-good':'kd-bad'}">×${rating.components.dmg.toFixed(2)}</div></div>
+          <div class="cell"><div class="label">Assists</div><div class="value ${rating.components.assists>=1?'kd-good':'kd-bad'}">×${rating.components.assists.toFixed(2)}</div></div>
+          <div class="cell"><div class="label">Score</div><div class="value ${rating.components.score>=1?'kd-good':'kd-bad'}">×${rating.components.score.toFixed(2)}</div></div>
+        </div>`}
       </div>
-      <div class="streak-row">
-        <div class="streak-card"><div class="streak-label">Score d'impact</div><div class="streak-value" style="font-size:28px;color:var(--gold);">${impact.score}<span style="font-size:14px;color:var(--muted);">/100</span></div></div>
-        <div class="streak-card"><div class="streak-label">Taux de victoire</div><div class="streak-value">${impact.winrate}%</div></div>
-        <div class="streak-card"><div class="streak-label">Indice de contribution</div><div class="streak-value">${impact.contribIndex == null ? NA : `${impact.contribIndex}/100`}</div></div>
+
+      <div class="analytics-section">
+        <div class="section-title">Score d'impact</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          Pondère le taux de victoire et la contribution aux dégâts d'équipe (par rapport à ta
+          juste part vu la taille de l'équipe) — mesure l'impact sur les victoires, pas la
+          performance individuelle brute (voir "Efficacité" plus bas pour ça).
+        </div>
+        <div class="streak-row">
+          <div class="streak-card"><div class="streak-label">Score d'impact</div><div class="streak-value" style="font-size:28px;color:var(--gold);">${impact.score}<span style="font-size:14px;color:var(--muted);">/100</span></div></div>
+          <div class="streak-card"><div class="streak-label">Taux de victoire</div><div class="streak-value">${impact.winrate}%</div></div>
+          <div class="streak-card"><div class="streak-label">Indice de contribution</div><div class="streak-value">${impact.contribIndex == null ? NA : `${impact.contribIndex}/100`}</div></div>
+        </div>
+        ${impact.contribIndex == null ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
+          Contribution non disponible : aucune partie de la période n'a d'assignation d'équipe exploitable — score basé sur le winrate seul.
+        </div>` : ''}
       </div>
-      ${impact.contribIndex == null ? `<div style="color:var(--muted);font-size:11px;margin-top:10px;">
-        Contribution non disponible : aucune partie de la période n'a d'assignation d'équipe exploitable — score basé sur le winrate seul.
+
+      <div class="analytics-section">
+        <div class="section-title">Efficacité</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          Des stats normalisées par mort plutôt que par partie — plus fiables pour comparer des
+          périodes ou des joueurs qui n'ont pas le même nombre de parties.
+        </div>
+        <div class="profile-grid">
+          <div class="cell"><div class="label">KDA ((kills+assists)/morts)</div><div class="value">${efficiency.kda}</div></div>
+          <div class="cell"><div class="label">Dégâts par mort</div><div class="value">${efficiency.dmgPerDeath.toLocaleString('fr-FR')}</div></div>
+          <div class="cell"><div class="label">Précision moyenne</div><div class="value">${efficiency.avgAccuracy}%</div></div>
+          <div class="cell"><div class="label">Assists moyens / partie</div><div class="value">${efficiency.avgAssists}</div></div>
+          <div class="cell"><div class="label">Taux de MVP (rang 1 équipe)</div><div class="value" style="color:var(--gold)">${rankStats.mvpRate}%</div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="profile-group" id="pg-progression">
+      <h2 class="profile-group-title">Progression</h2>
+
+      <div class="analytics-section">
+        <div class="section-title-row">
+          <div class="section-title">Progression partie par partie — ${METRIC_LABELS[state.profileMetric]}</div>
+          <div class="metric-toggle" id="metricToggle">
+            <button class="btn small ${state.profileMetric==='kd'?'active':''}" data-metric="kd">K/D</button>
+            <button class="btn small ${state.profileMetric==='dmg'?'active':''}" data-metric="dmg">Dégâts</button>
+            <button class="btn small ${state.profileMetric==='score'?'active':''}" data-metric="score">Score</button>
+            <button class="btn small ${state.profileMetric==='acc'?'active':''}" data-metric="acc">Précision</button>
+          </div>
+        </div>
+        <div class="chart-card">${trendChart}</div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Rythme de victoires (moyenne glissante sur ${wrWindow} parties)</div>
+        <div class="chart-card">${wrChart}</div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Contribution au score d'équipe</div>
+        <div class="chart-card">${contribChart}</div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Contribution aux dégâts d'équipe</div>
+        <div class="chart-card">${dmgContribChart}</div>
+      </div>
+    </section>
+
+    <section class="profile-group" id="pg-classements">
+      <h2 class="profile-group-title">Classements & temps forts</h2>
+
+      <div class="analytics-grid-2">
+        <div>
+          <div class="section-title">Classement dans l'équipe</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+            Ta place au classement de ta propre équipe à la fin de chaque partie (rang 1 = meilleur score de l'équipe).
+          </div>
+          <div class="bar-list">${rankRows}</div>
+        </div>
+        <div>
+          <div class="section-title">Classement MVP de la partie</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+            À quelle fréquence tu es le meilleur joueur de la partie ENTIÈRE, tous camps
+            confondus — plus exigeant qu'être 1er de ta propre équipe (voir "Classement dans
+            l'équipe" à gauche).
+          </div>
+          <div class="bar-list">${matchMvpRows}</div>
+        </div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Dégâts — vue d'équipe</div>
+        <div class="streak-row">
+          <div class="streak-card"><div class="streak-label">Dégâts moyens de l'équipe / partie</div><div class="streak-value">${dmgTeamStats.avgTeamDmg.toLocaleString('fr-FR')}</div></div>
+          <div class="streak-card"><div class="streak-label">Tes dégâts moyens / partie</div><div class="streak-value">${dmgTeamStats.avgPlayerDmg.toLocaleString('fr-FR')}</div></div>
+          <div class="streak-card"><div class="streak-label">Ta part moyenne des dégâts</div><div class="streak-value" style="color:var(--gold)">${dmgTeamStats.avgContribPct}%</div></div>
+        </div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Répartition du ratio K/D</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          Nombre de parties par tranche de K/D — indique la régularité (parties concentrées sur
+          une tranche) ou l'irrégularité (parties dispersées sur plusieurs tranches) des performances.
+        </div>
+        <div class="bar-list">${kdDistRows}</div>
+      </div>
+
+      <div class="analytics-section">
+        <div class="section-title">Meilleures & pires performances</div>
+        <div class="highlight-grid">
+          ${highlightCard('Meilleur ratio K/D', bw.bestKD, e => e.kd.toFixed(2), 'var(--gold)')}
+          ${highlightCard('Plus gros dégâts', bw.bestDmg, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
+          ${highlightCard('Meilleur score', bw.bestScore, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
+          ${highlightCard('Meilleure précision', bw.bestAcc, e => Math.round(e.val*100)+'%', 'var(--gold)')}
+          ${highlightCard('Partie la plus difficile', bw.worst, e => e.val.toLocaleString('fr-FR')+' pts', 'var(--loss)')}
+        </div>
+      </div>
+    </section>
+
+    <section class="profile-group" id="pg-cartes">
+      <h2 class="profile-group-title">Cartes & habitudes</h2>
+
+      <div class="analytics-grid-2">
+        <div>
+          <div class="section-title">Performance par carte</div>
+          <div style="color:var(--muted);font-size:11px;margin-bottom:10px;">Clique une carte pour un focus dédié (courbe, meilleures/pires parties).</div>
+          <div class="bar-list">${mapRows}</div>
+        </div>
+        <div>
+          <div class="section-title">Performance par mode</div>
+          <div class="bar-list">${modeRows}</div>
+        </div>
+      </div>
+
+      ${mapDeepDiveHtml}
+
+      <div class="analytics-grid-2">
+        <div>
+          <div class="section-title">Jours de la semaine</div>
+          <div class="bar-list">${dowRows}</div>
+        </div>
+        <div>
+          <div class="section-title">Moment de la journée</div>
+          <div class="bar-list">${todRows}</div>
+        </div>
+      </div>
+
+      ${fatigueRows ? `
+      <div class="analytics-section">
+        <div class="section-title">Effet de fatigue en séance</div>
+        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+          Winrate et K/D moyen selon la position de la partie dans la séance (1ère, 2e, 3e...) —
+          utile pour repérer si la performance baisse après plusieurs parties d'affilée.
+        </div>
+        <div class="bar-list">${fatigueRows}</div>
       </div>` : ''}
-    </div>
+    </section>
 
-    <div class="analytics-section">
-      <div class="section-title">Efficacité</div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Des stats normalisées par mort plutôt que par partie — plus fiables pour comparer des
-        périodes ou des joueurs qui n'ont pas le même nombre de parties.
-      </div>
-      <div class="profile-grid">
-        <div class="cell"><div class="label">KDA ((kills+assists)/morts)</div><div class="value">${efficiency.kda}</div></div>
-        <div class="cell"><div class="label">Dégâts par mort</div><div class="value">${efficiency.dmgPerDeath.toLocaleString('fr-FR')}</div></div>
-        <div class="cell"><div class="label">Précision moyenne</div><div class="value">${efficiency.avgAccuracy}%</div></div>
-        <div class="cell"><div class="label">Assists moyens / partie</div><div class="value">${efficiency.avgAssists}</div></div>
-        <div class="cell"><div class="label">Taux de MVP (rang 1 équipe)</div><div class="value" style="color:var(--gold)">${rankStats.mvpRate}%</div></div>
-      </div>
-    </div>
+    <section class="profile-group" id="pg-duels">
+      <h2 class="profile-group-title">Duels & synergies</h2>
 
-    <div class="analytics-section">
-      <div class="section-title-row">
-        <div class="section-title">Progression partie par partie — ${METRIC_LABELS[state.profileMetric]}</div>
-        <div class="metric-toggle" id="metricToggle">
-          <button class="btn small ${state.profileMetric==='kd'?'active':''}" data-metric="kd">K/D</button>
-          <button class="btn small ${state.profileMetric==='dmg'?'active':''}" data-metric="dmg">Dégâts</button>
-          <button class="btn small ${state.profileMetric==='score'?'active':''}" data-metric="score">Score</button>
-          <button class="btn small ${state.profileMetric==='acc'?'active':''}" data-metric="acc">Précision</button>
+      <div class="analytics-grid-2">
+        <div>
+          <div class="section-title">Meilleures synergies</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+            Coéquipiers avec qui tu gagnes le plus (au moins ${duoNemesis.minGames} parties ensemble).
+          </div>
+          <div class="bar-list">${duoRows || '<div class="hl-empty">Pas assez de coéquipiers récurrents sur la période.</div>'}</div>
+        </div>
+        <div>
+          <div class="section-title">Némésis</div>
+          <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
+            Adversaires contre qui tu gagnes le moins (au moins ${duoNemesis.minGames} parties affrontées) — le % est ton taux de victoire contre eux.
+          </div>
+          <div class="bar-list">${nemesisRows || '<div class="hl-empty">Pas assez d\'adversaires récurrents sur la période.</div>'}</div>
         </div>
       </div>
-      <div class="chart-card">${trendChart}</div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Rythme de victoires (moyenne glissante sur ${wrWindow} parties)</div>
-      <div class="chart-card">${wrChart}</div>
-    </div>
-
-    <div class="analytics-grid-2">
-      <div>
-        <div class="section-title">Classement dans l'équipe</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-          Ta place au classement de ta propre équipe à la fin de chaque partie (rang 1 = meilleur score de l'équipe).
-        </div>
-        <div class="bar-list">${rankRows}</div>
-      </div>
-      <div>
-        <div class="section-title">Classement MVP de la partie</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-          À quelle fréquence tu es le meilleur joueur de la partie ENTIÈRE, tous camps
-          confondus — plus exigeant qu'être 1er de ta propre équipe (voir "Classement dans
-          l'équipe" à gauche).
-        </div>
-        <div class="bar-list">${matchMvpRows}</div>
-      </div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Dégâts — vue d'équipe</div>
-      <div class="streak-row">
-        <div class="streak-card"><div class="streak-label">Dégâts moyens de l'équipe / partie</div><div class="streak-value">${dmgTeamStats.avgTeamDmg.toLocaleString('fr-FR')}</div></div>
-        <div class="streak-card"><div class="streak-label">Tes dégâts moyens / partie</div><div class="streak-value">${dmgTeamStats.avgPlayerDmg.toLocaleString('fr-FR')}</div></div>
-        <div class="streak-card"><div class="streak-label">Ta part moyenne des dégâts</div><div class="streak-value" style="color:var(--gold)">${dmgTeamStats.avgContribPct}%</div></div>
-      </div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Contribution au score d'équipe</div>
-      <div class="chart-card">${contribChart}</div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Contribution aux dégâts d'équipe</div>
-      <div class="chart-card">${dmgContribChart}</div>
-    </div>
-
-    <div class="analytics-grid-2">
-      <div>
-        <div class="section-title">Performance par carte</div>
-        <div style="color:var(--muted);font-size:11px;margin-bottom:10px;">Clique une carte pour un focus dédié (courbe, meilleures/pires parties).</div>
-        <div class="bar-list">${mapRows}</div>
-      </div>
-      <div>
-        <div class="section-title">Performance par mode</div>
-        <div class="bar-list">${modeRows}</div>
-      </div>
-    </div>
-
-    ${mapDeepDiveHtml}
-
-    <div class="analytics-grid-2">
-      <div>
-        <div class="section-title">Meilleures synergies</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-          Coéquipiers avec qui tu gagnes le plus (au moins ${duoNemesis.minGames} parties ensemble).
-        </div>
-        <div class="bar-list">${duoRows || '<div class="hl-empty">Pas assez de coéquipiers récurrents sur la période.</div>'}</div>
-      </div>
-      <div>
-        <div class="section-title">Némésis</div>
-        <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-          Adversaires contre qui tu gagnes le moins (au moins ${duoNemesis.minGames} parties affrontées) — le % est ton taux de victoire contre eux.
-        </div>
-        <div class="bar-list">${nemesisRows || '<div class="hl-empty">Pas assez d\'adversaires récurrents sur la période.</div>'}</div>
-      </div>
-    </div>
-
-    <div class="analytics-grid-2">
-      <div>
-        <div class="section-title">Jours de la semaine</div>
-        <div class="bar-list">${dowRows}</div>
-      </div>
-      <div>
-        <div class="section-title">Moment de la journée</div>
-        <div class="bar-list">${todRows}</div>
-      </div>
-    </div>
-
-    ${fatigueRows ? `
-    <div class="analytics-section">
-      <div class="section-title">Effet de fatigue en séance</div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Winrate et K/D moyen selon la position de la partie dans la séance (1ère, 2e, 3e...) —
-        utile pour repérer si la performance baisse après plusieurs parties d'affilée.
-      </div>
-      <div class="bar-list">${fatigueRows}</div>
-    </div>` : ''}
-
-    <div class="analytics-section">
-      <div class="section-title">Répartition du ratio K/D</div>
-      <div style="color:var(--muted);font-size:12px;margin-bottom:12px;">
-        Nombre de parties par tranche de K/D — indique la régularité (parties concentrées sur
-        une tranche) ou l'irrégularité (parties dispersées sur plusieurs tranches) des performances.
-      </div>
-      <div class="bar-list">${kdDistRows}</div>
-    </div>
-
-    <div class="analytics-section">
-      <div class="section-title">Meilleures & pires performances</div>
-      <div class="highlight-grid">
-        ${highlightCard('Meilleur ratio K/D', bw.bestKD, e => e.kd.toFixed(2), 'var(--gold)')}
-        ${highlightCard('Plus gros dégâts', bw.bestDmg, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
-        ${highlightCard('Meilleur score', bw.bestScore, e => e.val.toLocaleString('fr-FR'), 'var(--gold)')}
-        ${highlightCard('Meilleure précision', bw.bestAcc, e => Math.round(e.val*100)+'%', 'var(--gold)')}
-        ${highlightCard('Partie la plus difficile', bw.worst, e => e.val.toLocaleString('fr-FR')+' pts', 'var(--loss)')}
-      </div>
-    </div>
+    </section>
   `;
 }
 

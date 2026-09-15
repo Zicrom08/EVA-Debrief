@@ -13,25 +13,99 @@ import { renderSeasonCard, renderEvolutionTable } from './season.js';
 import { renderGameAnalytics, attachProfileMetricButtons, renderRankSection } from './analytics-view.js';
 import { computeLpHistory, gamesForLpScope } from '../rank.js';
 
+// Groupes thématiques de l'onglet Profil (voir renderGameAnalytics() dans analytics-view.js
+// pour pg-performance/progression/classements/cartes/duels — pg-overview est construit ici).
+// Source unique pour la nav sticky (renderProfileNav()) ET les ancres réellement posées dans
+// le HTML : ajouter un groupe ici et son <section id="..."> correspondant suffit à l'ajouter
+// à la navigation, pas besoin de toucher wireProfileNav()/le scrollspy.
+const PROFILE_NAV_GROUPS = [
+  { id: 'pg-overview', label: 'Vue d\'ensemble' },
+  { id: 'pg-performance', label: 'Performance' },
+  { id: 'pg-progression', label: 'Progression' },
+  { id: 'pg-classements', label: 'Classements' },
+  { id: 'pg-cartes', label: 'Cartes & habitudes' },
+  { id: 'pg-duels', label: 'Duels & synergies' },
+];
+
 // ================= PROFIL : point d'entrée =================
 export function renderProfil() {
   const container = document.getElementById('profilContent');
   const uid = state.currentUid;
+  const games = uid ? gamesForPlayerSorted(uid) : [];
   container.innerHTML = `
+    ${renderProfileNav(uid, games)}
     <div class="profile-layout">
-      <div class="profile-main">${renderProfilMain(uid)}</div>
+      <div class="profile-main">${renderProfilMain(uid, games)}</div>
       <div class="profile-compare">${renderProfilComparePicker(uid)}${renderProfilCompareDetails(uid)}</div>
     </div>
   `;
   attachProfileMetricButtons();
   wireProfilComparePicker();
+  wireProfileNav();
+}
+
+// Fil d'ancres sticky en haut de l'onglet Profil : un lien par groupe thématique
+// (PROFILE_NAV_GROUPS ci-dessus), pensé pour une page aussi longue que celle-ci — sauter
+// directement à "Duels & synergies" sans dérouler tout le reste. N'affiche que les groupes
+// qui vont réellement exister dans le HTML rendu (mêmes conditions que renderProfilMain()/
+// renderGameAnalytics() : pas de lien mort vers une section qui ne sera pas là). Masqué
+// entièrement en dessous de 2 groupes visibles — inutile de naviguer une page d'un seul écran.
+function renderProfileNav(uid, games) {
+  if (!uid) return '';
+  const hasAnalytics = games.length >= 3;
+  const visible = PROFILE_NAV_GROUPS.filter(g => g.id === 'pg-overview' || hasAnalytics);
+  if (visible.length < 2) return '';
+  return `
+    <nav class="profile-nav" id="profileNav">
+      ${visible.map(g => `<a href="#${g.id}" class="profile-nav-link" data-target="${g.id}">${g.label}</a>`).join('')}
+    </nav>`;
+}
+
+// Câble le clic (défilement fluide, en tenant compte de la hauteur de la nav elle-même
+// sticky au-dessus) et le scrollspy (surbrillance du groupe visible) — recréé à chaque
+// rendu du Profil puisque le HTML est entièrement reconstruit à chaque fois (voir
+// renderProfil()) ; l'ancien IntersectionObserver, lui, est explicitement coupé d'abord
+// pour ne pas laisser un observer orphelin tourner sur des nœuds DOM déjà détachés.
+let profileNavObserver = null;
+function wireProfileNav() {
+  if (profileNavObserver) { profileNavObserver.disconnect(); profileNavObserver = null; }
+  const nav = document.getElementById('profileNav');
+  if (!nav) return;
+  const links = [...nav.querySelectorAll('.profile-nav-link')];
+
+  links.forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      const target = document.getElementById(link.dataset.target);
+      if (!target) return;
+      const navHeight = nav.getBoundingClientRect().height;
+      const y = target.getBoundingClientRect().top + window.scrollY - navHeight - 16;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    });
+  });
+
+  if (typeof IntersectionObserver === 'undefined') return; // environnement sans DOM (tests) — pas de scrollspy, le clic seul reste fonctionnel
+  const navHeight = nav.getBoundingClientRect().height;
+  profileNavObserver = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (!entry.isIntersecting) return;
+      const link = nav.querySelector(`.profile-nav-link[data-target="${entry.target.id}"]`);
+      if (!link) return;
+      links.forEach(l => l.classList.remove('active'));
+      link.classList.add('active');
+    });
+  }, { rootMargin: `-${navHeight + 20}px 0px -70% 0px` });
+  links.forEach(link => {
+    const target = document.getElementById(link.dataset.target);
+    if (target) profileNavObserver.observe(target);
+  });
 }
 
 // Construit la colonne principale de l'onglet Profil (carte de saison + toutes les sections d'analyse).
-export function renderProfilMain(uid) {
+export function renderProfilMain(uid, games) {
+  games = games || (uid ? gamesForPlayerSorted(uid) : []);
   const snaps = uid ? filteredSnapshotsForUser(uid) : null;
   const baseline = (uid && snaps && snaps.length) ? seasonCardBaseline(uid, snaps) : null;
-  const games = uid ? gamesForPlayerSorted(uid) : [];
 
   let html = '';
 
@@ -39,24 +113,28 @@ export function renderProfilMain(uid) {
     html += `<div class="detail-empty" style="margin-top:0;">
       Sélectionne un joueur dans la barre en haut de la page pour voir son profil.
     </div>`;
-  } else if (snaps && snaps.length) {
-    html += renderSeasonCard(snaps, baseline, games);
+    return html;
+  }
+
+  let overview = '';
+  if (snaps && snaps.length) {
+    overview += renderSeasonCard(snaps, baseline, games);
     if (snaps.length > 1) {
-      html += renderEvolutionTable(snaps, games);
+      overview += renderEvolutionTable(snaps, games);
     } else {
-      html += `<div class="evolution-hint">
+      overview += `<div class="evolution-hint">
         Une seule capture pour l'instant. Importe à nouveau le profil de ce joueur plus tard
         (après une session de jeu, par exemple) pour voir son évolution ici : progression
         de kills, dégâts, winrate entre deux dates.
       </div>`;
     }
   } else if (uid && (state.playerStatsSnapshots[uid] || []).length) {
-    html += `<div class="detail-empty" style="margin-top:0;">
+    overview += `<div class="detail-empty" style="margin-top:0;">
       Aucune capture de profil pour ce joueur dans la saison/période sélectionnée.<br>
       Change le filtre de saison en haut de page pour voir ses autres captures.
     </div>`;
   } else {
-    html += `<div class="detail-empty" style="margin-top:0;text-align:left;">
+    overview += `<div class="detail-empty" style="margin-top:0;text-align:left;">
       <strong>Aucune statistique de saison importée pour ce joueur.</strong><br><br>
       Le plus simple : installe l'extension navigateur EVA-Debrief, lie-la à ce compte
       en un clic (bouton "Lier l'extension EVA-Debrief" dans "+ Importer", ou depuis le
@@ -73,8 +151,12 @@ export function renderProfilMain(uid) {
       (<code>getPlayerByUserId</code>) peut être capturée.
     </div>`;
   }
+  overview += renderRankSection(uid);
 
-  html += renderRankSection(uid);
+  html += `<section class="profile-group" id="pg-overview">
+    <h2 class="profile-group-title">Vue d'ensemble</h2>
+    ${overview}
+  </section>`;
 
   if (games.length >= 3) {
     html += renderGameAnalytics(games, uid);
