@@ -37,6 +37,8 @@ export const state = {
   matchGroups: {},            // groupId -> { id, name, gameIds:[...], createdAt } — groupes de parties (training/scrim) privés au compte connecté, voir game-groups.js
   selectionMode: false,       // mode "sélection de parties" actif dans Historique (case à cocher par ligne, voir historique.js/game-groups.js)
   selectedGameIds: new Set(), // ids cochés pendant le mode sélection — état UI éphémère, jamais persisté
+  compositionTeammates: new Set(), // uids devant être dans la MÊME équipe que le joueur sélectionné — filtre "composition" de l'Historique (voir game-filters.js::gameMatchesComposition())
+  compositionOpponents: new Set(), // uids devant être dans l'équipe ADVERSE — même filtre, état UI éphémère relatif à currentUid, jamais persisté (vidé à chaque changement de joueur, voir player-index.js::selectPlayer())
   teamAId: null,              // équipe sélectionnée dans l'onglet Équipes (vue principale / comparaison)
   teamBId: null,              // deuxième équipe pour la comparaison (optionnelle)
   profileCompareUid: null,    // joueur choisi pour la comparaison dans l'onglet Profil (optionnel)

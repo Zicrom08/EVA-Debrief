@@ -3,7 +3,7 @@ import { findPlayerInGame, roleLabel } from './format.js';
 import { apiSend } from './api.js';
 import { clearUiPrefs } from './ui-prefs.js';
 import { filteredGamesArray } from './game-filters.js';
-import { renderList } from './historique.js';
+import { renderList, renderCompositionPanel } from './historique.js';
 import { renderProfil } from './profil/index.js';
 import { aggregateGames } from './tendances.js';
 import { renderPlayerPicker, renderMapFilterOptions } from './player-index.js';
@@ -33,6 +33,7 @@ export function showApp() {
   renderSeasonFilterOptions();
   updateRangeInfo();
   renderSummary();
+  renderCompositionPanel();
   renderList();
   renderSelectionBar();
   renderProfil();
@@ -125,6 +126,7 @@ document.getElementById('resetBtn').addEventListener('click', async () => {
   state.gamesById = {}; state.players = {}; state.playerStatsSnapshots = {};
   state.customTeams = {}; state.playerLinks = {}; state.playerNames = {};
   state.matchGroups = {}; state.selectionMode = false; state.selectedGameIds = new Set();
+  state.compositionTeammates = new Set(); state.compositionOpponents = new Set();
   state.currentUid = null; state.activeGameId = null; state.activeGroupId = null; state.teamAId = null; state.teamBId = null; state.profileCompareUid = null;
   state.dateRangeStart = null; state.dateRangeEnd = null; state.selectedSeasonId = null;
   state.excludedMaps = new Set();

@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp, deriveTeams, fmtDelta } from './format.js';
+import { fmtDate, fmtDuration, findSelf, resolvePlayerName, hasFullMatchData, findMvp, deriveTeams, fmtDelta, latestNiceName } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { sortedGames } from './game-filters.js';
 import { computeMatchRatings } from './profil/compute.js';
@@ -20,6 +20,113 @@ document.getElementById('toggleSelectionModeBtn').addEventListener('click', () =
   renderList();
   renderSelectionBar();
 });
+
+document.getElementById('compositionToggleBtn').addEventListener('click', () => {
+  const panel = document.getElementById('compositionPanel');
+  panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
+});
+
+// ================= FILTRE "COMPOSITION" (coéquipiers/adversaires choisis, voir
+// game-filters.js::gameMatchesComposition()) =================
+// Texte de recherche par colonne — état UI purement transitoire (pas dans state.js, jamais
+// persisté ni lu ailleurs), remis à zéro à l'ouverture d'une nouvelle session de page.
+let compositionSearch = { teammates: '', opponents: '' };
+
+// Joueurs candidats pour une colonne : tous ceux connus SAUF le joueur actuellement
+// sélectionné (se choisir soi-même comme coéquipier/adversaire n'a pas de sens), filtrés par
+// le texte de recherche de cette colonne — même principe que le picker du header
+// (player-index.js), pensé pour les mêmes serveurs à beaucoup de comptes.
+function compositionCandidates(searchText) {
+  const needle = (searchText || '').trim().toLowerCase();
+  const meUid = canonicalUid(state.currentUid);
+  return Object.entries(state.players)
+    .filter(([uid]) => uid !== meUid)
+    .filter(([, rec]) => latestNiceName(rec).toLowerCase().includes(needle))
+    .sort((a, b) => b[1].games - a[1].games);
+}
+
+function compositionColumnHtml(role) {
+  const targetSet = role === 'teammates' ? state.compositionTeammates : state.compositionOpponents;
+  const title = role === 'teammates' ? 'Dans mon équipe' : 'Dans l’équipe adverse';
+  const chips = [...targetSet].map(uid => {
+    const rec = state.players[uid];
+    const label = rec ? latestNiceName(rec) : `Joueur #${uid}`;
+    return `<span class="composition-chip" data-role="${role}" data-uid="${uid}">${label} <span class="composition-chip-x">×</span></span>`;
+  }).join('');
+  const candidates = compositionCandidates(compositionSearch[role]);
+  const rows = candidates.length
+    ? candidates.map(([uid, rec]) => `
+        <label class="composition-item">
+          <input type="checkbox" data-role="${role}" data-uid="${uid}" ${targetSet.has(uid) ? 'checked' : ''}>
+          ${latestNiceName(rec)}
+        </label>`).join('')
+    : '<div class="composition-empty">Aucun joueur ne correspond.</div>';
+  return `
+    <div class="composition-col">
+      <div class="composition-col-title">${title}</div>
+      ${chips ? `<div class="composition-chips">${chips}</div>` : ''}
+      <input type="text" class="composition-search" data-role="${role}" autocomplete="off" placeholder="Rechercher un joueur…" value="${compositionSearch[role]}">
+      <div class="composition-list">${rows}</div>
+    </div>`;
+}
+
+// Construit le panneau de filtre "composition" (deux colonnes : coéquipiers requis /
+// adversaires requis) — appelé au chargement de l'app et à chaque changement de joueur
+// sélectionné (voir player-index.js::selectPlayer()), PAS à chaque renderList() : son
+// contenu (candidats, sélection) ne dépend d'aucun des autres filtres carte/mode/période.
+export function renderCompositionPanel() {
+  const panel = document.getElementById('compositionPanel');
+  const toggleBtn = document.getElementById('compositionToggleBtn');
+  if (!panel || !toggleBtn) return;
+  const active = state.compositionTeammates.size > 0 || state.compositionOpponents.size > 0;
+  toggleBtn.classList.toggle('active', active);
+
+  panel.innerHTML = `
+    ${compositionColumnHtml('teammates')}
+    ${compositionColumnHtml('opponents')}
+    <button class="btn small" id="compositionClearBtn" ${active ? '' : 'disabled'}>Réinitialiser</button>
+  `;
+
+  panel.querySelectorAll('input[type="checkbox"][data-uid]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      const { uid, role } = cb.dataset;
+      const targetSet = role === 'teammates' ? state.compositionTeammates : state.compositionOpponents;
+      const otherSet = role === 'teammates' ? state.compositionOpponents : state.compositionTeammates;
+      // Un joueur ne peut pas être requis dans les DEUX colonnes à la fois — le cocher ici
+      // le retire automatiquement de l'autre plutôt que de laisser un filtre toujours faux.
+      if (cb.checked) { targetSet.add(uid); otherSet.delete(uid); }
+      else targetSet.delete(uid);
+      renderCompositionPanel();
+      renderList();
+    });
+  });
+  panel.querySelectorAll('.composition-chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const { uid, role } = chip.dataset;
+      (role === 'teammates' ? state.compositionTeammates : state.compositionOpponents).delete(uid);
+      renderCompositionPanel();
+      renderList();
+    });
+  });
+  panel.querySelectorAll('.composition-search').forEach(input => {
+    input.addEventListener('input', () => {
+      compositionSearch[input.dataset.role] = input.value;
+      renderCompositionPanel();
+      // Le re-rendu complet du panneau ci-dessus détruit et recrée ce champ : on lui rend
+      // le focus (et la position du curseur) pour ne pas interrompre la frappe.
+      const fresh = panel.querySelector(`.composition-search[data-role="${input.dataset.role}"]`);
+      if (fresh) { fresh.focus(); fresh.setSelectionRange(fresh.value.length, fresh.value.length); }
+    });
+  });
+  const clearBtn = document.getElementById('compositionClearBtn');
+  if (clearBtn) clearBtn.addEventListener('click', () => {
+    state.compositionTeammates = new Set();
+    state.compositionOpponents = new Set();
+    compositionSearch = { teammates: '', opponents: '' };
+    renderCompositionPanel();
+    renderList();
+  });
+}
 
 // ================= HISTORIQUE (list + detail) =================
 export function renderList(){

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { inDateRange, gameInSelectedRange, isMapExcluded, isModeExcluded, filteredGamesArray } from '../src/game-filters.js';
+import { inDateRange, gameInSelectedRange, isMapExcluded, isModeExcluded, filteredGamesArray, gameMatchesComposition } from '../src/game-filters.js';
 
 function resetState() {
   state.gamesById = {};
@@ -61,4 +61,59 @@ test('filteredGamesArray combines the range filter with map/mode exclusions', ()
   const result = filteredGamesArray();
   assert.equal(result.length, 1);
   assert.equal(result[0].id, 'g2');
+});
+
+function fullGame(rosterByTeam) {
+  // rosterByTeam: { ALLIANCE: [uid,...], REBELS: [uid,...] } — construit un roster minimal
+  // à détail complet (voir hasFullMatchData) pour tester gameMatchesComposition().
+  const players = [];
+  Object.entries(rosterByTeam).forEach(([team, uids]) => {
+    uids.forEach(uid => players.push({ userId: uid, data: { team } }));
+  });
+  return { data: {}, players };
+}
+
+test('gameMatchesComposition is a no-op (always true) when no teammates/opponents are selected', () => {
+  const g = fullGame({ ALLIANCE: ['me', 'a'], REBELS: ['b'] });
+  assert.equal(gameMatchesComposition(g, 'me', new Set(), new Set()), true);
+  assert.equal(gameMatchesComposition({}, 'me', new Set(), new Set()), true);
+});
+
+test('gameMatchesComposition requires every selected teammate on the same team as the reference player', () => {
+  const g = fullGame({ ALLIANCE: ['me', 'a'], REBELS: ['b', 'c'] });
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set()), true);
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['b']), new Set()), false, 'b is on the opposing team, not a teammate');
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['ghost']), new Set()), false, 'ghost never played this game');
+});
+
+test('gameMatchesComposition requires every selected opponent on the opposing team', () => {
+  const g = fullGame({ ALLIANCE: ['me', 'a'], REBELS: ['b', 'c'] });
+  assert.equal(gameMatchesComposition(g, 'me', new Set(), new Set(['b', 'c'])), true);
+  assert.equal(gameMatchesComposition(g, 'me', new Set(), new Set(['a'])), false, 'a is a teammate, not an opponent');
+});
+
+test('gameMatchesComposition combines teammate and opponent requirements', () => {
+  const g = fullGame({ ALLIANCE: ['me', 'a'], REBELS: ['b', 'c'] });
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set(['b'])), true);
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set(['c', 'ghost'])), false);
+});
+
+test('gameMatchesComposition excludes games without full team-assignment data as soon as a filter is active', () => {
+  // Nouveau format d'historique EVA (juillet 2026) : plus d'assignation d'équipe par joueur —
+  // voir hasFullMatchData() dans format.js. Une partie sans ça ne peut jamais satisfaire un
+  // filtre de composition actif, faute de pouvoir vérifier qui était dans quelle équipe.
+  const g = { data: {}, players: [{ userId: 'me', data: {} }, { userId: 'a', data: {} }] };
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set()), false);
+});
+
+test('gameMatchesComposition never treats two unknown teams as a match (the classic undefined===undefined trap)', () => {
+  // hasFullMatchData(g) est vrai (un joueur porte une équipe) mais le joueur ciblé par le
+  // filtre, lui, n'a pas d'équipe connue — un bug naïf (comparaison non gardée) le
+  // regrouperait à tort avec n'importe qui d'autre sans équipe connue non plus.
+  const g = { data: {}, players: [
+    { userId: 'me', data: { team: 'ALLIANCE' } },
+    { userId: 'a', data: {} },
+  ] };
+  assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set()), false);
+  assert.equal(gameMatchesComposition(g, 'me', new Set(), new Set(['a'])), false);
 });

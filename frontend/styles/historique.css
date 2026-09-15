@@ -74,4 +74,30 @@
 .team-block .title{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;font-weight:700;font-size:14px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
 .team-block.alliance .title{color:var(--alliance);}
 .team-block.rebels .title{color:var(--rebels);}
+
+/* Filtre "composition" (voir historique.js::renderCompositionPanel(), game-filters.js::
+   gameMatchesComposition()) — deux colonnes empilées (pas côte à côte) : la sidebar ne fait
+   que 360px, pas la place pour deux listes filtrables l'une à côté de l'autre. */
+#compositionToggleBtn.active{background:var(--alliance);color:#0a0d14;border-color:var(--alliance);font-weight:700;}
+.composition-panel{
+  display:flex;flex-direction:column;gap:14px;padding:14px;border-bottom:1px solid var(--line);background:var(--panel);
+}
+.composition-col-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:6px;}
+.composition-chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;}
+.composition-chip{
+  display:inline-flex;align-items:center;gap:4px;background:var(--panel-2);border:1px solid var(--gold);
+  color:var(--gold);border-radius:14px;padding:3px 8px;font-size:11px;cursor:pointer;user-select:none;
+}
+.composition-chip-x{font-size:13px;line-height:1;}
+.composition-search{
+  width:100%;background:var(--panel-2);color:var(--text);border:1px solid var(--line);
+  border-radius:6px;padding:6px 8px;font-size:12px;margin-bottom:6px;
+}
+.composition-search:focus{outline:none;border-color:var(--gold);}
+.composition-list{max-height:160px;overflow-y:auto;display:flex;flex-direction:column;gap:2px;}
+.composition-item{
+  display:flex;align-items:center;gap:8px;padding:4px 2px;font-size:12px;cursor:pointer;user-select:none;
+}
+.composition-item input{accent-color:var(--alliance);cursor:pointer;}
+.composition-empty{color:var(--muted);font-size:11px;padding:4px 2px;}
 .title .dot{width:8px;height:8px;border-radius:50%;background:currentColor;}

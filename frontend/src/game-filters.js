@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { findPlayerInGame } from './format.js';
+import { findPlayerInGame, hasFullMatchData } from './format.js';
 
 // ================= FILTRE DE PÉRIODE (s'applique à Historique / Suivi de performance / Profil / Comparatif) =================
 export function inDateRange(iso) {
@@ -38,10 +38,46 @@ export function isModeExcluded(g) {
 export function filteredGamesArray() {
   return Object.values(state.gamesById).filter(g => gameInSelectedRange(g) && !isMapExcluded(g) && !isModeExcluded(g));
 }
-// Parties filtrées, restreintes au joueur sélectionné, triées de la plus récente à la plus ancienne (utilisé par l'Historique).
+// Filtre "composition" de l'Historique : vrai si, dans cette partie, tous les `teammateUids`
+// sont dans la MÊME équipe que `uid` et tous les `opponentUids` sont dans l'équipe ADVERSE.
+// Sans sélection (les deux ensembles vides) le filtre est inactif — toutes les parties passent.
+// Nécessite l'assignation d'équipe par joueur (hasFullMatchData, voir format.js) : une partie
+// qui ne la porte plus (nouveau format d'historique EVA, juillet 2026) est exclue dès qu'au
+// moins un joueur est sélectionné, faute de pouvoir vérifier — jamais incluse "par défaut".
+// Jamais de comparaison p.data.team === x.data.team non gardée (undefined === undefined vaut
+// true en JS) : chaque comparaison vérifie explicitement que les deux équipes sont connues,
+// même piège que documenté dans CLAUDE.md pour deriveTeams()/computeDuoNemesisStats().
+export function gameMatchesComposition(g, uid, teammateUids, opponentUids) {
+  const hasTeammates = teammateUids && teammateUids.size;
+  const hasOpponents = opponentUids && opponentUids.size;
+  if (!hasTeammates && !hasOpponents) return true;
+  if (!hasFullMatchData(g)) return false;
+  const self = findPlayerInGame(g, uid);
+  const myTeam = self && self.data ? self.data.team : null;
+  if (myTeam == null) return false;
+  if (hasTeammates) {
+    for (const tUid of teammateUids) {
+      const p = findPlayerInGame(g, tUid);
+      const team = p && p.data ? p.data.team : null;
+      if (team == null || team !== myTeam) return false;
+    }
+  }
+  if (hasOpponents) {
+    for (const oUid of opponentUids) {
+      const p = findPlayerInGame(g, oUid);
+      const team = p && p.data ? p.data.team : null;
+      if (team == null || team === myTeam) return false;
+    }
+  }
+  return true;
+}
+// Parties filtrées, restreintes au joueur sélectionné et à la composition d'équipe choisie
+// (voir gameMatchesComposition() ci-dessus), triées de la plus récente à la plus ancienne
+// (utilisé par l'Historique).
 export function sortedGames() {
   return filteredGamesArray()
     .filter(g => findPlayerInGame(g, state.currentUid))
+    .filter(g => gameMatchesComposition(g, state.currentUid, state.compositionTeammates, state.compositionOpponents))
     .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 

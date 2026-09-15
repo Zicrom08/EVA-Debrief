@@ -5,7 +5,7 @@ import { applyPlayerNameOverrides } from './player-names.js';
 import { persistUiPrefs } from './ui-prefs.js';
 import { setDefaultPlayer } from './api.js';
 import { renderSummary } from './shell.js';
-import { renderList } from './historique.js';
+import { renderList, renderCompositionPanel } from './historique.js';
 import { renderTrends } from './tendances.js';
 import { renderComparatif } from './comparatif.js';
 import { renderProfil } from './profil/index.js';
@@ -180,8 +180,15 @@ function wirePlayerPickerEvents() {
     hideList();
     if (state.profileCompareUid === state.currentUid) state.profileCompareUid = null;
     state.mapDeepDiveSelection = null;
+    // Filtre "composition" (voir game-filters.js::gameMatchesComposition()) : relatif au
+    // joueur sélectionné ("MON équipe"/"l'équipe ADVERSE"), donc sans sens pour un autre
+    // joueur — vidé à chaque changement plutôt que de laisser une sélection périmée filtrer
+    // silencieusement l'historique du nouveau joueur.
+    state.compositionTeammates = new Set();
+    state.compositionOpponents = new Set();
     persistUiPrefs();
     renderSummary();
+    renderCompositionPanel();
     renderList();
     document.getElementById('detail').innerHTML =
       '<div class="detail-empty">Sélectionne une partie ou un groupe à gauche pour voir le détail des scores.</div>';
