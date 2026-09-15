@@ -66,9 +66,13 @@
 }
 .sidebar .filters{
   padding:12px 14px;border-bottom:1px solid var(--line);
-  display:flex;gap:8px;position:sticky;top:0;background:var(--bg);z-index:2;
+  display:flex;flex-wrap:wrap;gap:8px;position:sticky;top:0;background:var(--bg);z-index:2;
 }
 .sidebar .filters select{
-  flex:1;background:var(--panel);color:var(--text);border:1px solid var(--line);
+  flex:1 1 120px;min-width:0;background:var(--panel);color:var(--text);border:1px solid var(--line);
   border-radius:6px;padding:7px 8px;font-size:12px;
 }
+/* Le bouton "Composition ▾" (voir historique.js) partage cette rangée avec les deux <select>
+   ci-dessus — sans ça, en flex nowrap sur une sidebar de 360px, il débordait hors du cadre
+   au lieu de passer à la ligne (rogné, visible seulement en faisant défiler horizontalement). */
+.sidebar .filters button{flex:1 1 100%;}
