@@ -184,7 +184,14 @@ export function renderSeasonCard(snaps, baseline, games) {
 }
 
 // Construit le tableau d'évolution entre chaque capture successive du profil (toutes les stats de saison, dont la distance parcourue).
-export function renderEvolutionTable(snaps) {
+// `games` (optionnel, mêmes filtres saison/période/exclusions que le reste de l'app — voir
+// gamesForPlayerSorted() dans game-filters.js) sert au même repli que renderSeasonCard()
+// ci-dessus : depuis qu'EVA a retiré "statistics" du schéma (v9.3 du collecteur, voir
+// eva_history_collector.user.js), hasDamage vaut false pour TOUTE nouvelle capture — sans ce
+// repli, la colonne Δ Dégâts afficherait "n/d" sur chaque ligne impliquant une capture
+// récente, y compris pour des joueurs dont l'historique de parties est bien importé.
+export function renderEvolutionTable(snaps, games) {
+  let anyDmgFromGames = false;
   const rowsArr = [];
   let i = 1;
   while (i < snaps.length) {
@@ -252,10 +259,30 @@ export function renderEvolutionTable(snaps) {
     const dDistance = cur.traveledDistance - prev.traveledDistance;
     const dBestStreak = cur.bestKillStreak - prev.bestKillStreak;
     const dGameTime = hasPlaytime ? cur.gameTime - prev.gameTime : null;
-    const dDmg = hasDamage ? cur.inflictedDamage - prev.inflictedDamage : null;
-    const dBestDmg = hasDamage ? cur.bestInflictedDamage - prev.bestInflictedDamage : null;
+    let dDmg = hasDamage ? cur.inflictedDamage - prev.inflictedDamage : null;
+    let dBestDmg = hasDamage ? cur.bestInflictedDamage - prev.bestInflictedDamage : null;
     const dLevel = (curExp.level||0) - (prevExp.level||0);
     const dXp = (curExp.experience||0) - (prevExp.experience||0);
+
+    // Repli dégâts (voir le commentaire de renderEvolutionTable() ci-dessus) : resommé depuis
+    // les parties de ce joueur jouées strictement entre les deux captures de cette ligne.
+    let rowDmgFromGames = false;
+    if (dDmg == null) {
+      const windowStart = new Date(snaps[i-1].capturedAt).getTime();
+      const windowEnd = new Date(snaps[i].capturedAt).getTime();
+      const windowGames = (games || []).filter(g => {
+        const t = new Date(g.createdAt).getTime();
+        return t > windowStart && t <= windowEnd;
+      });
+      const uid = snaps[i].user && snaps[i].user.id;
+      const fromGames = uid != null ? damageFromGames(windowGames, uid) : null;
+      if (fromGames) {
+        dDmg = fromGames.total;
+        dBestDmg = fromGames.best;
+        rowDmgFromGames = true;
+        anyDmgFromGames = true;
+      }
+    }
 
     const wr = dGames > 0 ? Math.round((dWins/dGames)*100) : 0;
     const kd = dDeaths > 0 ? (dKills/dDeaths).toFixed(2) : dKills.toFixed(2);
@@ -270,13 +297,13 @@ export function renderEvolutionTable(snaps) {
         <td class="num">${fmtDelta(dKills)}</td>
         <td class="num">${fmtDelta(dDeaths)}</td>
         <td class="num">${fmtDelta(dAssists)}</td>
-        <td class="num">${dDmg != null ? fmtDelta(dDmg) : NA}</td>
+        <td class="num">${dDmg != null ? fmtDelta(dDmg) + (rowDmgFromGames ? ' *' : '') : NA}</td>
         <td class="num" style="color:var(--gold);font-weight:600;">${fmtDelta(dDistance/1000, dDistance ? 1 : 0)} km</td>
         <td class="num">${dGameTime != null ? fmtHM(dGameTime) : NA}</td>
         <td class="num">${dLevel ? fmtDelta(dLevel) : '—'}</td>
         <td class="num">${fmtDelta(dXp)}</td>
         <td class="num">${dBestStreak>0 ? fmtDelta(dBestStreak) : '—'}</td>
-        <td class="num">${dBestDmg==null ? NA : (dBestDmg>0 ? fmtDelta(dBestDmg) : '—')}</td>
+        <td class="num">${dBestDmg==null ? NA : (dBestDmg>0 ? fmtDelta(dBestDmg) + (rowDmgFromGames ? ' *' : '') : '—')}</td>
       </tr>`);
     i++;
   }
@@ -304,5 +331,8 @@ export function renderEvolutionTable(snaps) {
         <th class="num">Δ Record dégâts</th>
       </tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>`;
+    </table></div>
+    ${anyDmgFromGames ? `<div style="color:var(--muted);font-size:11px;margin-top:8px;">
+      * Dégâts recalculés depuis l'historique de parties importé pour cet intervalle (EVA ne les renvoie plus dans l'agrégat de saison) — incomplet si toutes les parties de la période n'ont pas été importées.
+    </div>` : ''}`;
 }

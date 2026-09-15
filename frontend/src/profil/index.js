@@ -42,7 +42,7 @@ export function renderProfilMain(uid) {
   } else if (snaps && snaps.length) {
     html += renderSeasonCard(snaps, baseline, games);
     if (snaps.length > 1) {
-      html += renderEvolutionTable(snaps);
+      html += renderEvolutionTable(snaps, games);
     } else {
       html += `<div class="evolution-hint">
         Une seule capture pour l'instant. Importe à nouveau le profil de ce joueur plus tard
