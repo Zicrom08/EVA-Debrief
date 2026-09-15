@@ -11,7 +11,7 @@
 .dropzone .sub{color:var(--muted);font-size:12px;}
 .import-divider{display:flex;align-items:center;gap:12px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:0.08em;margin:24px 0;}
 .import-divider::before,.import-divider::after{content:"";flex:1;height:1px;background:var(--line);}
-.import-wrap textarea{
+.import-wrap textarea,.modal-body textarea{
   width:100%;min-height:120px;background:var(--panel);border:1px solid var(--line);border-radius:10px;
   color:var(--text);font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;padding:12px;resize:vertical;
 }
@@ -28,3 +28,29 @@
 .import-token-row{margin:12px 0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .import-token-value{background:var(--panel-2);padding:6px 10px;border-radius:6px;color:var(--gold);font-family:ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;font-size:12px;word-break:break-all;}
 .import-extension-row{margin-top:14px;padding-top:14px;border-top:1px solid var(--line);}
+.import-extension-row .import-extension-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+.import-extension-row a.btn{display:inline-block;text-decoration:none;}
+
+/* Import manuel (JSON) : replié par défaut derrière un bouton, voir import.js — plus la
+   méthode mise en avant (le "Pont automatique" ci-dessus l'est), donc juste un lien discret. */
+.import-manual-toggle{margin-top:18px;text-align:center;}
+
+/* Modal générique (overlay plein écran + panneau centré) — utilisé ici pour l'import manuel
+   uniquement, pas de composant modal partagé ailleurs dans l'app (voir CLAUDE.md/game-groups.js :
+   un précédent modal de groupe a été remplacé par un affichage inline, resté sans suite). */
+.modal-overlay{
+  position:fixed;inset:0;z-index:50;display:flex;align-items:flex-start;justify-content:center;
+  padding:60px 20px;overflow-y:auto;background:rgba(6,8,13,0.72);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+}
+.modal-panel{
+  background:var(--panel);border:1px solid var(--line);border-radius:12px;
+  max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+.modal-header{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:16px 20px;border-bottom:1px solid var(--line);
+}
+.modal-header h3{margin:0;font-size:16px;}
+.modal-body{padding:20px;}
+.modal-body > p:first-child{margin-top:0;}

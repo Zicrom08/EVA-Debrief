@@ -25,7 +25,8 @@
 //   shell.js         coquille de l'app (résumé, boutons du header)
 //   tabs.js          bascule entre onglets
 //   filters-ui.js    barre de filtres (période, exclusion cartes/modes)
-//   import.js        écran d'import (glisser-déposer, coller du JSON)
+//   import.js        écran d'import : "pont automatique" (jeton, extension) mis en avant par
+//                     défaut, import JSON manuel (glisser-déposer, coller) replié dans un modal
 //   changelog.js     infobulle "dernières nouveautés" du header
 // ============================================================================
 
@@ -35,6 +36,7 @@ import { loadFromServer, getMe } from './api.js';
 import { ensureModeDefaults } from './game-filters.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
+import { renderImportTokenPanel } from './import-token.js';
 import './tabs.js';
 import './filters-ui.js';
 import './import.js';
@@ -48,14 +50,19 @@ import './changelog.js';
     state.currentUser = await getMe();
   } catch (e) {
     if (e.message === 'session expirée') return; // redirection vers /login.html déjà déclenchée
-    const help = document.querySelector('.import-help');
-    if (help) {
-      help.innerHTML += `<br><br><strong style="color:var(--loss);">Impossible de contacter le serveur</strong> (${e.message}).
+    const errEl = document.getElementById('importScreenError');
+    if (errEl) {
+      errEl.innerHTML = `<strong style="color:var(--loss);">Impossible de contacter le serveur</strong> (${e.message}).
         Vérifie que le serveur tourne bien (<code>node backend/server.js</code>) et que cette page est servie par lui
         (via son adresse http://..., pas ouverte en double-cliquant sur le fichier).`;
     }
     return;
   }
+  // Rendu même sans aucune donnée encore importée : c'est désormais la méthode mise en avant par
+  // défaut dans #importScreen (voir index.html), donc un compte admin/contributor tout juste créé
+  // doit pouvoir générer son jeton et lier le collecteur sans devoir d'abord passer par un import
+  // JSON manuel pour "débloquer" l'écran normal (showApp()).
+  renderImportTokenPanel();
   if (Object.keys(state.gamesById).length > 0 || Object.keys(state.playerStatsSnapshots).length > 0) {
     ensureModeDefaults();
     rebuildPlayerIndex();

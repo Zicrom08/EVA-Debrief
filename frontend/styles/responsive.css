@@ -76,4 +76,7 @@
 
   .import-wrap{margin:30px auto;padding:0 14px;}
   .dropzone{padding:26px 14px;}
+
+  .modal-overlay{padding:20px 10px;}
+  .modal-body{padding:14px;}
 }

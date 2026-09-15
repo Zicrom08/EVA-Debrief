@@ -92,14 +92,17 @@ function renderPanelContent(container, token) {
       ${token ? '<button class="btn small" id="revokeImportTokenBtn">Révoquer</button>' : ''}
     </div>
     <div class="import-extension-row">
-      <button class="btn small" id="linkExtensionBtn">Lier l'extension EVA-Debrief</button>
+      <div class="import-extension-actions">
+        <a class="btn small" href="/downloads/eva-debrief-extension.zip" download>⬇️ Télécharger l'extension (.zip)</a>
+        <button class="btn small" id="linkExtensionBtn">Lier l'extension EVA-Debrief</button>
+      </div>
       <div id="extensionLinkStatus" style="color:var(--muted);font-size:12px;margin-top:4px;"></div>
     </div>`;
   detectExtension().then((detected) => {
     const statusEl = container.querySelector('#extensionLinkStatus');
     if (!statusEl) return;
     if (!detected) {
-      statusEl.textContent = "Extension non détectée — installe-la d'abord (voir browser-extension/README.md), puis recharge cette page.";
+      statusEl.textContent = "Extension non détectée — télécharge-la ci-dessus, décompresse le .zip, puis charge-la via \"Charger l'extension non empaquetée\" dans chrome://extensions (voir browser-extension/README.md pour le détail), puis recharge cette page.";
     }
   });
 }
@@ -201,7 +204,7 @@ async function linkExtension(container) {
     statusEl.textContent = '✅ Extension liée avec succès. Navigue sur EVA normalement, la capture se fait automatiquement.';
   } else {
     statusEl.textContent = 'Échec de la liaison : ' + (result.error || 'erreur inconnue.') +
-      (result.error === "Extension non détectée sur cette page." ? ' (voir browser-extension/README.md, puis recharge cette page)' : '');
+      (result.error === "Extension non détectée sur cette page." ? ' (télécharge-la ci-dessus si ce n\'est pas déjà fait, puis recharge cette page)' : '');
   }
 }
 

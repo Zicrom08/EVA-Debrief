@@ -127,41 +127,61 @@
 
 <div id="importScreen" class="import-wrap">
   <h2>Importer tes données</h2>
-  <p>Glisse un ou plusieurs fichiers JSON exportés (par le collecteur EVA ou copiés depuis les requêtes réseau), ou colle le JSON directement ci-dessous. Les imports successifs se fusionnent automatiquement, sans doublon.</p>
+  <p>La capture se fait normalement toute seule, en arrière-plan, une fois le collecteur (script ou
+    extension navigateur) lié à ton compte ci-dessous. L'import JSON manuel reste disponible pour un
+    besoin ponctuel (première partie d'historique, dépannage…), mais n'est plus la méthode mise en avant.</p>
 
-  <div class="dropzone" id="dropzone">
-    <div class="icon">📂</div>
-    <div class="main">Glisse tes fichiers .json ici, ou clique pour parcourir</div>
-    <div class="sub">Plusieurs fichiers acceptés à la fois</div>
-    <input type="file" id="fileInput" accept="application/json,.json" multiple hidden>
-  </div>
-
-  <div class="import-divider">ou</div>
-
-  <textarea id="pasteArea" placeholder="Colle ici le JSON brut d'une requête (historique de parties ou profil de joueur), ou l'export du collecteur…"></textarea>
-  <div class="import-actions">
-    <button class="btn primary" id="loadPasteBtn">Charger ce JSON</button>
-  </div>
-  <div class="import-error" id="importError"></div>
-
-  <div class="import-help">
-    <strong>Formats acceptés :</strong><br>
-    · Historique de parties : <code>{ "data": { "cursorAfterhGameHistory": { "nodes": [...] } } }</code><br>
-    · Ton profil / stats de saison (page connectée) : <code>{ "data": { "getPlayerByUserId": { ... } } }</code><br>
-    · Profil public d'un autre joueur : <code>{ "data": { "getPublicPlayerByUsername": { ... } } }</code>
-      <span style="color:var(--loss);">(actuellement cassé côté EVA.gg — utilise ta page de profil connectée à la place)</span><br>
-    · Export du collecteur : <code>{ "nodes": [...], "playerStats": [...] }</code><br>
-    · Un simple tableau de parties.<br><br>
-    Les stats de profil sont des totaux cumulés : importe le même profil à plusieurs
-    dates différentes pour que l'onglet <strong>Profil</strong> puisse tracer son évolution.<br><br>
-    <strong>Sauvegarde :</strong> tes données sont stockées sur le serveur (dans sa base de
-    données), pas dans ce navigateur — elles sont donc visibles depuis n'importe quel appareil
-    qui accède à ce serveur, et survivent à un vidage de cache. La déduplication (parties déjà
-    connues, profils identiques) est gérée par le serveur, donc tu peux réimporter les mêmes
-    fichiers plusieurs fois sans risque.
-  </div>
+  <div class="import-error" id="importScreenError"></div>
 
   <div class="import-token-panel" id="importTokenPanel"></div>
+
+  <div class="import-manual-toggle">
+    <button class="btn small" id="manualImportToggleBtn" type="button">Import manuel (fichier / JSON collé) ▾</button>
+  </div>
+</div>
+
+<div id="manualImportModal" class="modal-overlay" style="display:none;">
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="manualImportTitle">
+    <div class="modal-header">
+      <h3 id="manualImportTitle">Import manuel</h3>
+      <button class="btn icon-btn" id="manualImportCloseBtn" type="button" aria-label="Fermer">✕</button>
+    </div>
+    <div class="modal-body">
+      <p>Glisse un ou plusieurs fichiers JSON exportés (par le collecteur EVA ou copiés depuis les requêtes réseau), ou colle le JSON directement ci-dessous. Les imports successifs se fusionnent automatiquement, sans doublon.</p>
+
+      <div class="dropzone" id="dropzone">
+        <div class="icon">📂</div>
+        <div class="main">Glisse tes fichiers .json ici, ou clique pour parcourir</div>
+        <div class="sub">Plusieurs fichiers acceptés à la fois</div>
+        <input type="file" id="fileInput" accept="application/json,.json" multiple hidden>
+      </div>
+
+      <div class="import-divider">ou</div>
+
+      <textarea id="pasteArea" placeholder="Colle ici le JSON brut d'une requête (historique de parties ou profil de joueur), ou l'export du collecteur…"></textarea>
+      <div class="import-actions">
+        <button class="btn primary" id="loadPasteBtn">Charger ce JSON</button>
+      </div>
+      <div class="import-error" id="importError"></div>
+
+      <div class="import-help">
+        <strong>Formats acceptés :</strong><br>
+        · Historique de parties : <code>{ "data": { "cursorAfterhGameHistory": { "nodes": [...] } } }</code><br>
+        · Ton profil / stats de saison (page connectée) : <code>{ "data": { "getPlayerByUserId": { ... } } }</code><br>
+        · Profil public d'un autre joueur : <code>{ "data": { "getPublicPlayerByUsername": { ... } } }</code>
+          <span style="color:var(--loss);">(actuellement cassé côté EVA.gg — utilise ta page de profil connectée à la place)</span><br>
+        · Export du collecteur : <code>{ "nodes": [...], "playerStats": [...] }</code><br>
+        · Un simple tableau de parties.<br><br>
+        Les stats de profil sont des totaux cumulés : importe le même profil à plusieurs
+        dates différentes pour que l'onglet <strong>Profil</strong> puisse tracer son évolution.<br><br>
+        <strong>Sauvegarde :</strong> tes données sont stockées sur le serveur (dans sa base de
+        données), pas dans ce navigateur — elles sont donc visibles depuis n'importe quel appareil
+        qui accède à ce serveur, et survivent à un vidage de cache. La déduplication (parties déjà
+        connues, profils identiques) est gérée par le serveur, donc tu peux réimporter les mêmes
+        fichiers plusieurs fois sans risque.
+      </div>
+    </div>
+  </div>
 </div>
 
 <script type="module" src="/src/main.js"></script>

@@ -29,12 +29,16 @@ scripts s'injectent simplement pas sur un domaine non listé, silencieusement.
 
 ## Installation (chargement décompressé — pas de store pour l'instant)
 
-1. Ouvre `chrome://extensions` (ou `edge://extensions`, ou l'équivalent dans Kiwi
+1. Télécharge le `.zip` de l'extension — bouton **"⬇️ Télécharger l'extension"** dans le
+   panneau "Pont automatique" de l'onglet "+ Importer" sur ton instance EVA-Debrief
+   (admin/contributor uniquement), ou directement ce dossier (`browser-extension/`) si tu
+   es déjà dans le dépôt. Décompresse-le si tu es parti du `.zip`.
+2. Ouvre `chrome://extensions` (ou `edge://extensions`, ou l'équivalent dans Kiwi
    Browser).
-2. Active le **"mode développeur"** (bascule en haut à droite sur Chrome/Edge).
-3. Clique **"Charger l'extension non empaquetée"**, puis sélectionne ce dossier
-   (`browser-extension/`).
-4. L'extension apparaît dans la liste — rien d'autre à faire ici.
+3. Active le **"mode développeur"** (bascule en haut à droite sur Chrome/Edge).
+4. Clique **"Charger l'extension non empaquetée"**, puis sélectionne le dossier
+   `browser-extension/` décompressé.
+5. L'extension apparaît dans la liste — rien d'autre à faire ici.
 
 ## Liaison à ton compte EVA-Debrief
 

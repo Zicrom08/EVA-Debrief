@@ -68,6 +68,7 @@ async function finalizeImport() {
   rebuildPlayerIndex();
   persistUiPrefs();
   showApp();
+  closeManualImportModal();
 }
 
 // Lit un fichier sélectionné/déposé sous forme de texte (Promise autour de FileReader).
@@ -131,4 +132,25 @@ document.getElementById('loadPasteBtn').addEventListener('click', async () => {
     document.getElementById('pasteArea').value = '';
     await finalizeImport();
   }
+});
+
+// ================= MODAL D'IMPORT MANUEL =================
+// L'import JSON brut (glisser-déposer/coller) n'est plus la méthode mise en avant par défaut
+// (voir "Pont automatique" dans import-token.js) — c'est un recours ponctuel, donc replié dans
+// un modal ouvert explicitement plutôt qu'affiché en permanence dans #importScreen.
+const manualImportModal = document.getElementById('manualImportModal');
+function openManualImportModal() {
+  manualImportModal.style.display = 'flex';
+  document.getElementById('pasteArea').focus();
+}
+function closeManualImportModal() {
+  manualImportModal.style.display = 'none';
+}
+document.getElementById('manualImportToggleBtn').addEventListener('click', openManualImportModal);
+document.getElementById('manualImportCloseBtn').addEventListener('click', closeManualImportModal);
+manualImportModal.addEventListener('click', (e) => {
+  if (e.target === manualImportModal) closeManualImportModal();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && manualImportModal.style.display !== 'none') closeManualImportModal();
 });
