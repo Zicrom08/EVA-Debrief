@@ -44,6 +44,26 @@ export async function renderImportTokenPanel() {
   }
   renderPanelContent(container, data.token);
   wirePanel(container);
+  // data.importEnabled (pas state.importEnabled, hydraté seulement au chargement initial de
+  // la page par loadFromServer() — fetchImportToken() ci-dessus, lui, est rechargé à chaque
+  // ouverture de cet onglet, donc c'est la valeur la plus à jour) — voir /api/import-token
+  // dans backend/server.js. On garde aussi state.importEnabled synchronisé au passage, pour
+  // le reste du code qui pourrait s'y fier.
+  state.importEnabled = data.importEnabled !== false;
+  renderImportDisabledBanner(state.importEnabled);
+}
+
+// Coupure d'urgence admin (voir /api/settings, backend/server.js::requireImportEnabled()).
+// Bannière seulement : ne bloque rien côté client (le serveur refuse déjà POST /api/import
+// avec un message clair, voir apiSend() dans api.js) — juste pour prévenir AVANT que quelqu'un
+// perde du temps à configurer un pont ou coller du JSON pour rien.
+function renderImportDisabledBanner(importEnabled) {
+  const importScreen = document.getElementById('importScreenError');
+  if (!importScreen) return;
+  importScreen.innerHTML = importEnabled ? '' : `
+    <strong style="color:var(--loss);">⚠️ Import temporairement désactivé par un administrateur.</strong>
+    Les nouvelles parties/profils ne peuvent pas être poussés pour l'instant (collecteur inclus)
+    — réessaie plus tard, ou contacte un admin pour savoir pourquoi.`;
 }
 
 // Sonde brièvement la présence de l'extension navigateur (voir browser-extension/content-

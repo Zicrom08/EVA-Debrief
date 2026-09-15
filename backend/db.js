@@ -60,6 +60,10 @@ function emptyUsersState() {
   return {
     users: {},                // userId (interne, généré) -> { id, username, email, passwordSalt, passwordHash, role, createdAt }
     registrationEnabled: true, // bascule admin (onglet Comptes) — seul gate de /api/register, voir isRegistrationEnabled() dans server.js
+    importEnabled: true,      // bascule admin (onglet Comptes) — seul gate de POST /api/import, voir isImportEnabled() dans server.js.
+                               // Pensée pour une panne côté EVA (ex: issue Victoire/Défaite cassée même sur le site EVA lui-même,
+                               // vécu le 2026-09-15) : coupe l'import pour tout le monde le temps que ça se rétablisse, plutôt que
+                               // de laisser les contributeurs importer des données qu'on sait déjà fausses à la source.
   };
 }
 
@@ -120,14 +124,15 @@ const gamePersister = makePersister(DATA_FILE, () => state);
 const usersFileContent = readJsonFile(USERS_DATA_FILE);
 let usersState;
 if (usersFileContent) {
-  // registrationEnabled absent d'un users.json antérieur à ce réglage -> true par défaut,
-  // tant qu'un admin ne le ferme pas explicitement.
+  // registrationEnabled/importEnabled absents d'un users.json antérieur à ces réglages ->
+  // true par défaut, tant qu'un admin ne les ferme pas explicitement.
   usersState = {
     users: usersFileContent.users || {},
     registrationEnabled: usersFileContent.registrationEnabled !== undefined ? usersFileContent.registrationEnabled : true,
+    importEnabled: usersFileContent.importEnabled !== undefined ? usersFileContent.importEnabled : true,
   };
 } else if (legacyDataFile && legacyDataFile.users && Object.keys(legacyDataFile.users).length) {
-  usersState = { users: legacyDataFile.users, registrationEnabled: true };
+  usersState = { users: legacyDataFile.users, registrationEnabled: true, importEnabled: true };
   console.log(`[db] Migration : comptes trouvés dans ${DATA_FILE}, déplacés vers ${USERS_DATA_FILE}.`);
 } else {
   usersState = emptyUsersState();
@@ -593,6 +598,19 @@ module.exports = {
     usersState.registrationEnabled = !!enabled;
     usersPersister.saveNow();
     return usersState.registrationEnabled;
+  },
+
+  // Bascule admin (onglet Comptes) pour couper/rouvrir l'import (manuel ET pont automatique
+  // du collecteur, même gate — voir requireImportAccess() dans server.js) sans redémarrer le
+  // serveur. Pensée pour une panne de données côté EVA (voir emptyUsersState() plus haut) :
+  // un admin peut couper l'import pour tout le monde le temps que ça se rétablisse.
+  getImportEnabled() {
+    return usersState.importEnabled !== false; // true par défaut, y compris si absent
+  },
+  setImportEnabled(enabled) {
+    usersState.importEnabled = !!enabled;
+    usersPersister.saveNow();
+    return usersState.importEnabled;
   },
 
   // ---------------- Player links (fusion de comptes joueurs, admin) ----------------

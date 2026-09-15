@@ -93,4 +93,9 @@ export async function loadFromServer() {
   (serverState.playerNames || []).forEach(n => {
     if (n && n.uid != null) state.playerNames[n.uid] = n.name;
   });
+
+  // Coupure d'urgence admin (voir requireImportEnabled() dans backend/server.js) — exposée à
+  // tout compte, pas seulement admin, pour que l'onglet "+ Importer" puisse prévenir un
+  // contributeur avant qu'il ne se prenne un échec sur /api/import.
+  state.importEnabled = serverState.importEnabled !== false;
 }

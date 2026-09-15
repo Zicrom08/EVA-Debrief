@@ -5,7 +5,7 @@ import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames, currentTagForPlayer } from './team-detect.js';
 import { fetchBackups, backupNow, downloadBackup } from './backups.js';
-import { fetchSettings, updateRegistrationEnabled } from './settings.js';
+import { fetchSettings, updateRegistrationEnabled, updateImportEnabled } from './settings.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -15,7 +15,7 @@ import { showApp } from './shell.js';
 
 let users = [];
 let backupsData = { intervalHours: 0, retention: 0, sets: [] };
-let settingsData = { registrationEnabled: true };
+let settingsData = { registrationEnabled: true, importEnabled: true };
 
 const ROLES = ['admin', 'contributor', 'readonly'];
 function roleOptionsHtml(selectedRole) {
@@ -567,6 +567,46 @@ function wireRegistrationManager() {
   }
 }
 
+// ================= COUPURE D'URGENCE DE L'IMPORT (admin) =================
+// Ajoutée le 2026-09-15 après une panne de données côté EVA (l'issue Victoire/Défaite d'une
+// partie pouvait être fausse à la SOURCE, cassée même sur le site EVA lui-même — aucune
+// correction possible côté EVA-Debrief dans ce cas). Coupe POST /api/import pour tout le
+// monde (admin compris, voir requireImportEnabled() dans server.js) — jusqu'à ce qu'un admin
+// la rouvre explicitement une fois la situation côté EVA rétablie.
+function renderImportGatePanel() {
+  const { importEnabled, error } = settingsData;
+  if (error) {
+    return `<div class="detail-empty">Impossible de charger ce réglage : ${error}</div>`;
+  }
+  const statusColor = importEnabled ? 'var(--win)' : 'var(--loss)';
+  const statusLabel = importEnabled ? 'Activé' : 'Désactivé';
+  return `
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <div>État actuel : <strong style="color:${statusColor}">${statusLabel}</strong></div>
+      <button class="btn small ${importEnabled ? 'danger' : 'primary'}" id="toggleImportBtn">
+        ${importEnabled ? 'Désactiver temporairement l\'import' : 'Réactiver l\'import'}
+      </button>
+    </div>`;
+}
+
+function wireImportGateManager() {
+  const btn = document.getElementById('toggleImportBtn');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      if (settingsData.importEnabled && !confirm('Désactiver l\'import pour TOUT LE MONDE (admins compris) ? Personne ne pourra plus importer de nouvelles parties tant que tu ne le réactives pas ici.')) return;
+      btn.disabled = true;
+      try {
+        settingsData = Object.assign({}, settingsData, await updateImportEnabled(!settingsData.importEnabled));
+      } catch (e) {
+        alert('Erreur lors de la mise à jour du réglage : ' + e.message);
+        btn.disabled = false;
+        return;
+      }
+      renderComptes();
+    });
+  }
+}
+
 // ================= ANALYSE DES JOUEURS (admin) =================
 // Rapport de contrôle sur les données déjà importées : pour chaque joueur connu, quel
 // pseudo est actuellement retenu, d'où il vient (nameFreshness() dans format.js réutilise
@@ -646,7 +686,7 @@ export async function renderComptes() {
   try {
     await refreshSettingsFromServer();
   } catch (e) {
-    settingsData = { registrationEnabled: true, error: e.message };
+    settingsData = { registrationEnabled: true, importEnabled: true, error: e.message };
   }
   container.innerHTML = `
     <div class="team-manager">
@@ -662,6 +702,16 @@ export async function renderComptes() {
         compte créé via ce lien reste toujours en rôle lecture seule.
       </div>
       ${renderRegistrationPanel()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Import de données</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Coupure d'urgence : désactive l'import (manuel ET pont automatique du collecteur) pour
+        <strong>tout le monde, admins compris</strong> — utile si EVA renvoie des données
+        fausses à la source (ex: issue Victoire/Défaite cassée sur EVA lui-même) et qu'on veut
+        éviter que des données erronées rentrent tant que ce n'est pas rétabli côté EVA.
+      </div>
+      ${renderImportGatePanel()}
     </div>
     <div class="team-manager">
       <div class="section-title">Fusion de comptes joueurs</div>
@@ -709,6 +759,7 @@ export async function renderComptes() {
     </div>`;
   wireUserManager();
   wireRegistrationManager();
+  wireImportGateManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
   wirePlayerAnalysisManager();

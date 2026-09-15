@@ -110,6 +110,16 @@ function isRegistrationEnabled() {
   return db.getRegistrationEnabled();
 }
 
+// Coupure d'urgence de l'import (voir requireImportAccess plus bas, et /api/settings) —
+// pensée pour une panne de données côté EVA (l'issue Victoire/Défaite d'une partie peut être
+// fausse à la source, cassée même sur le site EVA lui-même — vécu le 2026-09-15) : un admin
+// peut fermer l'import pour tout le monde (manuel ET pont automatique du collecteur, même
+// gate) le temps que ça se rétablisse, plutôt que de laisser les contributeurs importer des
+// données qu'on sait déjà fausses.
+function isImportEnabled() {
+  return db.getImportEnabled();
+}
+
 // TRUST_PROXY (voir .env.example) : active la confiance en X-Forwarded-For pour clientIp()
 // ci-dessous — à activer UNIQUEMENT si ce serveur tourne bien derrière un reverse proxy de
 // confiance (Caddy/nginx, voir la section HTTPS du README, Option A) qui pose lui-même cet
@@ -332,10 +342,26 @@ app.put('/api/me/default-player', (req, res) => {
 });
 
 // Autorise l'import de données aux rôles admin et contributor — seul readonly
-// est bloqué ici (contrairement aux équipes/reset, réservés à admin seul).
+// est bloqué ici (contrairement aux équipes/reset, réservés à admin seul). Aussi utilisée par
+// /api/import-token et /api/game-groups, qui ne déclenchent aucun import eux-mêmes (gestion du
+// jeton, organisation de parties déjà connues) — la coupure d'urgence isImportEnabled() ne les
+// concerne donc PAS, voir requireImportEnabled() ci-dessous, posée uniquement sur POST /api/import.
 function requireImportAccess(req, res, next) {
   if (req.user && req.user.role === 'readonly') {
     return res.status(403).json({ error: 'Compte en lecture seule : action non autorisée.' });
+  }
+  next();
+}
+
+// Coupure d'urgence (isImportEnabled(), voir plus haut) — posée SEULEMENT sur POST /api/import
+// (le seul endpoint qui écrit réellement de nouvelles parties/profils), jamais sur
+// /api/import-token ou /api/game-groups qui partagent requireImportAccess pour le rôle mais
+// n'importent rien. S'applique à TOUT LE MONDE, admin compris — pas d'exception : le but est
+// qu'aucune donnée fausse ne rentre tant que la panne EVA n'est pas résolue, pas seulement de
+// ralentir les contributeurs.
+function requireImportEnabled(req, res, next) {
+  if (!isImportEnabled()) {
+    return res.status(503).json({ error: 'Import temporairement désactivé par un administrateur — réessaie plus tard.', importDisabled: true });
   }
   next();
 }
@@ -362,7 +388,11 @@ function resolveImportAuth(req, res, next) {
 // lui-même, seule une vraie connexion le peut.
 app.get('/api/import-token', requireImportAccess, (req, res) => {
   const user = db.getUserById(req.user.userId);
-  res.json({ token: (user && user.importToken) || null });
+  // importEnabled inclus ici (pas seulement dans /api/state) : cet endpoint est déjà rechargé
+  // à chaque ouverture de l'onglet "+ Importer" (voir renderImportTokenPanel() côté frontend),
+  // donc c'est la source la plus à jour pour la bannière — state.importEnabled (hydraté par
+  // loadFromServer()) ne l'est lui qu'au chargement initial de la page.
+  res.json({ token: (user && user.importToken) || null, importEnabled: db.getImportEnabled() });
 });
 app.post('/api/import-token', requireImportAccess, (req, res) => {
   const token = auth.generateImportToken();
@@ -445,22 +475,30 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
-// Réglages admin (pour l'instant : seulement la bascule d'inscription publique, voir onglet
-// Comptes côté frontend).
+// Réglages admin (inscription publique + coupure d'urgence de l'import, voir onglet Comptes
+// côté frontend).
 app.get('/api/settings', requireAdmin, (req, res) => {
   res.json({
     registrationEnabled: db.getRegistrationEnabled(),
+    importEnabled: db.getImportEnabled(),
   });
 });
 
 app.put('/api/settings', requireAdmin, (req, res) => {
-  const { registrationEnabled } = req.body || {};
-  if (typeof registrationEnabled !== 'boolean') {
+  const { registrationEnabled, importEnabled } = req.body || {};
+  if (registrationEnabled === undefined && importEnabled === undefined) {
+    return res.status(400).json({ error: 'Au moins un réglage (registrationEnabled ou importEnabled) doit être fourni.' });
+  }
+  if (registrationEnabled !== undefined && typeof registrationEnabled !== 'boolean') {
     return res.status(400).json({ error: 'registrationEnabled doit être un booléen.' });
   }
-  res.json({
-    registrationEnabled: db.setRegistrationEnabled(registrationEnabled),
-  });
+  if (importEnabled !== undefined && typeof importEnabled !== 'boolean') {
+    return res.status(400).json({ error: 'importEnabled doit être un booléen.' });
+  }
+  const response = {};
+  if (registrationEnabled !== undefined) response.registrationEnabled = db.setRegistrationEnabled(registrationEnabled);
+  if (importEnabled !== undefined) response.importEnabled = db.setImportEnabled(importEnabled);
+  res.json(response);
 });
 
 // ---------------------------------------------------------------------------
@@ -560,6 +598,10 @@ app.get('/api/state', (req, res) => {
     // global) — voir db.js::getGroupsForUser(), les groupes de parties sont strictement
     // privés au compte connecté.
     matchGroups: req.user ? db.getGroupsForUser(req.user.userId) : [],
+    // Exposé à TOUT compte (pas seulement admin, contrairement à /api/settings) pour que
+    // l'onglet "+ Importer" puisse afficher un message clair aux contributeurs plutôt que de
+    // les laisser découvrir la coupure en se prenant un 503 sur /api/import.
+    importEnabled: db.getImportEnabled(),
   });
 });
 
@@ -571,7 +613,7 @@ app.get('/api/health', (req, res) => {
 // Import : accepte le JSON collé/déposé tel quel depuis la visionneuse (ou
 // directement depuis le collecteur réseau). Déduplique les parties par id
 // (upsert) et les profils par empreinte de contenu, retire les parties PvE.
-app.post('/api/import', resolveImportAuth, requireImportAccess, (req, res) => {
+app.post('/api/import', requireImportEnabled, resolveImportAuth, requireImportAccess, (req, res) => {
   const { nodes, playerStats } = extractFromPayload(req.body);
 
   let addedGames = 0, updatedGames = 0, skippedPve = 0, skippedInvalid = 0;
@@ -845,4 +887,4 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 
 // Exposés pour la suite de tests (voir backend/test/server.test.js) — le reste du
 // module (routes, démarrage du serveur) n'a pas besoin d'être importable ailleurs.
-module.exports = { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess };
+module.exports = { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled };

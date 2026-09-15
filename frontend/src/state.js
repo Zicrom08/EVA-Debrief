@@ -34,6 +34,7 @@ export const state = {
   excludedModes: new Set(),   // identifiants de mode à exclure (ex: modes PvE qui réutilisent un nom de carte PvP)
   knownModes: new Set(),      // modes déjà vus au moins une fois (pour n'appliquer le défaut auto-exclusion qu'une fois)
   customTeams: {},            // teamId -> { id, name, members:[uid,...] } — équipes créées manuellement par l'utilisateur
+  importEnabled: true,        // coupure d'urgence admin (voir /api/settings, backend/server.js::requireImportEnabled()) — rechargé à chaque loadFromServer()
   matchGroups: {},            // groupId -> { id, name, gameIds:[...], createdAt } — groupes de parties (training/scrim) privés au compte connecté, voir game-groups.js
   selectionMode: false,       // mode "sélection de parties" actif dans Historique (case à cocher par ligne, voir historique.js/game-groups.js)
   selectedGameIds: new Set(), // ids cochés pendant le mode sélection — état UI éphémère, jamais persisté

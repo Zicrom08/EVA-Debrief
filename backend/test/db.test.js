@@ -236,6 +236,14 @@ test('createUser / countAdmins / deleteUser', () => {
   assert.equal(db.countAdmins(), 0);
 });
 
+test('getImportEnabled defaults to true and setImportEnabled toggles/persists it', () => {
+  assert.equal(db.getImportEnabled(), true);
+  assert.equal(db.setImportEnabled(false), false);
+  assert.equal(db.getImportEnabled(), false);
+  assert.equal(db.setImportEnabled(true), true);
+  assert.equal(db.getImportEnabled(), true);
+});
+
 test('updateTeam("__proto__", ...) returns null instead of polluting Object.prototype', () => {
   assert.equal(db.updateTeam('__proto__', 'pwned', ['x']), null);
   assert.equal(({}).name, undefined);

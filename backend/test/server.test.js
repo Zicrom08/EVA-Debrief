@@ -12,7 +12,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eva-debrief-server-test-')
 process.env.DATA_DIR = tmpDir;
 process.env.USERS_DATA_DIR = tmpDir;
 
-const { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess } = require('../server');
+const { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled } = require('../server');
 const db = require('../db');
 
 test('isPveGame flags Pve-category games and the MoonOfTheDead identifier, leaves normal Pvp games alone', () => {
@@ -136,4 +136,30 @@ test('resolveImportAuth + requireImportAccess: a readonly account\'s own valid i
   requireImportAccess(req, res2, () => { reachedRoute = true; });
   assert.equal(reachedRoute, false); // ...mais requireImportAccess bloque quand même
   assert.equal(res2.statusCode, 403);
+});
+
+// requireImportEnabled() : coupure d'urgence admin (voir /api/settings, onglet Comptes) —
+// posée uniquement sur POST /api/import, jamais sur /api/import-token ni /api/game-groups
+// (voir le commentaire sur cette fonction dans server.js).
+test('requireImportEnabled: blocks with 503 when the admin has disabled import, even for an admin account', () => {
+  db.setImportEnabled(false);
+  try {
+    const req = { user: { userId: 'someone', role: 'admin' } };
+    const res = fakeRes();
+    let reachedRoute = false;
+    requireImportEnabled(req, res, () => { reachedRoute = true; });
+    assert.equal(reachedRoute, false);
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body.importDisabled, true);
+  } finally {
+    db.setImportEnabled(true); // ne pas laisser échouer les tests suivants de ce fichier
+  }
+});
+
+test('requireImportEnabled: lets the request through once re-enabled (defaults to enabled)', () => {
+  const req = { user: { userId: 'someone', role: 'contributor' } };
+  const res = fakeRes();
+  let reachedRoute = false;
+  requireImportEnabled(req, res, () => { reachedRoute = true; });
+  assert.equal(reachedRoute, true);
 });
