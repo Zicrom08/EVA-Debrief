@@ -64,14 +64,25 @@ function renderProfileNav(uid, games) {
 // Câble le clic (défilement fluide, en tenant compte de la hauteur de la nav elle-même
 // sticky au-dessus) et le scrollspy (surbrillance du groupe visible) — recréé à chaque
 // rendu du Profil puisque le HTML est entièrement reconstruit à chaque fois (voir
-// renderProfil()) ; l'ancien IntersectionObserver, lui, est explicitement coupé d'abord
-// pour ne pas laisser un observer orphelin tourner sur des nœuds DOM déjà détachés.
-let profileNavObserver = null;
+// renderProfil()) ; l'ancien listener `scroll`, lui, est explicitement retiré d'abord —
+// contrairement aux nœuds DOM (détruits avec le reste du HTML remplacé), un listener posé
+// sur `window` ne disparaît pas tout seul et s'accumulerait sinon à chaque rendu.
+//
+// Scrollspy par POSITION DE SCROLL plutôt que par IntersectionObserver (approche initiale,
+// abandonnée) : un IntersectionObserver ne détecte que ce qui traverse une bande de la
+// fenêtre, hauteur de la section concernée comprise — une section courte en fin de page
+// (ex: "Duels & synergies") peut ne jamais avoir assez de hauteur pour traverser cette bande
+// une fois qu'on a atteint le bas de la page (le scroll s'arrête avant), donc son lien ne
+// s'activait jamais. Ici on choisit simplement la DERNIÈRE section dont le haut a déjà été
+// dépassé, et on force la toute dernière section active dès qu'on est en bas de page —
+// robuste quelle que soit la hauteur de chaque section.
+let profileNavScrollCleanup = null;
 function wireProfileNav() {
-  if (profileNavObserver) { profileNavObserver.disconnect(); profileNavObserver = null; }
+  if (profileNavScrollCleanup) { profileNavScrollCleanup(); profileNavScrollCleanup = null; }
   const nav = document.getElementById('profileNav');
   if (!nav) return;
   const links = [...nav.querySelectorAll('.profile-nav-link')];
+  const groups = links.map(l => document.getElementById(l.dataset.target)).filter(Boolean);
 
   links.forEach(link => {
     link.addEventListener('click', (e) => {
@@ -84,21 +95,32 @@ function wireProfileNav() {
     });
   });
 
-  if (typeof IntersectionObserver === 'undefined') return; // environnement sans DOM (tests) — pas de scrollspy, le clic seul reste fonctionnel
-  const navHeight = nav.getBoundingClientRect().height;
-  profileNavObserver = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (!entry.isIntersecting) return;
-      const link = nav.querySelector(`.profile-nav-link[data-target="${entry.target.id}"]`);
-      if (!link) return;
-      links.forEach(l => l.classList.remove('active'));
-      link.classList.add('active');
-    });
-  }, { rootMargin: `-${navHeight + 20}px 0px -70% 0px` });
-  links.forEach(link => {
-    const target = document.getElementById(link.dataset.target);
-    if (target) profileNavObserver.observe(target);
-  });
+  if (typeof window === 'undefined' || !groups.length) return; // environnement sans DOM (tests) — pas de scrollspy, le clic seul reste fonctionnel
+
+  function updateActive() {
+    const navHeight = nav.getBoundingClientRect().height;
+    const atBottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 2;
+    let activeId = groups[0].id;
+    if (atBottom) {
+      activeId = groups[groups.length - 1].id;
+    } else {
+      const threshold = navHeight + 24;
+      groups.forEach(g => {
+        if (g.getBoundingClientRect().top <= threshold) activeId = g.id;
+      });
+    }
+    links.forEach(l => l.classList.toggle('active', l.dataset.target === activeId));
+  }
+
+  let ticking = false;
+  function onScroll() {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { updateActive(); ticking = false; });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  updateActive();
+  profileNavScrollCleanup = () => window.removeEventListener('scroll', onScroll);
 }
 
 // Construit la colonne principale de l'onglet Profil (carte de saison + toutes les sections d'analyse).
