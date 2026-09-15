@@ -170,16 +170,44 @@ function hashSnapshot(snap) {
 // la propriété que quand le collecteur a pu la déterminer, donc une capture plus ancienne
 // sans ce champ n'écrase jamais un seasonId déjà connu (Object.assign ne copie que les
 // propriétés réellement présentes sur la source, jamais une valeur undefined implicite).
+// Fusionne un seul bloc teamOne/teamTwo — voir mergeGameRecord() ci-dessous pour le contexte
+// général. Cas particulier trouvé en production (2026-09-15, partie "Reef Point" du 25 août,
+// voir la conversation) : une re-capture plus tardive de la MÊME partie peut renvoyer
+// `name: null` (constaté depuis EVA elle-même, sur cette même partie qui portait pourtant
+// "ALLIANCE"/"REBELS" lors de sa toute première capture) — un `Object.assign` naïf laisse
+// cette régression écraser silencieusement le nom déjà connu. `name` ne recule donc jamais :
+// une valeur déjà connue n'est remplacée que par une autre valeur non-null, jamais par null.
+function mergeTeam(existingTeam, incomingTeam) {
+  if (!existingTeam) return incomingTeam;
+  if (!incomingTeam) return existingTeam;
+  const merged = Object.assign({}, existingTeam, incomingTeam);
+  if (incomingTeam.name == null && existingTeam.name != null) merged.name = existingTeam.name;
+  return merged;
+}
+
+// Fusionne deux versions d'une même partie plutôt que de laisser la plus récente écraser
+// l'autre. Depuis le changement d'API EVA de juillet 2026, la liste d'historique
+// (cursorAfterhGameHistory) et le détail d'une partie (getAfterhGameHistoryById) portent
+// chacune un sous-ensemble différent des champs (la liste a "outcome" par joueur, le
+// détail a team/score/rank/niceName/teamOne-teamTwo) — sans fusion, réimporter l'un après
+// l'autre perdrait les infos de celui déjà stocké. Fusion à deux niveaux : g.data
+// (teamOne/teamTwo/duration...) et chaque joueur (par userId), sur son propre .data.
+// Le champ racine `seasonId` (posé par le collecteur v9.0 sur chaque partie, voir
+// eva_history_collector.user.js et snapshotSeasonId() côté frontend) passe déjà par ce
+// même Object.assign de premier niveau sans traitement particulier : `incoming` ne porte
+// la propriété que quand le collecteur a pu la déterminer, donc une capture plus ancienne
+// sans ce champ n'écrase jamais un seasonId déjà connu (Object.assign ne copie que les
+// propriétés réellement présentes sur la source, jamais une valeur undefined implicite).
 function mergeGameRecord(existing, incoming) {
   if (!existing) return incoming;
   if (!incoming) return existing;
   const merged = Object.assign({}, existing, incoming);
   merged.data = Object.assign({}, existing.data, incoming.data);
   if ((existing.data && existing.data.teamOne) || (incoming.data && incoming.data.teamOne)) {
-    merged.data.teamOne = Object.assign({}, existing.data && existing.data.teamOne, incoming.data && incoming.data.teamOne);
+    merged.data.teamOne = mergeTeam(existing.data && existing.data.teamOne, incoming.data && incoming.data.teamOne);
   }
   if ((existing.data && existing.data.teamTwo) || (incoming.data && incoming.data.teamTwo)) {
-    merged.data.teamTwo = Object.assign({}, existing.data && existing.data.teamTwo, incoming.data && incoming.data.teamTwo);
+    merged.data.teamTwo = mergeTeam(existing.data && existing.data.teamTwo, incoming.data && incoming.data.teamTwo);
   }
   const byUid = new Map();
   (existing.players || []).forEach(p => byUid.set(p.userId, p));
@@ -191,16 +219,30 @@ function mergeGameRecord(existing, incoming) {
   return merged;
 }
 
+// Dérive TOUJOURS l'issue depuis teamOne/teamTwo.score quand c'est possible, plutôt que de ne
+// s'en servir qu'en repli quand "outcome" est absent (comportement d'origine). Trouvé en
+// production (2026-09-15) qu'EVA peut renvoyer un "outcome" par joueur PRÉSENT mais FAUX —
+// "Defeat" pour TOUS les joueurs d'une partie (vu sur plusieurs dizaines de parties d'un coup,
+// à chaque fois sur une re-capture d'une partie plus ancienne), alors même que le score
+// départage clairement gagnants et perdants. Un outcome non-null n'est donc pas une garantie
+// de fiabilité de la part d'EVA — le score, lui, reste vérifiable en soi, donc prioritaire dès
+// qu'il est exploitable. `t1.name`/`t2.name` DOIVENT être connus pour dériver quoi que ce
+// soit : sans eux impossible de savoir quel nom d'équipe a gagné, et confondre "aucun nom
+// connu" avec "match nul" produirait un faux "Draw" généralisé (bug réel vécu ce même jour,
+// corrigé ici — voir mergeTeam() ci-dessus pour l'autre moitié du correctif : préserver le nom
+// déjà connu est ce qui permet à CETTE fonction de continuer à fonctionner sur les parties
+// déjà capturées correctement, même quand une re-capture ultérieure ne renvoie plus de nom).
 // La liste porte "outcome" par joueur, le détail ne le porte plus (seulement les scores
-// d'équipe) — si un joueur n'a toujours pas d'outcome après fusion (détail importé sans
-// être jamais passé par la liste), on le déduit de teamOne/teamTwo.score.
+// d'équipe) — si aucun score d'équipe n'est disponible (détail jamais importé, ou capture
+// encore partielle), on garde tel quel l'outcome déjà connu plutôt que de l'effacer.
 function deriveOutcomes(g) {
   const t1 = g.data && g.data.teamOne;
   const t2 = g.data && g.data.teamTwo;
   if (!t1 || !t2 || t1.score == null || t2.score == null) return;
+  if (t1.name == null || t2.name == null) return; // impossible de savoir quel nom d'équipe a gagné
   const winner = t1.score === t2.score ? null : (t1.score > t2.score ? t1.name : t2.name);
   (g.players || []).forEach(p => {
-    if (p.data && p.data.outcome == null && p.data.team != null) {
+    if (p.data && p.data.team != null) {
       p.data.outcome = winner == null ? 'Draw' : (p.data.team === winner ? 'Victory' : 'Defeat');
     }
   });

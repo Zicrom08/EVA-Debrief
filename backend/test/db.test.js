@@ -54,6 +54,76 @@ test('upsertGame derives a missing player outcome from team scores once team is 
   assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
 });
 
+// Bug hit in production (2026-09-15, "Reef Point" match imported by the user, see reef.json
+// in the conversation): EVA can send a present-but-WRONG outcome — "Defeat" for EVERY player,
+// winning team included — on a re-capture of an older match. The score is the reliable
+// signal here, not EVA's own per-player field, so it must win whenever it's computable.
+test('upsertGame overrides a wrong outcome EVA sent when team scores say otherwise', () => {
+  db.upsertGame({
+    id: 'g2b',
+    createdAt: '2026-01-01T00:00:00Z',
+    data: { teamOne: { name: 'Alliance', score: 100 }, teamTwo: { name: 'Rebels', score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'Alliance', outcome: 'Defeat' } }, // wrong: Alliance actually won 100-0
+      { userId: 'u2', data: { team: 'Rebels', outcome: 'Defeat' } },
+    ],
+  });
+  const g = db.getAllGames().find(g => g.id === 'g2b');
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Victory');
+  assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+});
+
+// The other half of the same real-world bug: the SAME match, re-captured later, came back
+// from EVA with team names both null (even though the original capture had real names) — a
+// naive Object.assign-based merge let that null silently erase the known-good names, which in
+// turn made deriveOutcomes unable to tell who won and mark EVERYONE "Draw" instead. The names
+// must survive the re-capture, and outcomes must stay correctly derived afterwards.
+test('upsertGame preserves a known team name across a later re-capture that returns null, and outcomes stay correctly derived', () => {
+  db.upsertGame({
+    id: 'g2c',
+    createdAt: '2026-08-25T15:10:02Z',
+    data: { teamOne: { name: 'ALLIANCE', score: 100 }, teamTwo: { name: 'REBELS', score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'ALLIANCE', outcome: 'Victory' } },
+      { userId: 'u2', data: { team: 'REBELS', outcome: 'Defeat' } },
+    ],
+  });
+  // Later re-capture of the SAME match: EVA now returns null team names and (wrongly) "Defeat"
+  // for everyone — exactly the shape observed in reef.json.
+  db.upsertGame({
+    id: 'g2c',
+    data: { teamOne: { name: null, score: 100 }, teamTwo: { name: null, score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'ALLIANCE', outcome: 'Defeat' } },
+      { userId: 'u2', data: { team: 'REBELS', outcome: 'Defeat' } },
+    ],
+  });
+  const g = db.getAllGames().find(g => g.id === 'g2c');
+  assert.equal(g.data.teamOne.name, 'ALLIANCE'); // not clobbered by the later null
+  assert.equal(g.data.teamTwo.name, 'REBELS');
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Victory'); // correctly re-derived, not "Draw"
+  assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+});
+
+// A match whose team names have NEVER been known (fresh capture already returns null) must
+// not have its outcome invented as "Draw" — better to leave whatever EVA sent (right or
+// wrong) than to confidently fabricate a result nobody can verify.
+test('upsertGame never fabricates "Draw" when team names are unknown, even with a decisive score', () => {
+  db.upsertGame({
+    id: 'g2d',
+    createdAt: '2026-01-01T00:00:00Z',
+    data: { teamOne: { name: null, score: 100 }, teamTwo: { name: null, score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'ALLIANCE', outcome: 'Defeat' } },
+      { userId: 'u2', data: { team: 'REBELS', outcome: 'Defeat' } },
+    ],
+  });
+  const g = db.getAllGames().find(g => g.id === 'g2d');
+  // Left exactly as EVA sent it (wrong or not) — not overwritten with a fabricated "Draw".
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Defeat');
+  assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+});
+
 test('gameExists / deleteGame is idempotent', () => {
   db.upsertGame({ id: 'g3', createdAt: '2026-01-01T00:00:00Z', players: [] });
   assert.equal(db.gameExists('g3'), true);
