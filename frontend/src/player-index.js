@@ -101,10 +101,11 @@ function playerLabel(uid) {
 
 let pickerHighlightIndex = -1;
 
-// Reflète l'état "ce joueur est-il le joueur par défaut du compte" sur le bouton étoile —
-// appelé à chaque rendu du picker et après chaque changement de sélection, jamais l'inverse
-// (le bouton ne fait que refléter state.currentUser.defaultPlayerUid, jamais l'écrire lui-même
-// hors du clic, voir wirePlayerPickerEvents()).
+// Reflète l'état "ce joueur est-il le joueur par défaut du compte" sur le bouton
+// "Définir par défaut" (texte + grisé quand c'est déjà le cas) — appelé à chaque rendu du
+// picker et après chaque changement de sélection, jamais l'inverse (le bouton ne fait que
+// refléter state.currentUser.defaultPlayerUid, jamais l'écrire lui-même hors du clic, voir
+// wirePlayerPickerEvents()).
 function updateDefaultPlayerBtn() {
   const btn = document.getElementById('setDefaultPlayerBtn');
   if (!btn) return;
@@ -113,6 +114,7 @@ function updateDefaultPlayerBtn() {
   const isDefault = !!state.currentUid && state.currentUid === defUid;
   btn.classList.toggle('is-default', isDefault);
   btn.disabled = !state.currentUid;
+  btn.textContent = isDefault ? 'Joueur par défaut' : 'Définir par défaut';
   btn.title = isDefault
     ? 'Joueur par défaut de ce compte (cliquer pour retirer)'
     : 'Définir comme joueur par défaut';
@@ -233,9 +235,9 @@ function wirePlayerPickerEvents() {
     }
   });
 
-  // Bouton étoile : bascule le joueur par défaut du compte (persisté côté serveur, voir
-  // PUT /api/me/default-player) — jamais en localStorage, à la différence du reste des
-  // préférences d'affichage (ui-prefs.js), puisqu'il doit suivre le compte et pas
+  // Bouton "Définir par défaut" : bascule le joueur par défaut du compte (persisté côté
+  // serveur, voir PUT /api/me/default-player) — jamais en localStorage, à la différence du
+  // reste des préférences d'affichage (ui-prefs.js), puisqu'il doit suivre le compte et pas
   // l'appareil/navigateur. Un second clic sur le joueur déjà par défaut l'efface (bascule).
   const defaultBtn = document.getElementById('setDefaultPlayerBtn');
   defaultBtn.addEventListener('click', async () => {
@@ -247,8 +249,8 @@ function wirePlayerPickerEvents() {
       const result = await setDefaultPlayer(clearing ? null : state.currentUid);
       state.currentUser.defaultPlayerUid = result.defaultPlayerUid;
     } catch (e) {
-      // Pas de UI d'erreur dédiée ici (action mineure, non bloquante) — l'étoile reste
-      // simplement inchangée si l'appel échoue (session expirée -> déjà redirigée par api.js).
+      // Pas de UI d'erreur dédiée ici (action mineure, non bloquante) — le bouton reste
+      // simplement inchangé si l'appel échoue (session expirée -> déjà redirigée par api.js).
     }
     updateDefaultPlayerBtn();
   });

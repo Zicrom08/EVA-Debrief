@@ -67,12 +67,11 @@ header{
 .combobox-item.selected{color:var(--gold);font-weight:600;}
 .combobox-empty{padding:10px 12px;font-size:12px;color:var(--muted);}
 
-/* Bouton étoile "joueur par défaut" (voir player-index.js::updateDefaultPlayerBtn()) —
-   réutilise .btn pour la cohérence visuelle, en carré plutôt qu'en pilule vu que son
-   contenu est un unique glyphe (même symbole ★ que .mvp-icon dans tables.css, pas d'emoji). */
-.icon-btn{padding:6px 10px;font-size:15px;line-height:1;color:var(--muted);}
-.icon-btn:disabled{opacity:0.4;cursor:not-allowed;}
-.icon-btn.is-default{color:var(--gold);border-color:var(--gold);}
+/* Bouton "joueur par défaut" du compte (voir player-index.js::updateDefaultPlayerBtn()) —
+   texte + grisé quand le joueur affiché EST le défaut du compte, plutôt qu'une couleur
+   d'accent : se fond visuellement, comme un état "déjà fait" plutôt qu'une action à faire. */
+#setDefaultPlayerBtn:disabled{opacity:0.4;cursor:not-allowed;}
+#setDefaultPlayerBtn.is-default{background:var(--panel-2);color:var(--muted);}
 
 .btn{
   background:var(--panel);border:1px solid var(--line);color:var(--text);
