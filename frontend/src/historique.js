@@ -129,7 +129,7 @@ export function renderList(){
   if (!list.children.length){
     list.innerHTML = state.currentUid
       ? '<div style="padding:20px;color:var(--muted);font-size:13px;">Aucune partie ne correspond à ce filtre.</div>'
-      : '<div style="padding:20px;color:var(--muted);font-size:13px;">👆 Sélectionne un joueur en haut de la page pour voir son historique de parties.</div>';
+      : '<div style="padding:20px;color:var(--muted);font-size:13px;">Sélectionne un joueur en haut de la page pour voir son historique de parties.</div>';
   }
 }
 

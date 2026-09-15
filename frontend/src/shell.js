@@ -82,7 +82,7 @@ export function renderSummary(){
   if (!state.currentUid) {
     box.innerHTML = `<div class="cell" style="grid-column:1/-1;">
       <div class="value" style="font-size:16px;font-weight:500;color:var(--muted);">
-        👆 Sélectionne un joueur dans la barre en haut pour voir ses statistiques.
+        Sélectionne un joueur dans la barre en haut pour voir ses statistiques.
       </div>
     </div>`;
     return;

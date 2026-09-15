@@ -6,6 +6,7 @@
 
 import { apiUrl, pageUrl, setAuthToken } from './api-base.js';
 import { safeNextPath } from './safe-redirect.js';
+import { markJustLoggedIn } from './ui-prefs.js';
 
 const form = document.getElementById('loginForm');
 const btn = document.getElementById('loginBtn');
@@ -111,6 +112,10 @@ form.addEventListener('submit', async (e) => {
     // l'app (pageUrl(''), jamais '/' en dur — casserait sur un site de projet GitHub Pages,
     // servi sous /<repo>/)
     const params = new URLSearchParams(window.location.search);
+    // Marque une VRAIE connexion (pas un simple rafraîchissement de l'app déjà ouverte) —
+    // voir ui-prefs.js::restoreUiPrefs() : c'est ce qui fait repartir le joueur sélectionné
+    // à zéro seulement à ce moment précis, jamais à un rechargement de page ordinaire.
+    markJustLoggedIn();
     window.location.href = safeNextPath(params.get('next')) || pageUrl('');
   } catch (err) {
     errEl.textContent = 'Erreur de connexion au serveur.';

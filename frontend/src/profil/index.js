@@ -37,7 +37,7 @@ export function renderProfilMain(uid) {
 
   if (!uid) {
     html += `<div class="detail-empty" style="margin-top:0;">
-      👆 Sélectionne un joueur dans la barre en haut de la page pour voir son profil.
+      Sélectionne un joueur dans la barre en haut de la page pour voir son profil.
     </div>`;
   } else if (snaps && snaps.length) {
     html += renderSeasonCard(snaps, baseline, games);

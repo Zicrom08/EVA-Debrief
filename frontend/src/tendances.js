@@ -127,7 +127,7 @@ export function renderTrends() {
   const games = filteredGamesArray();
 
   if (!uid) {
-    wrap.innerHTML = '<div class="detail-empty">👆 Sélectionne un joueur en haut de la page pour voir son suivi de performance.</div>';
+    wrap.innerHTML = '<div class="detail-empty">Sélectionne un joueur en haut de la page pour voir son suivi de performance.</div>';
     if (chartsWrap) chartsWrap.innerHTML = '';
     return;
   }
