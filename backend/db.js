@@ -509,7 +509,7 @@ module.exports = {
   },
   createUser({ username, email, passwordSalt, passwordHash, role }) {
     const id = genId('u');
-    const user = { id, username, email: email || null, passwordSalt, passwordHash, role, importToken: null, createdAt: new Date().toISOString() };
+    const user = { id, username, email: email || null, passwordSalt, passwordHash, role, importToken: null, defaultPlayerUid: null, createdAt: new Date().toISOString() };
     usersState.users[id] = user;
     usersPersister.saveNow();
     return user;
@@ -528,6 +528,9 @@ module.exports = {
     // (révocation du jeton, voir DELETE /api/import-token) — il faut distinguer "ne touche pas
     // à importToken" (patch.importToken absent) de "remets-le à null" (patch.importToken === null).
     if (patch.importToken !== undefined) user.importToken = patch.importToken;
+    // Même raison que importToken ci-dessus : `!== undefined`, pas `!= null` — null EST la
+    // valeur voulue pour effacer le joueur par défaut (voir PUT /api/me/default-player).
+    if (patch.defaultPlayerUid !== undefined) user.defaultPlayerUid = patch.defaultPlayerUid;
     usersPersister.saveNow();
     return user;
   },

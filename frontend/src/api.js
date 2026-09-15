@@ -45,9 +45,17 @@ export async function apiSend(method, path, body) {
   return res.json();
 }
 
-// Compte courant (username + rôle) — utilisé pour adapter l'UI selon le rôle.
+// Compte courant (username + rôle + joueur par défaut) — utilisé pour adapter l'UI selon le
+// rôle, et pour présélectionner automatiquement un joueur à la connexion (voir
+// player-index.js::rebuildPlayerIndex()).
 export async function getMe() {
   return apiGet('/api/me');
+}
+
+// Définit/efface le joueur par défaut du compte connecté (voir PUT /api/me/default-player
+// côté serveur) — uid=null efface le réglage.
+export async function setDefaultPlayer(uid) {
+  return apiSend('PUT', '/api/me/default-player', { uid });
 }
 
 // Recharge state.gamesById / state.playerStatsSnapshots / state.customTeams / state.matchGroups / state.playerLinks / state.playerNames depuis le serveur.

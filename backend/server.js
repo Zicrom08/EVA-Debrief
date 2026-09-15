@@ -305,10 +305,30 @@ app.use((req, res, next) => {
 });
 
 // Compte courant (username + rôle) — utilisé par le frontend pour adapter l'UI.
+// defaultPlayerUid : joueur présélectionné automatiquement à la connexion (voir
+// PUT /api/me/default-player ci-dessous et player-index.js::rebuildPlayerIndex() côté
+// frontend) — null si aucun n'a été défini.
 app.get('/api/me', (req, res) => {
   const user = req.user ? db.getUserById(req.user.userId) : null;
   if (!user) return res.status(401).json({ error: 'Authentification requise.' });
-  res.json({ id: user.id, username: user.username, email: user.email || null, role: user.role });
+  res.json({ id: user.id, username: user.username, email: user.email || null, role: user.role, defaultPlayerUid: user.defaultPlayerUid || null });
+});
+
+// Définit/efface le joueur par défaut du compte connecté — préférence purement personnelle
+// (n'affecte aucune donnée partagée), donc ouverte à TOUS les rôles y compris readonly,
+// contrairement à l'import (voir requireImportAccess) ou aux équipes (requireAdmin). uid=null
+// efface le réglage. Pas de vérification que ce uid correspond à un joueur réel connu du
+// serveur : c'est un simple identifiant, jamais interprété côté serveur — si le joueur
+// disparaît plus tard (parties supprimées), le frontend l'ignore silencieusement, voir
+// rebuildPlayerIndex().
+app.put('/api/me/default-player', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  const { uid } = req.body || {};
+  if (uid != null && typeof uid !== 'string' && typeof uid !== 'number') {
+    return res.status(400).json({ error: 'uid doit être une chaîne, un nombre, ou null.' });
+  }
+  const user = db.updateUser(req.user.userId, { defaultPlayerUid: uid != null ? String(uid) : null });
+  res.json({ defaultPlayerUid: user.defaultPlayerUid });
 });
 
 // Autorise l'import de données aux rôles admin et contributor — seul readonly

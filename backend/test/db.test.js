@@ -194,6 +194,15 @@ test('createUser defaults importToken to null; updateUser sets and clears it (re
   assert.equal(revoked.importToken, null);
 });
 
+test('createUser defaults defaultPlayerUid to null; updateUser sets and clears it', () => {
+  const user = db.createUser({ username: 'defplayeruser1', role: 'readonly', passwordSalt: 's', passwordHash: 'h' });
+  assert.equal(user.defaultPlayerUid, null);
+  const withDefault = db.updateUser(user.id, { defaultPlayerUid: 'u42' });
+  assert.equal(withDefault.defaultPlayerUid, 'u42');
+  const cleared = db.updateUser(user.id, { defaultPlayerUid: null }); // effacement explicite, pas juste "ne pas toucher"
+  assert.equal(cleared.defaultPlayerUid, null);
+});
+
 test('findUserByImportToken finds the right owner, returns null for unknown/empty/missing tokens', () => {
   const user = db.createUser({ username: 'tokenuser2', role: 'contributor', passwordSalt: 's', passwordHash: 'h' });
   assert.equal(db.findUserByImportToken('nope'), null);

@@ -3,6 +3,7 @@ import { latestNiceName } from './format.js';
 import { canonicalUid } from './player-links.js';
 import { applyPlayerNameOverrides } from './player-names.js';
 import { persistUiPrefs } from './ui-prefs.js';
+import { setDefaultPlayer } from './api.js';
 import { renderSummary } from './shell.js';
 import { renderList } from './historique.js';
 import { renderTrends } from './tendances.js';
@@ -73,6 +74,17 @@ export function rebuildPlayerIndex() {
   if (state.currentUid && !state.players[state.currentUid]) {
     state.currentUid = null;
   }
+
+  // Joueur par défaut du compte (bouton "Définir par défaut" à côté de la barre de
+  // recherche, voir setDefaultPlayer() dans api.js et le bouton câblé plus bas) : ne
+  // s'applique que si AUCUN joueur n'est actuellement sélectionné — jamais pour écraser
+  // une sélection en cours, ni celle restaurée depuis localStorage lors d'un simple
+  // rafraîchissement (voir ui-prefs.js). canonicalUid() au cas où le joueur par défaut
+  // aurait depuis été fusionné en tant que smurf.
+  if (!state.currentUid && state.currentUser && state.currentUser.defaultPlayerUid) {
+    const defUid = canonicalUid(state.currentUser.defaultPlayerUid);
+    if (state.players[defUid]) state.currentUid = defUid;
+  }
 }
 
 // Construit le sélecteur "Joueur" du header : un champ texte filtrable (combobox maison,
@@ -89,10 +101,28 @@ function playerLabel(uid) {
 
 let pickerHighlightIndex = -1;
 
+// Reflète l'état "ce joueur est-il le joueur par défaut du compte" sur le bouton étoile —
+// appelé à chaque rendu du picker et après chaque changement de sélection, jamais l'inverse
+// (le bouton ne fait que refléter state.currentUser.defaultPlayerUid, jamais l'écrire lui-même
+// hors du clic, voir wirePlayerPickerEvents()).
+function updateDefaultPlayerBtn() {
+  const btn = document.getElementById('setDefaultPlayerBtn');
+  if (!btn) return;
+  const defUid = state.currentUser && state.currentUser.defaultPlayerUid
+    ? canonicalUid(state.currentUser.defaultPlayerUid) : null;
+  const isDefault = !!state.currentUid && state.currentUid === defUid;
+  btn.classList.toggle('is-default', isDefault);
+  btn.disabled = !state.currentUid;
+  btn.title = isDefault
+    ? 'Joueur par défaut de ce compte (cliquer pour retirer)'
+    : 'Définir comme joueur par défaut';
+}
+
 export function renderPlayerPicker() {
   const input = document.getElementById('playerPicker');
   input.value = playerLabel(state.currentUid);
   input.classList.toggle('needs-player', !state.currentUid);
+  updateDefaultPlayerBtn();
   wirePlayerPickerEvents();
 }
 
@@ -144,6 +174,7 @@ function wirePlayerPickerEvents() {
     state.currentUid = uid;
     input.value = playerLabel(uid);
     input.classList.remove('needs-player');
+    updateDefaultPlayerBtn();
     hideList();
     if (state.profileCompareUid === state.currentUid) state.profileCompareUid = null;
     state.mapDeepDiveSelection = null;
@@ -200,6 +231,26 @@ function wirePlayerPickerEvents() {
       const target = pickerHighlightIndex >= 0 ? items[pickerHighlightIndex] : items[0];
       if (target) selectPlayer(target.dataset.uid);
     }
+  });
+
+  // Bouton étoile : bascule le joueur par défaut du compte (persisté côté serveur, voir
+  // PUT /api/me/default-player) — jamais en localStorage, à la différence du reste des
+  // préférences d'affichage (ui-prefs.js), puisqu'il doit suivre le compte et pas
+  // l'appareil/navigateur. Un second clic sur le joueur déjà par défaut l'efface (bascule).
+  const defaultBtn = document.getElementById('setDefaultPlayerBtn');
+  defaultBtn.addEventListener('click', async () => {
+    if (!state.currentUid || !state.currentUser) return;
+    const defUid = state.currentUser.defaultPlayerUid ? canonicalUid(state.currentUser.defaultPlayerUid) : null;
+    const clearing = state.currentUid === defUid;
+    defaultBtn.disabled = true;
+    try {
+      const result = await setDefaultPlayer(clearing ? null : state.currentUid);
+      state.currentUser.defaultPlayerUid = result.defaultPlayerUid;
+    } catch (e) {
+      // Pas de UI d'erreur dédiée ici (action mineure, non bloquante) — l'étoile reste
+      // simplement inchangée si l'appel échoue (session expirée -> déjà redirigée par api.js).
+    }
+    updateDefaultPlayerBtn();
   });
 }
 
