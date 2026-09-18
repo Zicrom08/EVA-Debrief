@@ -108,20 +108,66 @@ test('upsertGame preserves a known team name across a later re-capture that retu
 // A match whose team names have NEVER been known (fresh capture already returns null) must
 // not have its outcome invented as "Draw" — better to leave whatever EVA sent (right or
 // wrong) than to confidently fabricate a result nobody can verify.
-test('upsertGame never fabricates "Draw" when team names are unknown, even with a decisive score', () => {
+// Suite de la panne EVA du 2026-09-15 : quand les DEUX noms d'équipe manquent ET que le
+// roster est du matchmaking public standard (ALLIANCE/REBELS uniquement), deriveOutcomes()
+// assume teamOne=ALLIANCE (fiable à 99,4% sur 928 parties déjà connues, voir la conversation
+// — choix explicite de l'utilisateur : mieux vaut une estimation juste 99,4% du temps qu'un
+// "Defeat" garanti faux à 100% comme EVA le renvoie pendant la panne).
+test('upsertGame infers teamOne=ALLIANCE when names are unknown but the roster is standard (ALLIANCE/REBELS)', () => {
   db.upsertGame({
     id: 'g2d',
     createdAt: '2026-01-01T00:00:00Z',
     data: { teamOne: { name: null, score: 100 }, teamTwo: { name: null, score: 0 } },
     players: [
-      { userId: 'u1', data: { team: 'ALLIANCE', outcome: 'Defeat' } },
+      { userId: 'u1', data: { team: 'ALLIANCE', outcome: 'Defeat' } }, // EVA: faux, ALLIANCE a gagné 100-0
       { userId: 'u2', data: { team: 'REBELS', outcome: 'Defeat' } },
     ],
   });
   const g = db.getAllGames().find(g => g.id === 'g2d');
-  // Left exactly as EVA sent it (wrong or not) — not overwritten with a fabricated "Draw".
-  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Defeat');
+  assert.equal(g.data.teamOne.name, 'ALLIANCE'); // déduit et posé sur le record
+  assert.equal(g.data.teamTwo.name, 'REBELS');
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Victory');
   assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+});
+
+// Un lobby privé (noms d'équipe personnalisés, ex: "BONOBO"/"AFK") n'a AUCUNE base fiable
+// pour cette déduction — l'heuristique ne s'applique qu'à ALLIANCE/REBELS. L'issue reste donc
+// telle quelle (correction manuelle admin, voir getGamesNeedingTeamNames()/setGameTeamNames()
+// ci-dessous), jamais un "Draw" ni une "Victory"/"Defeat" fabriquée sur une base inconnue.
+test('upsertGame does NOT guess when team names are unknown and the roster uses custom (non-standard) team names', () => {
+  db.upsertGame({
+    id: 'g2e',
+    createdAt: '2026-01-01T00:00:00Z',
+    data: { teamOne: { name: null, score: 100 }, teamTwo: { name: null, score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'BONOBO', outcome: 'Defeat' } },
+      { userId: 'u2', data: { team: 'AFK', outcome: 'Defeat' } },
+    ],
+  });
+  const g = db.getAllGames().find(g => g.id === 'g2e');
+  assert.equal(g.data.teamOne.name, null);
+  assert.equal(g.data.teamTwo.name, null);
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Defeat'); // laissé tel quel, pas deviné
+  assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+});
+
+test('getGamesNeedingTeamNames lists only games with a known score but still-unresolved team names, with the roster\'s real team labels', () => {
+  const needing = db.getGamesNeedingTeamNames();
+  assert.ok(needing.some(g => g.id === 'g2e'));
+  assert.ok(!needing.some(g => g.id === 'g2d')); // déjà résolue par l'heuristique ci-dessus
+  const entry = needing.find(g => g.id === 'g2e');
+  assert.deepEqual(entry.rosterTeamNames.sort(), ['AFK', 'BONOBO']);
+  assert.equal(entry.teamOneScore, 100);
+  assert.equal(entry.teamTwoScore, 0);
+});
+
+test('setGameTeamNames applies an admin correction and re-derives outcomes immediately', () => {
+  const g = db.setGameTeamNames('g2e', 'BONOBO', 'AFK');
+  assert.equal(g.data.teamOne.name, 'BONOBO');
+  assert.equal(g.data.teamTwo.name, 'AFK');
+  assert.equal(g.players.find(p => p.userId === 'u1').data.outcome, 'Victory'); // BONOBO (teamOne, 100) a gagné
+  assert.equal(g.players.find(p => p.userId === 'u2').data.outcome, 'Defeat');
+  assert.ok(!db.getGamesNeedingTeamNames().some(x => x.id === 'g2e')); // résolue, ne réapparaît plus dans la liste
 });
 
 test('gameExists / deleteGame is idempotent', () => {

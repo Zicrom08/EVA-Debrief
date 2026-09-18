@@ -224,6 +224,29 @@ function mergeGameRecord(existing, incoming) {
   return merged;
 }
 
+// Les deux seuls noms d'équipe du matchmaking public EVA (par opposition à un lobby privé,
+// qui peut porter n'importe quel nom personnalisé — vu en pratique : "BONOBO"/"AFK",
+// "LES SALADES"/"FULL ONE SHOT", etc.). Sert à décider si teamOneIsAllianceHeuristic()
+// s'applique (voir plus bas) : elle n'est fiable QUE pour ces deux-là.
+const STANDARD_TEAM_NAMES = ['ALLIANCE', 'REBELS'];
+
+// Panne EVA du 2026-09-15 (voir deriveOutcomes ci-dessous) : quand teamOne/teamTwo.name sont
+// TOUS LES DEUX absents, on ne peut normalement pas savoir laquelle des deux équipes du
+// roster (déduites de players[].data.team, toujours fiable même pendant la panne) est
+// "teamOne" — SAUF que sur 928 parties de matchmaking public déjà connues (voir la
+// conversation), teamOne == "ALLIANCE" dans 874/879 cas (99,4%) une fois les lobbies privés à
+// noms personnalisés écartés (929-879=49 lobbies privés, jamais concernés par cette
+// heuristique). Les 5 exceptions trouvées sont toutes group ées dans la même fenêtre de 2h
+// (1-2 août 2026, même soirée) — a priori un accident ponctuel côté EVA ce soir-là, pas une
+// règle détectable à l'avance. Ce n'est donc PAS une certitude, juste la meilleure estimation
+// disponible tant qu'EVA ne renvoie pas le vrai nom — l'utilisateur a choisi de l'appliquer
+// automatiquement plutôt que de laisser ces parties sans issue affichée.
+function teamOneIsAllianceHeuristic(g) {
+  const teams = new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null));
+  if (!teams.size) return false;
+  return [...teams].every(t => STANDARD_TEAM_NAMES.includes(t));
+}
+
 // Dérive TOUJOURS l'issue depuis teamOne/teamTwo.score quand c'est possible, plutôt que de ne
 // s'en servir qu'en repli quand "outcome" est absent (comportement d'origine). Trouvé en
 // production (2026-09-15) qu'EVA peut renvoyer un "outcome" par joueur PRÉSENT mais FAUX —
@@ -231,12 +254,9 @@ function mergeGameRecord(existing, incoming) {
 // à chaque fois sur une re-capture d'une partie plus ancienne), alors même que le score
 // départage clairement gagnants et perdants. Un outcome non-null n'est donc pas une garantie
 // de fiabilité de la part d'EVA — le score, lui, reste vérifiable en soi, donc prioritaire dès
-// qu'il est exploitable. `t1.name`/`t2.name` DOIVENT être connus pour dériver quoi que ce
-// soit : sans eux impossible de savoir quel nom d'équipe a gagné, et confondre "aucun nom
-// connu" avec "match nul" produirait un faux "Draw" généralisé (bug réel vécu ce même jour,
-// corrigé ici — voir mergeTeam() ci-dessus pour l'autre moitié du correctif : préserver le nom
-// déjà connu est ce qui permet à CETTE fonction de continuer à fonctionner sur les parties
-// déjà capturées correctement, même quand une re-capture ultérieure ne renvoie plus de nom).
+// qu'il est exploitable. `mergeTeam()` ci-dessus (préserver le nom déjà connu) est ce qui
+// permet à cette fonction de continuer à fonctionner sur les parties déjà capturées
+// correctement, même quand une re-capture ultérieure ne renvoie plus de nom.
 // La liste porte "outcome" par joueur, le détail ne le porte plus (seulement les scores
 // d'équipe) — si aucun score d'équipe n'est disponible (détail jamais importé, ou capture
 // encore partielle), on garde tel quel l'outcome déjà connu plutôt que de l'effacer.
@@ -244,7 +264,15 @@ function deriveOutcomes(g) {
   const t1 = g.data && g.data.teamOne;
   const t2 = g.data && g.data.teamTwo;
   if (!t1 || !t2 || t1.score == null || t2.score == null) return;
-  if (t1.name == null || t2.name == null) return; // impossible de savoir quel nom d'équipe a gagné
+  if (t1.name == null || t2.name == null) {
+    // Aucun nom connu : tente la déduction ALLIANCE/REBELS (voir teamOneIsAllianceHeuristic
+    // ci-dessus) — jamais pour un lobby privé à noms personnalisés (aucune base fiable pour
+    // deviner), laissé tel quel dans ce cas pour correction manuelle admin (voir
+    // GET/PUT /api/games/:id/team-names dans server.js et l'onglet Comptes côté frontend).
+    if (!teamOneIsAllianceHeuristic(g)) return;
+    t1.name = 'ALLIANCE';
+    t2.name = 'REBELS';
+  }
   const winner = t1.score === t2.score ? null : (t1.score > t2.score ? t1.name : t2.name);
   (g.players || []).forEach(p => {
     if (p.data && p.data.team != null) {
@@ -422,6 +450,45 @@ module.exports = {
   deleteGame(id) {
     delete state.games[String(id)];
     gamePersister.saveNow();
+  },
+
+  // Parties dont l'issue n'a pas pu être déduite du tout (voir deriveOutcomes/
+  // teamOneIsAllianceHeuristic ci-dessus) : score d'équipe connu, mais teamOne/teamTwo.name
+  // toujours absents — ça n'arrive que pour un lobby privé à noms d'équipe personnalisés
+  // (une partie de matchmaking public standard se serait vue attribuer ALLIANCE/REBELS
+  // automatiquement). Alimente le panneau admin de correction manuelle (voir /api/games/:id/
+  // team-names et l'onglet Comptes côté frontend) : pour chacune, les deux noms d'équipe
+  // réellement portés par le roster (players[].data.team, toujours fiable) sont renvoyés,
+  // à charge pour l'admin de dire lequel est teamOne.
+  getGamesNeedingTeamNames() {
+    return Object.values(state.games)
+      .filter(g => {
+        const t1 = g.data && g.data.teamOne, t2 = g.data && g.data.teamTwo;
+        return t1 && t2 && t1.score != null && t2.score != null && (t1.name == null || t2.name == null);
+      })
+      .map(g => ({
+        id: g.id,
+        createdAt: g.createdAt,
+        map: g.map || null,
+        mode: g.mode || null,
+        teamOneScore: g.data.teamOne.score,
+        teamTwoScore: g.data.teamTwo.score,
+        rosterTeamNames: [...new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null))],
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  },
+  // Correction manuelle admin : attribue les deux noms d'équipe réels (doivent correspondre
+  // EXACTEMENT aux deux valeurs déjà portées par le roster — jamais une valeur inventée, voir
+  // requireAdmin + validation dans server.js) puis redérive l'issue de chaque joueur
+  // immédiatement (même deriveOutcomes que tout import, cohérence garantie).
+  setGameTeamNames(id, teamOneName, teamTwoName) {
+    const g = state.games[String(id)];
+    if (!g || !g.data || !g.data.teamOne || !g.data.teamTwo) return null;
+    g.data.teamOne.name = teamOneName;
+    g.data.teamTwo.name = teamTwoName;
+    deriveOutcomes(g);
+    gamePersister.saveNow();
+    return g;
   },
 
   // ---------------- Player stat snapshots ----------------

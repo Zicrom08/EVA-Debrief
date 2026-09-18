@@ -18,3 +18,18 @@ export async function updateRegistrationEnabled(enabled) {
 export async function updateImportEnabled(enabled) {
   return apiSend('PUT', '/api/settings', { importEnabled: enabled });
 }
+
+// ================= CORRECTION MANUELLE VICTOIRE/DÉFAITE (admin) =================
+// Parties qu'AUCUNE heuristique automatique n'a pu résoudre (lobby privé à noms d'équipe
+// personnalisés) — voir teamOneIsAllianceHeuristic()/getGamesNeedingTeamNames() dans
+// backend/db.js. teamOneName/teamTwoName DOIVENT être deux des noms déjà portés par le
+// roster de cette partie (jamais tapés à la main) — le serveur les revalide de toute façon.
+
+// [{ id, createdAt, map, mode, teamOneScore, teamTwoScore, rosterTeamNames: [name, name] }, ...]
+export async function fetchGamesNeedingTeamNames() {
+  return apiGet('/api/games/needing-team-names');
+}
+
+export async function setGameTeamNames(gameId, teamOneName, teamTwoName) {
+  return apiSend('PUT', `/api/games/${gameId}/team-names`, { teamOneName, teamTwoName });
+}

@@ -654,6 +654,32 @@ app.delete('/api/games/:id', requireAdmin, (req, res) => {
   res.json({ ok: true });
 });
 
+// Correction manuelle admin de l'issue Victoire/Défaite (voir teamOneIsAllianceHeuristic()/
+// getGamesNeedingTeamNames() dans db.js) : uniquement pour les parties qu'AUCUNE heuristique
+// n'a pu résoudre elle-même (lobby privé à noms d'équipe personnalisés, ex: "BONOBO"/"AFK").
+app.get('/api/games/needing-team-names', requireAdmin, (req, res) => {
+  res.json(db.getGamesNeedingTeamNames());
+});
+
+// teamOneName/teamTwoName DOIVENT correspondre EXACTEMENT aux deux noms déjà portés par le
+// roster de CETTE partie (jamais une valeur inventée par erreur côté client) — l'admin ne
+// fait donc que dire LEQUEL des deux a gagné, jamais taper un nom à la main.
+app.put('/api/games/:id/team-names', requireAdmin, (req, res) => {
+  const { teamOneName, teamTwoName } = req.body || {};
+  if (typeof teamOneName !== 'string' || typeof teamTwoName !== 'string' || !teamOneName || !teamTwoName || teamOneName === teamTwoName) {
+    return res.status(400).json({ error: 'teamOneName et teamTwoName doivent être deux noms distincts et non vides.' });
+  }
+  const entry = db.getGamesNeedingTeamNames().find(g => String(g.id) === req.params.id);
+  if (!entry) return res.status(404).json({ error: 'Partie introuvable, ou déjà résolue.' });
+  const rosterNames = entry.rosterTeamNames.slice().sort();
+  const givenNames = [teamOneName, teamTwoName].sort();
+  if (rosterNames.length !== 2 || rosterNames[0] !== givenNames[0] || rosterNames[1] !== givenNames[1]) {
+    return res.status(400).json({ error: `Ces deux noms ne correspondent pas au roster réel de cette partie (${rosterNames.join(' / ')}).` });
+  }
+  const g = db.setGameTeamNames(req.params.id, teamOneName, teamTwoName);
+  res.json({ ok: true, game: g });
+});
+
 // Équipes
 app.get('/api/teams', (req, res) => {
   res.json(db.getAllTeams());

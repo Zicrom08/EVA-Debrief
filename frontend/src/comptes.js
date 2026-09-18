@@ -5,7 +5,7 @@ import { linkPlayers, unlinkPlayer, aliasesOf } from './player-links.js';
 import { setPlayerName, clearPlayerName } from './player-names.js';
 import { detectTeamsFromNicknames, currentTagForPlayer } from './team-detect.js';
 import { fetchBackups, backupNow, downloadBackup } from './backups.js';
-import { fetchSettings, updateRegistrationEnabled, updateImportEnabled } from './settings.js';
+import { fetchSettings, updateRegistrationEnabled, updateImportEnabled, fetchGamesNeedingTeamNames, setGameTeamNames } from './settings.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 
@@ -607,6 +607,58 @@ function wireImportGateManager() {
   }
 }
 
+// ================= CORRECTION MANUELLE VICTOIRE/DÉFAITE (admin) =================
+// Parties qu'AUCUNE heuristique automatique n'a pu résoudre (voir
+// teamOneIsAllianceHeuristic()/getGamesNeedingTeamNames() dans backend/db.js) : un lobby
+// privé à noms d'équipe personnalisés (ex: "BONOBO"/"AFK"), jamais du matchmaking public
+// standard (ALLIANCE/REBELS, déjà résolu tout seul). L'admin ne choisit QUE lequel des deux
+// noms déjà portés par le roster a marqué le score le plus haut — jamais de nom tapé à la
+// main, le serveur revalide de toute façon que ça correspond exactement au roster réel.
+let gamesNeedingTeamNames = [];
+
+async function refreshGamesNeedingTeamNamesFromServer() {
+  gamesNeedingTeamNames = await fetchGamesNeedingTeamNames();
+}
+
+function renderTeamNamesCorrectionPanel() {
+  if (!gamesNeedingTeamNames.length) {
+    return `<div style="color:var(--muted);font-size:13px;">Aucune partie à corriger pour l'instant.</div>`;
+  }
+  return gamesNeedingTeamNames.map((g) => {
+    const [nameA, nameB] = g.rosterTeamNames;
+    const mapName = (g.map && g.map.name) || '?';
+    const modeName = (g.mode && g.mode.identifier) || '';
+    return `
+      <div class="team-names-fix-row" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:6px;">
+          ${fmtDate(g.createdAt)} · ${mapName}${modeName ? ' · ' + modeName : ''} · score ${g.teamOneScore} - ${g.teamTwoScore}
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span>Qui a marqué <strong>${g.teamOneScore}</strong> ?</span>
+          ${nameA != null ? `<button class="btn small" data-fix-game="${g.id}" data-team-one="${nameA}" data-team-two="${nameB}">${nameA}</button>` : ''}
+          ${nameB != null ? `<button class="btn small" data-fix-game="${g.id}" data-team-one="${nameB}" data-team-two="${nameA}">${nameB}</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function wireTeamNamesCorrectionManager() {
+  document.querySelectorAll('[data-fix-game]').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      try {
+        await setGameTeamNames(btn.dataset.fixGame, btn.dataset.teamOne, btn.dataset.teamTwo);
+      } catch (e) {
+        alert('Erreur lors de la correction : ' + e.message);
+        btn.disabled = false;
+        return;
+      }
+      await loadFromServer(); // l'issue de cette partie vient de changer, l'app entière doit refléter ça
+      renderComptes();
+    });
+  });
+}
+
 // ================= ANALYSE DES JOUEURS (admin) =================
 // Rapport de contrôle sur les données déjà importées : pour chaque joueur connu, quel
 // pseudo est actuellement retenu, d'où il vient (nameFreshness() dans format.js réutilise
@@ -688,6 +740,11 @@ export async function renderComptes() {
   } catch (e) {
     settingsData = { registrationEnabled: true, importEnabled: true, error: e.message };
   }
+  try {
+    await refreshGamesNeedingTeamNamesFromServer();
+  } catch (e) {
+    gamesNeedingTeamNames = [];
+  }
   container.innerHTML = `
     <div class="team-manager">
       <div class="section-title">Comptes</div>
@@ -712,6 +769,16 @@ export async function renderComptes() {
         éviter que des données erronées rentrent tant que ce n'est pas rétabli côté EVA.
       </div>
       ${renderImportGatePanel()}
+    </div>
+    <div class="team-manager">
+      <div class="section-title">Parties à corriger manuellement (Victoire/Défaite)</div>
+      <div style="color:var(--muted);font-size:12px;margin-bottom:14px;">
+        Parties d'un lobby privé (noms d'équipe personnalisés, ex: "BONOBO"/"AFK") capturées
+        pendant que l'issue Victoire/Défaite d'EVA était cassée : la déduction automatique
+        (ALLIANCE/REBELS) ne s'applique pas ici, faute de base fiable — dis quelle équipe a
+        marqué le score le plus haut, l'issue de chaque joueur est recalculée immédiatement.
+      </div>
+      ${renderTeamNamesCorrectionPanel()}
     </div>
     <div class="team-manager">
       <div class="section-title">Fusion de comptes joueurs</div>
@@ -760,6 +827,7 @@ export async function renderComptes() {
   wireUserManager();
   wireRegistrationManager();
   wireImportGateManager();
+  wireTeamNamesCorrectionManager();
   wirePlayerLinksManager();
   wirePlayerNamesManager();
   wirePlayerAnalysisManager();
