@@ -118,6 +118,18 @@ function renderPanelContent(container, token) {
         <button class="btn small" id="linkExtensionBtn">Lier l'extension EVA-Debrief</button>
       </div>
       <div id="extensionLinkStatus" style="color:var(--muted);font-size:12px;margin-top:4px;"></div>
+      <details class="extension-install-guide">
+        <summary>Comment l'installer sur Chrome / Edge ?</summary>
+        <ol>
+          <li>Télécharge le <code>.zip</code> ci-dessus, puis décompresse-le quelque part sur ton ordinateur.</li>
+          <li>Ouvre <code>chrome://extensions</code> (ou <code>edge://extensions</code>) dans un nouvel onglet.</li>
+          <li>Active le <strong>"mode développeur"</strong> (bascule en haut à droite de la page).</li>
+          <li>Clique <strong>"Charger l'extension non empaquetée"</strong>, puis sélectionne le dossier
+            <code>browser-extension</code> décompressé.</li>
+          <li>L'extension apparaît dans la liste — clique ensuite sur <strong>"Lier l'extension EVA-Debrief"</strong>
+            ci-dessus (ou l'icône de l'extension à côté de la barre d'adresse) pour la relier à ton compte.</li>
+        </ol>
+      </details>
     </div>`;
   detectExtension().then((detected) => {
     const statusEl = container.querySelector('#extensionLinkStatus');

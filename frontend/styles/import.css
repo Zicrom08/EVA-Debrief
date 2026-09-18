@@ -31,6 +31,18 @@
 .import-extension-row .import-extension-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
 .import-extension-row a.btn{display:inline-block;text-decoration:none;}
 
+/* Tuto d'installation replié par défaut (<details> natif, pas de JS à câbler) — juste sous les
+   boutons de téléchargement/liaison, pour rester à portée sans encombrer le panneau par défaut. */
+.extension-install-guide{margin-top:10px;font-size:12px;color:var(--muted);}
+.extension-install-guide summary{cursor:pointer;color:var(--text);font-weight:500;list-style:none;}
+.extension-install-guide summary::-webkit-details-marker{display:none;}
+.extension-install-guide summary::before{content:"▸ ";color:var(--muted);}
+.extension-install-guide[open] summary::before{content:"▾ ";}
+.extension-install-guide summary:hover{color:var(--alliance);}
+.extension-install-guide ol{margin:10px 0 0;padding-left:20px;line-height:1.7;}
+.extension-install-guide code{background:var(--panel-2);padding:1px 6px;border-radius:4px;color:var(--gold);}
+.extension-install-guide strong{color:var(--text);}
+
 /* Import manuel (JSON) : replié par défaut derrière un bouton, voir import.js — plus la
    méthode mise en avant (le "Pont automatique" ci-dessus l'est), donc juste un lien discret. */
 .import-manual-toggle{margin-top:18px;text-align:center;}
