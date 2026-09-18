@@ -224,11 +224,21 @@ export function bestWorstGames(games, uid) {
 // Duo (synergie avec les coéquipiers) & Némésis (adversaires contre qui tu gagnes le moins) —
 // calculés en croisant, pour chaque partie du joueur, tous les autres joueurs présents
 // (coéquipiers = même "team" que lui, adversaires = l'autre équipe).
+// Nombre de "parties virtuelles" au taux de victoire global du joueur qu'on mélange au
+// résultat réel contre chaque coéquipier/adversaire avant de classer (moyenne bayésienne).
+// Sans ça, un adversaire affronté tout juste `minGames` fois avec un score extrême (0% ou
+// 100%) ressort comme LE pire/meilleur alors qu'un autre affronté bien plus souvent avec un
+// score un peu moins extrême est en réalité un adversaire bien plus significatif — retour
+// utilisateur : un adversaire affronté seulement quelques fois et perdu montait
+// systématiquement en tête du classement, ce qui n'était pas fiable vu le petit échantillon.
+const NEMESIS_SHRINKAGE_GAMES = 5;
+
 export function computeDuoNemesisStats(games, uid, minGames) {
   minGames = minGames || 3;
   const teammates = {};
   const opponents = {};
   const myCanon = canonicalUid(uid);
+  let myWins = 0, myTotal = 0;
 
   games.forEach(g => {
     const me = findPlayerInGame(g, uid);
@@ -239,6 +249,8 @@ export function computeDuoNemesisStats(games, uid, minGames) {
     // TOUT le monde comme coéquipier, ce qui serait faux : on ignore la partie à la place.
     if (myTeam == null) return;
     const won = me.data.outcome === 'Victory';
+    myTotal++;
+    if (won) myWins++;
     (g.players || []).forEach(p => {
       // Comparaison par identifiant canonique (pas seulement p.userId == uid) : si le
       // joueur a deux comptes fusionnés présents dans la même partie (rare mais possible),
@@ -254,17 +266,27 @@ export function computeDuoNemesisStats(games, uid, minGames) {
     });
   });
 
+  // Taux de victoire global du joueur (toutes parties confondues), utilisé comme "a priori"
+  // vers lequel on ramène les échantillons trop petits pour être significatifs seuls.
+  const priorWinrate = myTotal ? myWins / myTotal : 0.5;
+
   function toArray(bucket) {
     return Object.entries(bucket)
-      .map(([oid, rec]) => ({
-        uid: oid, name: rec.name, n: rec.n, wins: rec.wins,
-        winrate: rec.n ? Math.round((rec.wins / rec.n) * 100) : 0,
-      }))
+      .map(([oid, rec]) => {
+        const weightedWinrate = (rec.wins + NEMESIS_SHRINKAGE_GAMES * priorWinrate) / (rec.n + NEMESIS_SHRINKAGE_GAMES);
+        return {
+          uid: oid, name: rec.name, n: rec.n, wins: rec.wins,
+          winrate: rec.n ? Math.round((rec.wins / rec.n) * 100) : 0,
+          weightedWinrate,
+        };
+      })
       .filter(r => r.n >= minGames);
   }
 
-  const duoArr = toArray(teammates).sort((a,b) => b.winrate - a.winrate || b.n - a.n);
-  const nemesisArr = toArray(opponents).sort((a,b) => a.winrate - b.winrate || b.n - a.n);
+  // Le tri se fait sur le taux pondéré (fiable même à faible échantillon) — le % affiché à
+  // l'utilisateur reste le taux réel `winrate`, non modifié.
+  const duoArr = toArray(teammates).sort((a,b) => b.weightedWinrate - a.weightedWinrate || b.n - a.n);
+  const nemesisArr = toArray(opponents).sort((a,b) => a.weightedWinrate - b.weightedWinrate || b.n - a.n);
 
   return { duoArr, nemesisArr, minGames };
 }

@@ -56,6 +56,22 @@ function setLastPushStatus(status) {
   chrome.storage.local.set({ lastPushStatus: { ...status, at: new Date().toISOString() } });
 }
 
+// Notification navigateur distincte pour chaque type d'import terminé (profil / parties) —
+// demandé explicitement pour que l'utilisateur soit informé sans avoir à ouvrir le popup de
+// l'extension pour le savoir. Une seule par type, déclenchée uniquement quand quelque chose a
+// vraiment été ajouté (jamais à chaque capture, voir l'appel dans handleCapture ci-dessous, qui
+// se base sur addedGames/addedStats renvoyés par le serveur — pas sur la simple présence de
+// nodes/playerStats dans la requête, qui peut très bien ne rien contenir de nouveau, ex:
+// re-parcourir des pages déjà capturées).
+function notify(id, title, message) {
+  chrome.notifications.create(id, {
+    type: 'basic',
+    iconUrl: 'icons/icon128.png',
+    title,
+    message,
+  });
+}
+
 async function handleCapture({ nodes, playerStats }) {
   const { backendUrl, importToken } = await getConfig();
   if (!backendUrl || !importToken) return; // pont non lié : no-op silencieux, strictement opt-in
@@ -96,6 +112,12 @@ async function handleCapture({ nodes, playerStats }) {
     const added = (body.addedGames || 0) + (body.addedStats || 0);
     if (added === 0) {
       console.warn('[EVA-Debrief] Push accepté mais rien de nouveau ajouté :', body);
+    }
+    if (body.addedGames > 0) {
+      notify('eva-debrief-games', 'EVA-Debrief', `Import des parties terminé : ${body.addedGames} nouvelle(s) partie(s) ajoutée(s).`);
+    }
+    if (body.addedStats > 0) {
+      notify('eva-debrief-stats', 'EVA-Debrief', `Import du profil terminé : ${body.addedStats} profil(s) capturé(s) ajouté(s).`);
     }
     setLastPushStatus({ ok: true, addedGames: body.addedGames || 0, addedStats: body.addedStats || 0 });
   } catch (e) {

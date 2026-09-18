@@ -11,6 +11,7 @@ import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
 import { renderSelectionBar } from './game-groups.js';
 import { renderProfil } from './profil/index.js';
+import { activateTab } from './tabs.js';
 
 // ================= APP SHELL =================
 // N'active JAMAIS un onglet particulier elle-même (voir tabs.js::activateTab()) — appelée
