@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "EVA-Debrief — Collecteur automatique",
-  "version": "1.0",
-  "description": "Capture l'historique de parties et les stats de profil sur le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief liée. Chrome/Edge/Kiwi Browser uniquement (voir README). Domaines listés en dur ci-dessous : adapte host_permissions/content_scripts.matches à ton propre déploiement si ce n'est pas app.eva.gg/zicrom08.github.io/zicrom.ddns.net (voir README).",
+  "version": "1.1",
+  "description": "Capture l'historique de parties (pagination automatique, plus besoin de cliquer \"plus de matchs\") et les stats de profil sur le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief liée. Chrome/Edge/Kiwi Browser uniquement (voir README). Domaines listés en dur ci-dessous : adapte host_permissions/content_scripts.matches à ton propre déploiement si ce n'est pas app.eva.gg/zicrom08.github.io/zicrom.ddns.net (voir README).",
   "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://app.eva.gg/*",

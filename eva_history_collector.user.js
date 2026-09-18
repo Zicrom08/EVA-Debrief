@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         EVA — Collecteur d'historique et de stats
 // @namespace    eva-history-collector
-// @version      10.2
-// @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief si configuré (voir "PONT AUTOMATIQUE" plus bas). Réécrit activement les requêtes du site pour redemander les champs manquants, et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
+// @version      10.3
+// @description  Capture l'historique de parties et les stats de ton profil (dégâts, précision, distance...) depuis le site EVA, et les pousse automatiquement vers ton instance EVA-Debrief si configuré (voir "PONT AUTOMATIQUE" plus bas). Réécrit activement les requêtes du site pour redemander les champs manquants, pagine automatiquement l'historique complet dès la première page vue (plus besoin de cliquer "plus de matchs"), et ne garde que les captures de profil filtrées par saison (évite les doublons en boucle).
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -21,7 +21,9 @@
 //    site EVA, par exemple app.eva.gg — c'est plus propre que le filtre HOST_HINT
 //    ci-dessous, qui sert de garde-fou de secours.
 // 4. Va sur ta page d'historique de parties et sur ta page de profil, laisse-les
-//    charger / fais défiler pour déclencher les requêtes suivantes.
+//    charger — depuis la v10.3, l'historique de la saison affichée se récupère
+//    ensuite tout seul en arrière-plan (plus besoin de cliquer "plus de matchs"
+//    ni de faire défiler manuellement).
 // 5. Un panneau apparaît en bas à droite avec le nombre de parties et de profils
 //    capturés. Clique sur "Télécharger JSON" pour récupérer le fichier.
 // 6. Importe ce fichier dans la visionneuse — OU configure le pont automatique
@@ -139,6 +141,40 @@
 // page de profil se recharge automatiquement toutes les secondes (observé sur
 // certaines pages du site), une seule capture est gardée tant que les chiffres
 // n'ont pas changé. Pas de risque de gonfler le stockage avec des doublons.
+//
+// PAGINATION AUTOMATIQUE DE L'HISTORIQUE (v10.3)
+// Jusque-là, ce script ne faisait que RÉAGIR aux requêtes HistoryBa que le
+// site lui-même déclenche — une par clic sur "plus de matchs" (20 parties à
+// la fois). Validé au préalable avec une extension de sonde isolée
+// (browser-extension-probe/, jamais distribuée, voir son README pour le détail
+// complet des tests) :
+//   - `limit` est plafonné en DUR à 20 côté serveur (erreur de validation
+//     explicite si on demande plus, pas un throttle) — impossible de réduire
+//     le nombre de requêtes en demandant une page plus grande.
+//   - En revanche, une boucle de pagination pilotée par CE script (au lieu de
+//     clics), avec une pause de 600ms entre chaque page, récupère toute une
+//     saison sans aucune erreur ni signal de blocage (validé : saison
+//     complète de 135 parties en 7 requêtes / 5,5s). C'est ce que fait
+//     autoPaginateHistory() ci-dessous : dès qu'une page HistoryBa est
+//     interceptée pour une saison pas encore complètement récupérée durant
+//     cette visite de page, le script enchaîne automatiquement les pages
+//     suivantes en arrière-plan jusqu'à hasNextPage=false — plus besoin de
+//     cliquer "plus de matchs" du tout. Mêmes garde-fous que la sonde :
+//     pause fixe, plafond de pages, arrêt immédiat sur la moindre erreur
+//     GraphQL (jamais de retry en boucle), jamais plus d'une fois par saison
+//     par chargement de page (autoPaginatedSeasons).
+//
+// Une première tentative (toujours v10.3) avait aussi ajouté des champs enrichis
+// (duration, terrainId, totalKills/lastGun, métadonnées de carte) découverts via
+// cette même sonde — retirés depuis : la requête HistoryBa ci-dessous est restée
+// exactement celle d'avant (champs inchangés), seule la pagination automatique
+// est nouvelle dans cette version. La corruption de données constatée en usage
+// réel ce jour-là (parties mal attribuées, roster incomplet) n'était pas liée à
+// la pagination elle-même mais à un bug de fusion et de dérivation de l'issue
+// Victoire/Défaite côté serveur (voir backend/db.js::mergeTeam()/deriveOutcomes()
+// — corrigé, avec tests de non-régression reproduisant exactement le scénario
+// rencontré) et à une panne EVA elle-même (issue cassée à la source, voir
+// db.js::teamOneIsAllianceHeuristic()) — sans rapport avec la pagination.
 
 (function () {
   'use strict';
@@ -433,6 +469,54 @@
   const lastEnrichedAt = {}; // "operationName|variables" -> timestamp (ms) du dernier appel enrichi
   const ENRICH_THROTTLE_MS = 5000; // au moins 5 secondes entre deux appels enrichis identiques
 
+  // ---------- pagination automatique de l'historique (v10.3) ----------
+  // Voir la note "PAGINATION AUTOMATIQUE..." en tête de fichier pour le détail complet de ce
+  // qui a été testé/validé avant d'écrire ceci (sonde séparée, jamais de requête modifiée en
+  // place — toujours une requête séparée en plus, même principe que tryFireEnriched).
+  const AUTO_PAGE_DELAY_MS = 600;   // valeur exacte validée par la sonde, ne pas descendre plus bas sans retester
+  const AUTO_PAGE_MAX_PAGES = 60;   // large marge au-dessus d'une saison normale (~135 parties observées)
+  const autoPaginatedSeasons = new Set(); // une saison n'est auto-paginée qu'une fois par chargement de page
+
+  function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+  // Complète automatiquement une saison au-delà de la page déjà interceptée par
+  // tryFireEnriched, qui a fourni { cursor, hasNextPage } de départ. N'appelle JAMAIS
+  // pageWindow.fetch (donc jamais tryFireEnriched ni son throttle) : origFetch directement,
+  // exactement comme le premier appel enrichi.
+  async function autoPaginateHistory(url, init, seasonId, limit, cursor, hasNextPage) {
+    if (autoPaginatedSeasons.has(seasonId)) return;
+    autoPaginatedSeasons.add(seasonId);
+    let pages = 0;
+    let consecutiveErrors = 0;
+    while (hasNextPage && pages < AUTO_PAGE_MAX_PAGES) {
+      await sleep(AUTO_PAGE_DELAY_MS);
+      const body = JSON.stringify({ operationName: 'HistoryBa', query: QUERY_REPLACEMENTS.HistoryBa, variables: { seasonId, cursor, limit } });
+      let text;
+      try {
+        const res = await origFetch.call(pageWindow, url, Object.assign({}, init, { body }));
+        text = await res.text();
+      } catch (e) {
+        // Échec réseau ponctuel : une seule retentative silencieuse, jamais plus (voir
+        // ERREUR CORRIGÉE EN v8.0 en tête de fichier — pas question de boucler sur un échec).
+        consecutiveErrors++;
+        if (consecutiveErrors >= 2) return;
+        continue;
+      }
+      let json;
+      try { json = JSON.parse(text); } catch (e) { return; }
+      // Toute erreur GraphQL (limite dépassée, saison invalide, throttle serveur...) arrête
+      // la boucle immédiatement — jamais de retry automatique dessus, voir même avertissement.
+      if (json.errors) return;
+      consecutiveErrors = 0;
+      handleText(text, { allowStats: true, seasonId });
+      const page = json.data && json.data.cursorAfterhGameHistory;
+      hasNextPage = !!(page && page.hasNextPage);
+      cursor = page && page.nextCursor;
+      pages++;
+      if (hasNextPage && cursor == null) return; // sécurité : jamais boucler sur un cursor absent
+    }
+  }
+
   function tryFireEnriched(url, init) {
     if (!init || typeof init.body !== 'string') return;
     let parsed;
@@ -473,6 +557,20 @@
       .then((text) => {
         const allowStats = opName !== 'UseProfileUserOwned' || requestSeasonId != null;
         handleText(text, { allowStats, seasonId: requestSeasonId });
+        // Dès que cette page (interceptée passivement, jamais devinée) est traitée, on
+        // enchaîne automatiquement le reste de la saison — voir autoPaginateHistory() plus
+        // haut. Idempotent par saison (autoPaginatedSeasons) : un clic "plus de matchs" du
+        // site plus tard ne redéclenche rien, juste redondant sans coût (dédup par id).
+        if (opName === 'HistoryBa' && requestSeasonId != null) {
+          try {
+            const json = JSON.parse(text);
+            const page = json.data && json.data.cursorAfterhGameHistory;
+            if (page) {
+              const limit = (parsed.variables && parsed.variables.limit) || 20;
+              autoPaginateHistory(url, enrichedInit, requestSeasonId, limit, page.nextCursor, !!page.hasNextPage);
+            }
+          } catch (e) { /* réponse illisible : la pagination auto ne se déclenche simplement pas */ }
+        }
       })
       .catch(() => { /* échec ponctuel, sans conséquence : on retentera à la prochaine requête du site */ });
   }

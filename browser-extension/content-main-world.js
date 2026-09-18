@@ -231,6 +231,49 @@
   const lastEnrichedAt = {};
   const ENRICH_THROTTLE_MS = 5000;
 
+  // ---------- pagination automatique de l'historique (v1.1) ----------
+  // Identique au userscript (voir sa note "PAGINATION AUTOMATIQUE..." en tête de fichier
+  // pour le détail complet de ce qui a été testé avant d'écrire ceci) : le serveur plafonne
+  // `limit` en dur à 20 (erreur de validation explicite, pas un throttle), donc le seul moyen
+  // de réduire le nombre de clics est d'enchaîner nous-mêmes les pages suivantes, avec une
+  // pause, dès que la première pour une saison est interceptée. Jamais de requête modifiée en
+  // place — toujours une requête séparée, comme tryFireEnriched.
+  const AUTO_PAGE_DELAY_MS = 600;   // valeur exacte validée par la sonde, ne pas descendre plus bas sans retester
+  const AUTO_PAGE_MAX_PAGES = 60;   // large marge au-dessus d'une saison normale (~135 parties observées)
+  const autoPaginatedSeasons = new Set(); // une saison n'est auto-paginée qu'une fois par chargement de page
+
+  function sleep(ms) { return new Promise((resolve) => setTimeout(resolve, ms)); }
+
+  async function autoPaginateHistory(url, init, seasonId, limit, cursor, hasNextPage) {
+    if (autoPaginatedSeasons.has(seasonId)) return;
+    autoPaginatedSeasons.add(seasonId);
+    let pages = 0;
+    let consecutiveErrors = 0;
+    while (hasNextPage && pages < AUTO_PAGE_MAX_PAGES) {
+      await sleep(AUTO_PAGE_DELAY_MS);
+      const body = JSON.stringify({ operationName: 'HistoryBa', query: QUERY_REPLACEMENTS.HistoryBa, variables: { seasonId, cursor, limit } });
+      let text;
+      try {
+        const res = await origFetch.call(window, url, Object.assign({}, init, { body }));
+        text = await res.text();
+      } catch (e) {
+        consecutiveErrors++;
+        if (consecutiveErrors >= 2) return;
+        continue;
+      }
+      let json;
+      try { json = JSON.parse(text); } catch (e) { return; }
+      if (json.errors) return; // erreur GraphQL (limite, saison invalide...) : arrêt immédiat, jamais de retry
+      consecutiveErrors = 0;
+      handleText(text, { allowStats: true, seasonId });
+      const page = json.data && json.data.cursorAfterhGameHistory;
+      hasNextPage = !!(page && page.hasNextPage);
+      cursor = page && page.nextCursor;
+      pages++;
+      if (hasNextPage && cursor == null) return; // sécurité : jamais boucler sur un cursor absent
+    }
+  }
+
   function tryFireEnriched(url, init) {
     if (!init || typeof init.body !== 'string') return;
     let parsed;
@@ -256,6 +299,18 @@
       .then((text) => {
         const allowStats = opName !== 'UseProfileUserOwned' || requestSeasonId != null;
         handleText(text, { allowStats, seasonId: requestSeasonId });
+        // Dès que cette page est traitée, on enchaîne automatiquement le reste de la saison —
+        // voir autoPaginateHistory() plus haut. Idempotent par saison (autoPaginatedSeasons).
+        if (opName === 'HistoryBa' && requestSeasonId != null) {
+          try {
+            const json = JSON.parse(text);
+            const page = json.data && json.data.cursorAfterhGameHistory;
+            if (page) {
+              const limit = (parsed.variables && parsed.variables.limit) || 20;
+              autoPaginateHistory(url, enrichedInit, requestSeasonId, limit, page.nextCursor, !!page.hasNextPage);
+            }
+          } catch (e) { /* réponse illisible : la pagination auto ne se déclenche simplement pas */ }
+        }
       })
       .catch(() => { /* échec ponctuel, sans conséquence : on retentera à la prochaine requête du site */ });
   }
