@@ -10,9 +10,17 @@ import { renderMapExcludePanel, renderSeasonFilterOptions, updateRangeInfo } fro
 import { computeLpHistory, gamesForLpScope, lpToTier } from './rank.js';
 import { pageUrl, clearAuthToken } from './api-base.js';
 import { renderSelectionBar } from './game-groups.js';
-import { activateTab } from './tabs.js';
+import { renderProfil } from './profil/index.js';
 
 // ================= APP SHELL =================
+// N'active JAMAIS un onglet particulier elle-même (voir tabs.js::activateTab()) — appelée
+// aussi bien après un premier chargement que par une simple action admin (mise à jour
+// d'équipe, suppression de partie...), forcer le retour sur "profil" ici bousculait
+// l'utilisateur hors de l'onglet où il travaillait (bug signalé). C'est aux appelants qui
+// veulent vraiment atterrir sur Profil de le demander explicitement via activateTab('profil')
+// (voir main.js après le premier chargement, import.js après un import manuel réussi) —
+// showApp() se contente de rafraîchir le contenu de TOUS les onglets avec les données
+// fraîches, quel que soit celui actuellement affiché.
 export function showApp() {
   document.getElementById('headerActions').style.display = 'flex';
   document.getElementById('summary').style.display = 'grid';
@@ -33,7 +41,7 @@ export function showApp() {
   renderCompositionPanel();
   renderList();
   renderSelectionBar();
-  activateTab('profil'); // toujours l'onglet d'atterrissage — voir tabs.js
+  renderProfil();
   state.activeGameId = null;
   state.activeGroupId = null;
   document.getElementById('detail').innerHTML =

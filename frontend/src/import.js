@@ -4,6 +4,7 @@ import { persistUiPrefs } from './ui-prefs.js';
 import { ensureModeDefaults } from './game-filters.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
+import { activateTab } from './tabs.js';
 
 // ================= IMPORT =================
 // Toute la logique de fusion / déduplication / filtrage PvE vit maintenant côté serveur
@@ -68,6 +69,7 @@ async function finalizeImport() {
   rebuildPlayerIndex();
   persistUiPrefs();
   showApp();
+  activateTab('profil'); // atterrissage sur Profil après un import réussi (voir shell.js)
   closeManualImportModal();
 }
 

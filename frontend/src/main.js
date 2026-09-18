@@ -37,7 +37,7 @@ import { ensureModeDefaults } from './game-filters.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 import { renderImportTokenPanel } from './import-token.js';
-import './tabs.js';
+import { activateTab } from './tabs.js';
 import './filters-ui.js';
 import './import.js';
 import './changelog.js';
@@ -68,5 +68,6 @@ import './changelog.js';
     rebuildPlayerIndex();
     persistUiPrefs();
     showApp();
+    activateTab('profil'); // atterrissage sur Profil au chargement initial de la page uniquement
   }
 })();
