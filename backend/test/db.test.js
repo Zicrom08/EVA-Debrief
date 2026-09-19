@@ -383,6 +383,22 @@ test('setPlayerName / clearPlayerName / getAllPlayerNames', () => {
   assert.doesNotThrow(() => db.clearPlayerName('u1')); // idempotent
 });
 
+// Régression : un import qui appelle upsertGame()/insertSnapshot() une fois par partie/profil
+// (potentiellement des centaines de fois dans la même requête) écrivait tout data.json à CHAQUE
+// appel avant l'ajout du debounce, bloquant le event loop Node le temps de tout réécrire à
+// chaque fois — le serveur devenait inaccessible pour tout le monde pendant un gros import (voir
+// save()/SAVE_DEBOUNCE_MS dans db.js). Vérifie que l'écriture est bien différée, et que
+// flushAll() (câblé sur SIGINT/SIGTERM dans server.js) la force immédiatement.
+test('upsertGame defers the disk write (debounced) but flushAll() forces it through immediately', () => {
+  const dataFile = path.join(tmpDir, 'data.json');
+  db.upsertGame({ id: 'debounce-test-1', createdAt: '2026-01-01T00:00:00Z', players: [] });
+  const immediately = fs.existsSync(dataFile) ? fs.readFileSync(dataFile, 'utf-8') : '';
+  assert.equal(immediately.includes('debounce-test-1'), false);
+  db.flushAll();
+  const afterFlush = fs.readFileSync(dataFile, 'utf-8');
+  assert.equal(afterFlush.includes('debounce-test-1'), true);
+});
+
 // Placed last: resetAll wipes games/snapshots/teams (but not users) for the whole
 // shared db.js module instance, so no other test in this file can run after it.
 test('resetAll empties games/snapshots/teams/playerLinks/playerNames but never touches user accounts', () => {

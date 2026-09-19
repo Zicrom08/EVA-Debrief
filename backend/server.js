@@ -893,6 +893,16 @@ const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
 // démarrer le serveur à chaque run de la suite de tests.
 if (require.main === module) {
 db.startAutoBackup();
+// Les écritures de data.json/users.json sont différées de quelques centaines de ms depuis
+// l'ajout du debounce (voir makePersister()/save() dans db.js, qui évite de bloquer le event
+// loop pendant un gros import) — sans ce flush, un arrêt propre (déploiement, redémarrage)
+// pile dans cette fenêtre perdrait les tout derniers imports jamais écrits sur disque.
+['SIGINT', 'SIGTERM'].forEach(sig => {
+  process.on(sig, () => {
+    db.flushAll();
+    process.exit(0);
+  });
+});
 if (SSL_KEY_PATH && SSL_CERT_PATH) {
   let options;
   try {

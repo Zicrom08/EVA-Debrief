@@ -5,6 +5,7 @@
 // jour cette liste après chaque changement notable pour quelqu'un qui UTILISE l'app.
 export const CHANGELOG = [
   { date: '2026-09-19', items: [
+    "Corrige un ralentissement/blocage du site pour tout le monde pendant qu'une grosse partie de l'historique était importée.",
     "L'extension navigateur bloque désormais l'import et affiche un message si une nouvelle version est disponible, pour ne jamais pousser de données avec une version obsolète sans le savoir.",
   ]},
   { date: '2026-09-18', items: [

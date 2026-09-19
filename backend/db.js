@@ -89,12 +89,48 @@ function readJsonFile(filePath) {
 // jamais laisser le fichier dans un état à moitié écrit si le process est interrompu
 // pendant l'écriture (coupure serveur, kill -9, etc.). Une instance par fichier
 // (games et users se sauvegardent indépendamment l'un de l'autre).
+const SAVE_DEBOUNCE_MS = 300;
 function makePersister(filePath, getState) {
+  let timer = null;
+  function writeNow() {
+    const tmpFile = filePath + '.tmp';
+    fs.writeFileSync(tmpFile, JSON.stringify(getState()));
+    fs.renameSync(tmpFile, filePath);
+  }
   return {
+    // Écriture immédiate et synchrone — réservée aux cas rares où on ne peut pas se permettre
+    // d'attendre (migration au démarrage, réinitialisation complète des données) : voir save()
+    // ci-dessous pour le chemin normal.
     saveNow() {
-      const tmpFile = filePath + '.tmp';
-      fs.writeFileSync(tmpFile, JSON.stringify(getState()));
-      fs.renameSync(tmpFile, filePath);
+      clearTimeout(timer);
+      timer = null;
+      writeNow();
+    },
+    // Écriture DIFFÉRÉE de SAVE_DEBOUNCE_MS, minuteur reposé à chaque appel : plusieurs
+    // mutations rapprochées (typiquement un import qui appelle upsertGame()/insertSnapshot()
+    // une fois par partie/profil, parfois plusieurs centaines de fois dans la même requête) ne
+    // déclenchent plus qu'UNE seule sérialisation+écriture de tout l'état au lieu d'une par
+    // mutation. Sans ça, un gros import bloquait le event loop Node (mono-thread, écriture
+    // SYNCHRONE de tout data.json à chaque partie) le temps de tout réécrire — le serveur
+    // devenait inaccessible pour tout le monde pendant toute la durée de l'import (signalé en
+    // pratique, avec plusieurs comptes actifs simultanément). L'état en mémoire (`state`) reste
+    // lui toujours à jour immédiatement, avant même l'appel à save() — seule la PERSISTANCE sur
+    // disque est différée, donc rien n'est jamais perdu côté API tant que le process tourne.
+    // `.unref()` : ce minuteur ne doit jamais, à lui seul, empêcher le process de s'arrêter —
+    // voir flush() ci-dessous et son câblage sur SIGINT/SIGTERM dans server.js pour ne pas
+    // perdre les toutes dernières écritures lors d'un arrêt propre (déploiement, redémarrage).
+    save() {
+      clearTimeout(timer);
+      timer = setTimeout(() => { timer = null; writeNow(); }, SAVE_DEBOUNCE_MS);
+      timer.unref();
+    },
+    // Vide immédiatement une écriture en attente (arrêt propre du serveur) — no-op s'il n'y en
+    // a pas.
+    flush() {
+      if (timer == null) return;
+      clearTimeout(timer);
+      timer = null;
+      writeNow();
     },
   };
 }
@@ -365,6 +401,12 @@ function pruneOldBackups() {
 // serveur tout juste démarré sans aucune partie importée n'a pas encore de data.json) vers
 // BACKUP_DIR, puis purge les sauvegardes excédentaires.
 function runBackupNow() {
+  // Les écritures de data.json/users.json peuvent être différées de quelques centaines de ms
+  // (voir save()/SAVE_DEBOUNCE_MS dans makePersister()) — sans ce flush, une sauvegarde prise
+  // juste après un import pourrait copier une version de data.json qui ne contient pas encore
+  // les toutes dernières parties importées.
+  gamePersister.flush();
+  usersPersister.flush();
   ensureBackupDir();
   const ts = uniqueBackupTimestamp();
   const files = [];
@@ -436,7 +478,11 @@ module.exports = {
     const merged = mergeGameRecord(state.games[key], g);
     deriveOutcomes(merged);
     state.games[key] = merged;
-    gamePersister.saveNow();
+    // save() (différée), pas saveNow() : appelée une fois par partie importée, potentiellement
+    // des centaines de fois dans la même requête POST /api/import (voir plus haut, sur
+    // makePersister()) — c'est CE call site précis qui bloquait le serveur entier pendant un
+    // gros import avant l'ajout du debounce.
+    gamePersister.save();
   },
   getAllGames() {
     return Object.values(state.games).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -505,7 +551,7 @@ module.exports = {
     const withHash = Object.assign({}, snap, { __hash: hash });
     state.playerStatsSnapshots[uid].push(withHash);
     state.playerStatsSnapshots[uid].sort((a, b) => new Date(a.capturedAt) - new Date(b.capturedAt));
-    gamePersister.saveNow();
+    gamePersister.save(); // même raison que upsertGame() ci-dessus (appelée une fois par profil importé)
   },
   getAllSnapshots() {
     const all = [];
@@ -759,6 +805,14 @@ module.exports = {
       backupRetention: BACKUP_RETENTION,
       backupIntervalHours: BACKUP_INTERVAL_HOURS,
     };
+  },
+  // Vide toute écriture différée en attente (voir save()/flush() dans makePersister()) — appelé
+  // par server.js sur SIGINT/SIGTERM pour ne jamais perdre les tout derniers imports lors d'un
+  // arrêt propre (déploiement, redémarrage), le seul cas où le debounce introduit un risque
+  // réel par rapport à l'ancien comportement toujours-synchrone.
+  flushAll() {
+    gamePersister.flush();
+    usersPersister.flush();
   },
 
   // exposés pour le serveur (calcul du hash côté route d'import)
