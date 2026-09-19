@@ -20,6 +20,12 @@ function getConfig() {
 function renderStatus({ backendUrl, importToken, lastPushStatus }) {
   const statusEl = document.getElementById('status');
   statusEl.textContent = (backendUrl && importToken) ? `Lié à ${backendUrl}` : 'Non lié.';
+  document.getElementById('openUpdatePageBtn').onclick = () => {
+    // backendUrl est l'instance EVA-Debrief de CET utilisateur (self-hosted, adresse inconnue à
+    // l'avance) — c'est là que vit le .zip à jour (onglet "+ Importer"), jamais une URL fixe
+    // codée en dur ici.
+    chrome.tabs.create({ url: backendUrl || 'chrome://extensions/?id=' + chrome.runtime.id });
+  };
 
   // Cas spécifique diagnostiqué en pratique : host_permissions déclarées dans le manifest ne
   // suffisent pas si "Accès aux sites" (chrome://extensions → Détails) n'est pas sur "Sur tous
@@ -29,6 +35,18 @@ function renderStatus({ backendUrl, importToken, lastPushStatus }) {
   const warnEl = document.getElementById('permissionWarning');
   warnEl.style.display = (lastPushStatus && !lastPushStatus.ok && lastPushStatus.permissionMissing) ? 'block' : 'none';
 
+  // Extension chargée en "non empaquetée" (voir background.js::checkExtensionUpToDate) :
+  // bannière visible même sans onglet EVA ouvert, pour ne pas dépendre uniquement de l'encart
+  // dans la page (qui, lui, ne peut s'afficher que pendant une tentative d'import réelle).
+  const outdatedEl = document.getElementById('outdatedWarning');
+  if (lastPushStatus && lastPushStatus.outdated) {
+    outdatedEl.style.display = 'block';
+    outdatedEl.querySelector('#outdatedVersions').textContent =
+      `Version installée : v${lastPushStatus.currentVersion} — dernière disponible : v${lastPushStatus.latestVersion}.`;
+  } else {
+    outdatedEl.style.display = 'none';
+  }
+
   const pushEl = document.getElementById('pushStatus');
   if (!lastPushStatus) {
     pushEl.textContent = '';
@@ -37,6 +55,8 @@ function renderStatus({ backendUrl, importToken, lastPushStatus }) {
   const when = new Date(lastPushStatus.at).toLocaleString();
   if (lastPushStatus.ok) {
     pushEl.textContent = `Dernier envoi (${when}) : ${lastPushStatus.addedGames || 0} partie(s), ${lastPushStatus.addedStats || 0} profil(s) ajoutés.`;
+  } else if (lastPushStatus.outdated) {
+    pushEl.textContent = `Dernier envoi (${when}) : ignoré — voir ci-dessus.`;
   } else if (lastPushStatus.permissionMissing) {
     pushEl.textContent = `Dernier envoi (${when}) : bloqué — voir ci-dessus.`;
   } else {

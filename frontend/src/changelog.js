@@ -4,7 +4,19 @@
 // corrections de bugs internes à l'extension navigateur... n'y ont pas leur place). Mettre à
 // jour cette liste après chaque changement notable pour quelqu'un qui UTILISE l'app.
 export const CHANGELOG = [
+  { date: '2026-09-19', items: [
+    "L'extension navigateur bloque désormais l'import et affiche un message si une nouvelle version est disponible, pour ne jamais pousser de données avec une version obsolète sans le savoir.",
+  ]},
+  { date: '2026-09-18', items: [
+    "Corrige un bug qui empêchait d'ouvrir l'onglet « + Importer » (et de réinitialiser les données) pour tout le monde.",
+    "Le classement Némésis/Duo du Profil est désormais pondéré par le nombre de parties : un adversaire affronté seulement 2-3 fois avec un score extrême ne domine plus le classement devant un adversaire affronté bien plus souvent.",
+    "Victoire/Défaite sont désormais déduites automatiquement quand les noms d'équipe manquent (matchmaking standard), avec une correction manuelle possible en admin pour les lobbies personnalisés.",
+    "La pagination de l'historique de parties est de nouveau automatique côté extension/collecteur — plus besoin de cliquer « plus de matchs » à répétition pour importer une saison complète.",
+    "Ajoute un tutoriel d'installation de l'extension (Chrome/Edge) directement dans l'onglet « + Importer ».",
+  ]},
   { date: '2026-09-15', items: [
+    "Ajoute une coupure d'urgence admin pour désactiver temporairement l'import (utile en cas de panne connue côté EVA), avec bannière visible pour les contributeurs.",
+    "L'écran d'import devient un onglet « + Importer » à part entière, avec le pont automatique (jeton + extension) mis en avant et l'import JSON manuel replié dans un panneau à part.",
     "Le delta de dégâts du tableau d'évolution (Profil) est recalculé depuis l'historique de parties quand EVA ne le fournit plus.",
     "Nouveau filtre « Composition » dans l'Historique : ne montre que les parties avec les coéquipiers/adversaires choisis.",
     "Bouton « Joueur par défaut » à côté de la barre de recherche de joueur : présélectionné automatiquement à la connexion.",

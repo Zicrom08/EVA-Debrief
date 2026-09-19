@@ -142,10 +142,66 @@ function finishPending(tabId) {
   toasts.forEach((t, i) => setTimeout(() => sendToast(tabId, t), i * 3500));
 }
 
+// ---------------------------------------------------------------------------
+// Vérification de version : cette extension est chargée en "non empaquetée" (voir
+// browser-extension/README.md), jamais depuis le Chrome Web Store — Chrome ne la met donc
+// JAMAIS à jour tout seul. Sans ce contrôle, une installation oubliée sur une vieille version
+// pourrait continuer à pousser des imports indéfiniment avec un comportement corrigé depuis
+// côté serveur (bug de fusion, champs manquants...) sans que personne ne s'en aperçoive. Le
+// backend expose la version attendue (voir GET /api/extension-version dans backend/server.js,
+// lue directement dans browser-extension/manifest.json — jamais dupliquée à la main).
+// Vérifié au plus une fois toutes les VERSION_CHECK_INTERVAL_MS (état en mémoire du service
+// worker, perdu à chaque redémarrage de celui-ci — sans conséquence, ça revérifiera juste un
+// peu plus tôt que prévu). Un échec de la VÉRIFICATION elle-même (backend pas encore mis à
+// jour avec cette route, réseau indisponible...) ne bloque jamais l'import : seul un résultat
+// concret et positif ("oui, une version plus récente existe") le fait.
+// ---------------------------------------------------------------------------
+const VERSION_CHECK_INTERVAL_MS = 10 * 60 * 1000;
+let versionCheckCache = { at: 0, outdated: false, latest: null };
+
+function compareVersions(a, b) {
+  const pa = String(a).split('.').map(Number);
+  const pb = String(b).split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const diff = (pa[i] || 0) - (pb[i] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+async function checkExtensionUpToDate(backendUrl) {
+  if (Date.now() - versionCheckCache.at < VERSION_CHECK_INTERVAL_MS) return versionCheckCache;
+  try {
+    const res = await fetch(backendUrl + '/api/extension-version');
+    if (!res.ok) return versionCheckCache; // route absente sur ce backend (pas encore redéployé) : on ne sait rien, on ne bloque rien
+    const body = await res.json();
+    if (!body || !body.version) return versionCheckCache;
+    const current = chrome.runtime.getManifest().version;
+    versionCheckCache = { at: Date.now(), outdated: compareVersions(current, body.version) < 0, latest: body.version };
+  } catch (e) {
+    // backend injoignable : idem, la vérification elle-même a échoué, jamais traité comme
+    // "obsolète" — on retentera au prochain import.
+  }
+  return versionCheckCache;
+}
+
 async function handleCapture({ nodes, playerStats }, tabId) {
   const { backendUrl, importToken } = await getConfig();
   if (!backendUrl || !importToken) return; // pont non lié : no-op silencieux, strictement opt-in
   if (!(nodes && nodes.length) && !(playerStats && playerStats.length)) return;
+
+  const versionStatus = await checkExtensionUpToDate(backendUrl);
+  if (versionStatus.outdated) {
+    const current = chrome.runtime.getManifest().version;
+    setLastPushStatus({ ok: false, outdated: true, currentVersion: current, latestVersion: versionStatus.latest });
+    sendToast(tabId, {
+      kind: 'error',
+      title: 'EVA-Debrief',
+      message: `Extension obsolète (v${current}, v${versionStatus.latest} disponible) — télécharge la dernière version depuis l'onglet "+ Importer" de ton instance EVA-Debrief. Import ignoré en attendant.`,
+      sticky: true,
+    });
+    return;
+  }
 
   // host_permissions ("<all_urls>", voir manifest.json) seul ne suffit PAS à exempter ce
   // fetch() du CORS normal du web : il faut EN PLUS que "Accès aux sites" (chrome://extensions

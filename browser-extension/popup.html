@@ -58,6 +58,26 @@
     background: #ff5c69;
     color: #0b0f18;
   }
+  #outdatedWarning {
+    display: none;
+    background: #3a2e10;
+    border: 1px solid #e0a52e;
+    border-radius: 6px;
+    padding: 8px 10px;
+    margin-bottom: 10px;
+    line-height: 1.5;
+  }
+  #outdatedWarning #outdatedVersions {
+    display: block;
+    color: #c9b78a;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+  #outdatedWarning button {
+    margin-top: 8px;
+    background: #e0a52e;
+    color: #0b0f18;
+  }
   .nav-buttons {
     display: flex;
     gap: 6px;
@@ -76,6 +96,11 @@
     ⚠️ Le dernier envoi a échoué : "Accès aux sites" doit être sur <strong>"Sur tous les
     sites"</strong> ("Sur des sites spécifiques" ne suffit pas, même avec le bon domaine).
     <button id="openSiteAccessBtn">Corriger ("Accès aux sites")</button>
+  </div>
+  <div id="outdatedWarning">
+    🔄 Cette extension n'est plus à jour — les imports sont mis en pause en attendant.
+    <span id="outdatedVersions"></span>
+    <button id="openUpdatePageBtn">Télécharger la dernière version</button>
   </div>
   <div id="status">Chargement…</div>
   <div id="pushStatus"></div>

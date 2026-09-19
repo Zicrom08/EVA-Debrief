@@ -12,7 +12,7 @@ const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eva-debrief-server-test-')
 process.env.DATA_DIR = tmpDir;
 process.env.USERS_DATA_DIR = tmpDir;
 
-const { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled } = require('../server');
+const { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled, readExtensionVersion } = require('../server');
 const db = require('../db');
 
 test('isPveGame flags Pve-category games and the MoonOfTheDead identifier, leaves normal Pvp games alone', () => {
@@ -162,4 +162,13 @@ test('requireImportEnabled: lets the request through once re-enabled (defaults t
   let reachedRoute = false;
   requireImportEnabled(req, res, () => { reachedRoute = true; });
   assert.equal(reachedRoute, true);
+});
+
+// readExtensionVersion() alimente GET /api/extension-version, que l'extension navigateur
+// interroge pour savoir si elle est à jour (voir background.js::checkExtensionUpToDate) —
+// vérifie que la lecture retrouve bien le fichier réel du dépôt et son champ "version" (pas de
+// duplication à la main de ce numéro ailleurs qui pourrait diverger).
+test('readExtensionVersion reads the real version straight out of browser-extension/manifest.json', () => {
+  const manifest = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'browser-extension', 'manifest.json'), 'utf-8'));
+  assert.equal(readExtensionVersion(), manifest.version);
 });

@@ -15,6 +15,7 @@
 // ============================================================================
 
 const path = require('path');
+const fs = require('fs');
 require('./env').loadEnvFile(path.join(__dirname, '..', '.env'));
 
 const express = require('express');
@@ -610,6 +611,31 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, ...db.stats() });
 });
 
+// Lue directement dans browser-extension/manifest.json (jamais dupliquée à la main ailleurs,
+// pour ne jamais désynchroniser ce que le backend annonce comme "à jour" de ce que contient
+// réellement le .zip téléchargeable) — voir /api/extension-version ci-dessous. Fonction à part
+// (plutôt qu'inline dans la route) pour rester testable comme isPveGame/extractFromPayload.
+function readExtensionVersion() {
+  try {
+    const manifestPath = path.join(__dirname, '..', 'browser-extension', 'manifest.json');
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8'));
+    return manifest.version || null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// L'extension navigateur est chargée en "non empaquetée" (voir browser-extension/README.md) :
+// Chrome ne la met donc JAMAIS à jour tout seul. background.js::checkExtensionUpToDate()
+// compare sa propre version (chrome.runtime.getManifest().version) à celle-ci avant de pousser
+// un import, et bloque le push (avec un message dans la page) si elle est en retard. Public
+// (pas d'auth) : ce n'est qu'un numéro de version, comme /api/health.
+app.get('/api/extension-version', (req, res) => {
+  const version = readExtensionVersion();
+  if (!version) return res.status(404).json({ error: "Version de l'extension introuvable sur ce serveur." });
+  res.json({ version });
+});
+
 // Import : accepte le JSON collé/déposé tel quel depuis la visionneuse (ou
 // directement depuis le collecteur réseau). Déduplique les parties par id
 // (upsert) et les profils par empreinte de contenu, retire les parties PvE.
@@ -856,7 +882,6 @@ if (BACKEND_ONLY) {
 // ---------------------------------------------------------------------------
 const https = require('https');
 const http = require('http');
-const fs = require('fs');
 
 const PORT = process.env.PORT || 3000;
 const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
@@ -913,4 +938,4 @@ if (SSL_KEY_PATH && SSL_CERT_PATH) {
 
 // Exposés pour la suite de tests (voir backend/test/server.test.js) — le reste du
 // module (routes, démarrage du serveur) n'a pas besoin d'être importable ailleurs.
-module.exports = { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled };
+module.exports = { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled, readExtensionVersion };
