@@ -11,6 +11,7 @@ const path = require('path');
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eva-debrief-server-test-'));
 process.env.DATA_DIR = tmpDir;
 process.env.USERS_DATA_DIR = tmpDir;
+process.env.LOG_DIR = tmpDir; // sinon server.js (via logger.js) écrirait dans le vrai repo
 
 const { isPveGame, extractFromPayload, resolveImportAuth, requireImportAccess, requireImportEnabled, readExtensionVersion } = require('../server');
 const db = require('../db');

@@ -17,6 +17,10 @@
 const path = require('path');
 const fs = require('fs');
 require('./env').loadEnvFile(path.join(__dirname, '..', '.env'));
+// Patche console.log/warn/error pour qu'ils écrivent aussi dans un fichier (voir logger.js) —
+// APRÈS le chargement du .env (LOG_DIR/LOG_FILE en dépendent) et le plus tôt possible sinon,
+// pour que rien de ce qui suit n'échappe au fichier.
+require('./logger');
 
 const express = require('express');
 const db = require('./db');
@@ -32,6 +36,21 @@ const FRONTEND_DIR = path.join(__dirname, '..', 'frontend', 'dist');
 const BACKEND_ONLY = /^(1|true|yes)$/i.test(process.env.BACKEND_ONLY || '');
 
 const app = express();
+
+// Journal d'accès (méthode, chemin, code retour, durée) — écrit via console.log, donc
+// automatiquement aussi dans le fichier de logs (voir logger.js, chargé plus haut). Posé tout
+// en premier, avant même les en-têtes de sécurité, pour chronométrer la requête dans son
+// ensemble (auth comprise). Utile pour diagnostiquer après coup un ralentissement signalé par
+// un utilisateur (ex: le blocage du serveur entier pendant un gros import, voir
+// db.js::makePersister — déjà corrigé, mais ce journal aurait rendu le symptôme évident
+// immédiatement : une seule requête POST /api/import anormalement longue).
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${Date.now() - start}ms`);
+  });
+  next();
+});
 
 // En-têtes de sécurité, posés sur TOUTE réponse (avant les routes) — API
 // comme pages HTML/assets statiques.

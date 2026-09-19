@@ -499,6 +499,14 @@ l'admin qui déclenche l'action y survit) : remplacer `data.json`/`users.json`
 par les fichiers voulus à la main, puis redémarrer le serveur, reste le
 geste volontaire recommandé — plus lent, mais sans surprise possible.
 
+**Logs :** en plus de sa sortie normale (console), le serveur écrit en continu
+tout ce qu'il journalise (erreurs, avertissements, migrations...) ainsi qu'un
+journal d'accès — une ligne par requête HTTP avec méthode, chemin, code
+retour et durée — dans un fichier, par défaut `logs/server.log` à la racine
+du projet (`LOG_DIR`/`LOG_FILE` pour le déplacer, comme `DATA_DIR`/`DATA_FILE`
+ci-dessus). Pas de rotation automatique : le fichier grossit indéfiniment,
+prévoir `logrotate` (ou équivalent) côté système si besoin sur la durée.
+
 **Pourquoi un fichier JSON plutôt qu'une "vraie" base SQL ?** `backend/db.js`
 stocke tout avec une écriture atomique (jamais de fichier à moitié écrit
 même si le process est tué en pleine sauvegarde). Ce choix est volontaire :
