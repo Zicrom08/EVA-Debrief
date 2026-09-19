@@ -48,6 +48,16 @@ document.getElementById('openSiteAccessBtn').addEventListener('click', () => {
   chrome.tabs.create({ url: 'chrome://extensions/?id=' + chrome.runtime.id });
 });
 
+// Raccourcis vers les deux pages EVA les plus utiles pour déclencher une capture (le profil
+// pour les stats de saison, l'historique pour les parties) — évite d'avoir à naviguer
+// manuellement sur le site pour relancer un import.
+document.getElementById('openProfileBtn').addEventListener('click', () => {
+  chrome.tabs.create({ url: 'https://app.eva.gg/profile' });
+});
+document.getElementById('openHistoryBtn').addEventListener('click', () => {
+  chrome.tabs.create({ url: 'https://app.eva.gg/fr-FR/profile/history' });
+});
+
 async function refresh() {
   renderStatus(await getConfig());
 }

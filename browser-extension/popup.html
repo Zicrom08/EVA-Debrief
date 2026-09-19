@@ -58,6 +58,16 @@
     background: #ff5c69;
     color: #0b0f18;
   }
+  .nav-buttons {
+    display: flex;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .nav-buttons button {
+    background: #232a3a;
+    color: #e8ecf5;
+    font-weight: 500;
+  }
 </style>
 </head>
 <body>
@@ -71,6 +81,10 @@
   <div id="pushStatus"></div>
   <button id="linkBtn">Lier ce compte EVA-Debrief</button>
   <div id="linkStatus"></div>
+  <div class="nav-buttons">
+    <button id="openProfileBtn">👤 Profil EVA</button>
+    <button id="openHistoryBtn">📜 Historique EVA</button>
+  </div>
   <script src="popup.js" type="module"></script>
 </body>
 </html>

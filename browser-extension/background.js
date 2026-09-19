@@ -57,33 +57,18 @@ function setLastPushStatus(status) {
 }
 
 // Notification navigateur distincte pour chaque type d'import terminé (profil / parties) —
-// demandé explicitement pour que l'utilisateur soit informé sans avoir à ouvrir le popup de
-// l'extension pour le savoir. Une seule par type, déclenchée uniquement quand quelque chose a
-// vraiment été ajouté (jamais à chaque capture, voir l'appel dans handleCapture ci-dessous, qui
-// se base sur addedGames/addedStats renvoyés par le serveur — pas sur la simple présence de
-// nodes/playerStats dans la requête, qui peut très bien ne rien contenir de nouveau, ex:
-// re-parcourir des pages déjà capturées).
+// tentative EN PLUS de l'encart dans la page (sendToast ci-dessous, canal principal — voir
+// handleCapture), au cas où les notifications système fonctionnent réellement chez cet
+// utilisateur. Déclenchée uniquement quand quelque chose a vraiment été ajouté (jamais à
+// chaque capture, basé sur addedGames/addedStats renvoyés par le serveur — pas sur la simple
+// présence de nodes/playerStats dans la requête, qui peut très bien ne rien contenir de
+// nouveau, ex: re-parcourir des pages déjà capturées).
 function notify(id, title, message) {
   chrome.notifications.create(id, {
     type: 'basic',
     iconUrl: 'icons/icon128.png',
     title,
     message,
-  });
-}
-
-// chrome.notifications.getPermissionLevel() ne reflète QUE la permission Chrome/site pour cette
-// extension — jamais un blocage au niveau de Windows lui-même (notifications désactivées pour
-// Chrome dans les paramètres système, mode Assistant de concentration...), qu'aucune extension
-// ne peut détecter par API. C'est néanmoins le seul signal programmatique disponible : "denied"
-// bascule sur le petit encart affiché directement dans la page (voir showToast dans
-// content-isolated.js) plutôt que de compter sur une notification système qui ne partirait de
-// toute façon jamais. Un blocage purement Windows (permission Chrome restée "granted" mais
-// notification silencieusement avalée par l'OS) reste indétectable et continuera donc à
-// utiliser les notifications système — aucun moyen ici de faire mieux.
-function notificationsAllowed() {
-  return new Promise((resolve) => {
-    chrome.notifications.getPermissionLevel((level) => resolve(level === 'granted'));
   });
 }
 
@@ -97,6 +82,64 @@ function sendToast(tabId, toast) {
   chrome.tabs.sendMessage(tabId, { type: 'EVA_DEBRIEF_TOAST', ...toast }, () => {
     void chrome.runtime.lastError;
   });
+}
+
+// ---------------------------------------------------------------------------
+// Regroupement des captures rapprochées dans le temps (voir handleCapture) : la pagination
+// automatique de l'historique (AUTO_PAGE_DELAY_MS = 600ms dans content-main-world.js) déclenche
+// un handleCapture()/push séparé par page, jusqu'à 60 pour une saison complète — sans
+// regroupement, "Import en cours" / "Import terminé" clignotait à chaque page (signalé en
+// pratique). Un seul cycle par onglet : "en cours" affiché à la toute première capture d'un
+// lot, totaux accumulés au fil des pushes, "terminé" annoncé seulement FLUSH_DELAY_MS après la
+// DERNIÈRE réponse reçue (le minuteur est reposé à chaque réponse, pas seulement au début) —
+// largement au-dessus de l'intervalle de pagination pour absorber toute une rafale de pages
+// dans un seul cycle, sans pour autant faire attendre inutilement un import isolé.
+// ---------------------------------------------------------------------------
+const FLUSH_DELAY_MS = 2000;
+const pendingByTab = new Map(); // tabId -> { games, stats, sawError, timer }
+
+function ensurePending(tabId) {
+  let p = pendingByTab.get(tabId);
+  if (!p) {
+    p = { games: 0, stats: 0, sawError: false, timer: null };
+    pendingByTab.set(tabId, p);
+    sendToast(tabId, { kind: 'info', title: 'EVA-Debrief', message: 'Import en cours…', sticky: true });
+  }
+  return p;
+}
+
+function scheduleFinish(tabId, pending) {
+  clearTimeout(pending.timer);
+  pending.timer = setTimeout(() => finishPending(tabId), FLUSH_DELAY_MS);
+}
+
+// Affiche les messages en séquence (jamais simultanément) plutôt que de laisser le second
+// écraser instantanément le premier — un seul encart à la fois côté page (voir showToast dans
+// content-isolated.js), donc parties et profil peuvent tout à fait se conclure au même moment
+// (ex: une page qui déclenche les deux requêtes) sans que l'un des deux messages ne soit jamais
+// visible.
+function finishPending(tabId) {
+  const p = pendingByTab.get(tabId);
+  if (!p) return;
+  pendingByTab.delete(tabId);
+
+  const toasts = [];
+  if (p.games > 0) {
+    const msg = `Import des parties terminé : ${p.games} nouvelle(s) partie(s) ajoutée(s).`;
+    toasts.push({ kind: 'success', title: 'EVA-Debrief', message: msg });
+    notify('eva-debrief-games', 'EVA-Debrief', msg);
+  }
+  if (p.stats > 0) {
+    const msg = 'Statistiques de profil mises à jour.';
+    toasts.push({ kind: 'success', title: 'EVA-Debrief', message: msg });
+    notify('eva-debrief-stats', 'EVA-Debrief', msg);
+  }
+  if (!toasts.length) {
+    toasts.push(p.sawError
+      ? { kind: 'error', title: 'EVA-Debrief', message: "Échec de l'import — voir la console de l'extension (clic droit sur l'icône → Inspecter le service worker)." }
+      : { kind: 'info', title: 'EVA-Debrief', message: 'Import terminé — rien de nouveau à ajouter.' });
+  }
+  toasts.forEach((t, i) => setTimeout(() => sendToast(tabId, t), i * 3500));
 }
 
 async function handleCapture({ nodes, playerStats }, tabId) {
@@ -117,16 +160,12 @@ async function handleCapture({ nodes, playerStats }, tabId) {
   if (!hasPerm) {
     console.error('[EVA-Debrief] Permission de site non accordée pour', originPattern, '— va dans chrome://extensions → cette extension → Détails → "Accès aux sites" → "Sur tous les sites".');
     setLastPushStatus({ ok: false, permissionMissing: true, origin: originPattern });
+    sendToast(tabId, { kind: 'error', title: 'EVA-Debrief', message: "Permission de site manquante — voir chrome://extensions → Détails → \"Accès aux sites\"." });
     return;
   }
 
-  // Notifications système bloquées (voir notificationsAllowed() ci-dessus) : tout le cycle de
-  // vie de cet import (en cours -> terminé/échec) passe par le petit encart dans la page plutôt
-  // que par les notifications système ci-dessous, dont on sait déjà qu'elles ne partiront pas.
-  // "En cours" n'a de sens qu'en secours ici : pas l'équivalent côté notification système,
-  // ça n'apporterait rien d'utile en plus des notifications ponctuelles déjà en place.
-  const useToast = !(await notificationsAllowed());
-  if (useToast) sendToast(tabId, { kind: 'info', title: 'EVA-Debrief', message: 'Import en cours…', sticky: true });
+  const pending = ensurePending(tabId);
+  scheduleFinish(tabId, pending);
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 15000);
@@ -142,29 +181,25 @@ async function handleCapture({ nodes, playerStats }, tabId) {
     if (!res.ok) {
       console.warn('[EVA-Debrief] Échec du push, HTTP', res.status, body);
       setLastPushStatus({ ok: false, httpStatus: res.status });
-      if (useToast) sendToast(tabId, { kind: 'error', title: 'EVA-Debrief', message: `Échec de l'import (HTTP ${res.status}).` });
+      pending.sawError = true;
       return;
     }
-    const added = (body.addedGames || 0) + (body.addedStats || 0);
-    if (added === 0) {
+    if ((body.addedGames || 0) + (body.addedStats || 0) === 0) {
       console.warn('[EVA-Debrief] Push accepté mais rien de nouveau ajouté :', body);
-      if (useToast) sendToast(tabId, { kind: 'info', title: 'EVA-Debrief', message: 'Import terminé — rien de nouveau à ajouter.' });
     }
-    if (body.addedGames > 0) {
-      if (useToast) sendToast(tabId, { kind: 'success', title: 'EVA-Debrief', message: `Import des parties terminé : ${body.addedGames} nouvelle(s) partie(s) ajoutée(s).` });
-      else notify('eva-debrief-games', 'EVA-Debrief', `Import des parties terminé : ${body.addedGames} nouvelle(s) partie(s) ajoutée(s).`);
-    }
-    if (body.addedStats > 0) {
-      if (useToast) sendToast(tabId, { kind: 'success', title: 'EVA-Debrief', message: `Import du profil terminé : ${body.addedStats} profil(s) capturé(s) ajouté(s).` });
-      else notify('eva-debrief-stats', 'EVA-Debrief', `Import du profil terminé : ${body.addedStats} profil(s) capturé(s) ajouté(s).`);
-    }
+    pending.games += body.addedGames || 0;
+    pending.stats += body.addedStats || 0;
     setLastPushStatus({ ok: true, addedGames: body.addedGames || 0, addedStats: body.addedStats || 0 });
   } catch (e) {
     console.warn('[EVA-Debrief] Échec du push (réseau/délai dépassé) :', e.message);
     setLastPushStatus({ ok: false, error: e.message });
-    if (useToast) sendToast(tabId, { kind: 'error', title: 'EVA-Debrief', message: `Échec de l'import : ${e.message}` });
+    pending.sawError = true;
   } finally {
     clearTimeout(timeoutId);
+    // Reposé après la réponse (ou l'échec) de CETTE requête, pas seulement au début — sinon le
+    // minuteur posé au tout premier "en cours" pourrait expirer pendant qu'une page de
+    // pagination est encore en vol.
+    scheduleFinish(tabId, pending);
   }
 }
 
