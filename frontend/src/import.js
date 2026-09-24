@@ -1,7 +1,7 @@
 import { state } from './state.js';
 import { apiSend, loadFromServer } from './api.js';
 import { persistUiPrefs } from './ui-prefs.js';
-import { ensureModeDefaults } from './game-filters.js';
+import { ensureFilterDefaults } from './game-filters.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 import { activateTab } from './tabs.js';
@@ -65,7 +65,7 @@ async function finalizeImport() {
     return;
   }
   if (Object.keys(state.gamesById).length === 0 && Object.keys(state.playerStatsSnapshots).length === 0) return;
-  ensureModeDefaults();
+  ensureFilterDefaults();
   rebuildPlayerIndex();
   persistUiPrefs();
   showApp();

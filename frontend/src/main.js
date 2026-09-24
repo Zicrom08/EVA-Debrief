@@ -33,7 +33,8 @@
 import { state } from './state.js';
 import { restoreUiPrefs, persistUiPrefs } from './ui-prefs.js';
 import { loadFromServer, getMe } from './api.js';
-import { ensureModeDefaults } from './game-filters.js';
+import { ensureFilterDefaults } from './game-filters.js';
+import { computeSeasons } from './seasons.js';
 import { rebuildPlayerIndex } from './player-index.js';
 import { showApp } from './shell.js';
 import { renderImportTokenPanel } from './import-token.js';
@@ -64,7 +65,24 @@ import './changelog.js';
   // JSON manuel pour "débloquer" l'écran normal (showApp()).
   renderImportTokenPanel();
   if (Object.keys(state.gamesById).length > 0 || Object.keys(state.playerStatsSnapshots).length > 0) {
-    ensureModeDefaults();
+    ensureFilterDefaults();
+    // Filtre de saison par défaut : la plus récente connue plutôt que "Toutes les saisons",
+    // pour que l'app représente les parties compétitives récentes par défaut (même intention
+    // que ensureFilterDefaults() ci-dessus pour les cartes/modes). selectedSeasonId n'est pas
+    // persisté (voir ui-prefs.js) : ce choix est donc réappliqué à chaque chargement complet de
+    // la page, pas seulement à la toute première visite — l'utilisateur reste libre de changer
+    // de saison ensuite via le sélecteur, pour la durée de cette visite.
+    const seasons = computeSeasons();
+    if (seasons.length) {
+      const latest = seasons[seasons.length - 1];
+      state.selectedSeasonId = latest.seasonId;
+      state.dateRangeStart = latest.startTs;
+      state.dateRangeEnd = latest.endTs;
+      // Le bouton "Tout" démarre "active" dans le HTML statique (voir index.html) — sans ça, il
+      // resterait visuellement actif en même temps que la saison réellement sélectionnée dans
+      // le menu déroulant juste à côté (voir renderSeasonFilterOptions() dans filters-ui.js).
+      document.querySelectorAll('.range-presets button').forEach(b => b.classList.remove('active'));
+    }
     rebuildPlayerIndex();
     persistUiPrefs();
     showApp();

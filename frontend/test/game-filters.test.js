@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { state } from '../src/state.js';
-import { inDateRange, gameInSelectedRange, isMapExcluded, isModeExcluded, filteredGamesArray, gameMatchesComposition } from '../src/game-filters.js';
+import { inDateRange, gameInSelectedRange, isMapExcluded, isModeExcluded, filteredGamesArray, gameMatchesComposition, ensureFilterDefaults } from '../src/game-filters.js';
 
 function resetState() {
   state.gamesById = {};
@@ -10,6 +10,8 @@ function resetState() {
   state.selectedSeasonId = null;
   state.excludedMaps = new Set();
   state.excludedModes = new Set();
+  state.knownModes = new Set();
+  state.knownMaps = new Set();
 }
 
 test('inDateRange respects both bounds; no bound set = unrestricted', () => {
@@ -116,4 +118,36 @@ test('gameMatchesComposition never treats two unknown teams as a match (the clas
   ] };
   assert.equal(gameMatchesComposition(g, 'me', new Set(['a']), new Set()), false);
   assert.equal(gameMatchesComposition(g, 'me', new Set(), new Set(['a'])), false);
+});
+
+test('ensureFilterDefaults excludes every mode except Domination/Hardpoint, and Bastion/Coliseum/The Rock, the first time each appears', () => {
+  resetState();
+  state.gamesById = {
+    g1: { mode: { identifier: 'Domination', category: 'Pvp' }, map: { name: 'Ceres' } },
+    g2: { mode: { identifier: 'Hardpoint', category: 'Pvp' }, map: { name: 'Bastion' } },
+    g3: { mode: { identifier: 'TeamDeathmatch', category: 'Pvp' }, map: { name: 'Coliseum' } },
+    g4: { mode: { identifier: 'MoonOfTheDead', category: 'Pve' }, map: { name: 'The Rock' } },
+  };
+  const changed = ensureFilterDefaults();
+  assert.equal(changed, true);
+  assert.equal(state.excludedModes.has('Domination'), false);
+  assert.equal(state.excludedModes.has('Hardpoint'), false);
+  assert.equal(state.excludedModes.has('TeamDeathmatch'), true); // Pvp mais ni Domination ni Hardpoint
+  assert.equal(state.excludedModes.has('MoonOfTheDead'), true); // non-Pvp
+  assert.equal(state.excludedMaps.has('Ceres'), false); // pas dans la liste des cartes hors rotation compétitive
+  assert.equal(state.excludedMaps.has('Bastion'), true);
+  assert.equal(state.excludedMaps.has('Coliseum'), true);
+  assert.equal(state.excludedMaps.has('The Rock'), true);
+});
+
+test('ensureFilterDefaults never re-touches a mode/map already seen once, even if the user re-included it manually', () => {
+  resetState();
+  state.gamesById = { g1: { mode: { identifier: 'TeamDeathmatch', category: 'Pvp' }, map: { name: 'Bastion' } } };
+  ensureFilterDefaults(); // première apparition : exclus par défaut
+  state.excludedModes.delete('TeamDeathmatch'); // l'utilisateur les réintègre manuellement
+  state.excludedMaps.delete('Bastion');
+  const changedAgain = ensureFilterDefaults(); // même partie encore présente, rien de nouveau
+  assert.equal(changedAgain, false);
+  assert.equal(state.excludedModes.has('TeamDeathmatch'), false);
+  assert.equal(state.excludedMaps.has('Bastion'), false);
 });

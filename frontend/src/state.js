@@ -30,9 +30,10 @@ export const state = {
   dateRangeStart: null,       // timestamp (ms) ou null = pas de borne
   dateRangeEnd: null,         // timestamp (ms) ou null = pas de borne
   selectedSeasonId: null,     // seasonId choisi dans le filtre de saison, ou null = "Toutes les saisons"
-  excludedMaps: new Set(),    // noms de cartes à exclure de toutes les analyses (ex: cartes mal étiquetées)
-  excludedModes: new Set(),   // identifiants de mode à exclure (ex: modes PvE qui réutilisent un nom de carte PvP)
-  knownModes: new Set(),      // modes déjà vus au moins une fois (pour n'appliquer le défaut auto-exclusion qu'une fois)
+  excludedMaps: new Set(),    // noms de cartes à exclure de toutes les analyses (ex: cartes mal étiquetées, cartes hors rotation compétitive)
+  excludedModes: new Set(),   // identifiants de mode à exclure (ex: modes PvE qui réutilisent un nom de carte PvP, modes PvP hors Domination/Hardpoint)
+  knownModes: new Set(),      // modes déjà vus au moins une fois (pour n'appliquer le défaut auto-exclusion qu'une fois, voir ensureFilterDefaults() dans game-filters.js)
+  knownMaps: new Set(),       // cartes déjà vues au moins une fois (même principe que knownModes)
   customTeams: {},            // teamId -> { id, name, members:[uid,...] } — équipes créées manuellement par l'utilisateur
   importEnabled: true,        // coupure d'urgence admin (voir /api/settings, backend/server.js::requireImportEnabled()) — rechargé à chaque loadFromServer()
   matchGroups: {},            // groupId -> { id, name, gameIds:[...], createdAt } — groupes de parties (training/scrim) privés au compte connecté, voir game-groups.js

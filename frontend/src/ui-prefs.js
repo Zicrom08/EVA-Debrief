@@ -36,6 +36,7 @@ export function persistUiPrefs() {
       excludedMaps: Array.from(state.excludedMaps),
       excludedModes: Array.from(state.excludedModes),
       knownModes: Array.from(state.knownModes),
+      knownMaps: Array.from(state.knownMaps),
       teamAId: state.teamAId, teamBId: state.teamBId, profileCompareUid: state.profileCompareUid,
     }));
     state.storageAvailable = true;
@@ -56,6 +57,7 @@ export function restoreUiPrefs() {
     state.excludedMaps = new Set(saved.excludedMaps || []);
     state.excludedModes = new Set(saved.excludedModes || []);
     state.knownModes = new Set(saved.knownModes || []);
+    state.knownMaps = new Set(saved.knownMaps || []);
     state.teamAId = saved.teamAId || null;
     state.teamBId = saved.teamBId || null;
     state.profileCompareUid = saved.profileCompareUid || null;

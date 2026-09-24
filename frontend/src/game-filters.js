@@ -81,24 +81,53 @@ export function sortedGames() {
     .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
+// Modes/cartes du matchmaking compétitif standard — tout le reste est exclu par défaut à sa
+// PREMIÈRE apparition seulement (voir knownModes/knownMaps ci-dessous), pour que les analyses
+// représentent les parties compétitives par défaut sans empêcher l'utilisateur de réintégrer
+// manuellement un mode/une carte ensuite (panneau d'exclusion cartes/modes) — un mode/une carte
+// déjà vu(e) une fois n'est plus jamais retouché(e) automatiquement, même si son statut par
+// défaut changeait plus tard.
+const DEFAULT_INCLUDED_MODES = ['Domination', 'Hardpoint'];
+const DEFAULT_EXCLUDED_MAPS = ['Bastion', 'Coliseum', 'The Rock'];
+
 // Certains modes (ex: "Moon of the Dead", un mode PvE en co-op contre des vagues d'ennemis)
 // réutilisent le même nom de carte qu'un mode PvP classique (ex: "Ceres"), ce qui rend le
-// filtre par carte insuffisant pour les séparer. On les distingue donc par mode de jeu, et on
-// exclut automatiquement les modes non-PvP (catégorie différente de "Pvp") la première fois
-// qu'ils apparaissent, car leur structure de score (équipe unique, vagues, etc.) n'est pas
-// comparable aux parties PvP Alliance/Rebels. L'utilisateur peut les réintégrer manuellement.
-export function ensureModeDefaults() {
-  const seen = new Map(); // identifier -> category
+// filtre par carte insuffisant pour les séparer — on les distingue donc par mode de jeu. Un
+// mode non-PvP (catégorie différente de "Pvp") est toujours exclu d'office (structure de score
+// non comparable aux parties PvP Alliance/Rebels) ; parmi les modes PvP, seuls Domination et
+// Hardpoint (DEFAULT_INCLUDED_MODES ci-dessus) restent inclus par défaut, les autres (Team
+// Deathmatch, Free For All, Skirmish, Gun Game...) étant moins représentatifs du jeu
+// compétitif standard. Même logique pour les cartes hors rotation compétitive
+// (DEFAULT_EXCLUDED_MAPS). L'utilisateur peut réintégrer/exclure manuellement n'importe quel
+// mode ou carte ensuite (panneau d'exclusion) — cette fonction ne fait que poser un point de
+// départ raisonnable la première fois que chacun apparaît.
+export function ensureFilterDefaults() {
+  const seenModes = new Map(); // identifier -> category
+  const seenMaps = new Set();
   Object.values(state.gamesById).forEach(g => {
     const id = g.mode && g.mode.identifier;
     const cat = g.mode && g.mode.category;
-    if (id && !seen.has(id)) seen.set(id, cat);
+    if (id && !seenModes.has(id)) seenModes.set(id, cat);
+    const mapName = g.map && g.map.name;
+    if (mapName) seenMaps.add(mapName);
   });
   let changed = false;
-  seen.forEach((cat, id) => {
+  seenModes.forEach((cat, id) => {
     if (!state.knownModes.has(id)) {
       state.knownModes.add(id);
-      if (cat && cat !== 'Pvp') { state.excludedModes.add(id); changed = true; }
+      if ((cat && cat !== 'Pvp') || !DEFAULT_INCLUDED_MODES.includes(id)) {
+        state.excludedModes.add(id);
+        changed = true;
+      }
+    }
+  });
+  seenMaps.forEach(name => {
+    if (!state.knownMaps.has(name)) {
+      state.knownMaps.add(name);
+      if (DEFAULT_EXCLUDED_MAPS.includes(name)) {
+        state.excludedMaps.add(name);
+        changed = true;
+      }
     }
   });
   return changed;

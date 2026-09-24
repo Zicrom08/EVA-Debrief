@@ -110,7 +110,11 @@ export function renderMapExcludePanel() {
 
   panel.innerHTML = `
     <div style="width:100%;">
-      <div class="map-exclude-hint" style="margin-bottom:8px;"><strong style="color:var(--text);">Cartes</strong> — décoche pour exclure de toutes les analyses.</div>
+      <div class="map-exclude-hint" style="margin-bottom:8px;">
+        <strong style="color:var(--text);">Cartes</strong> — décoche pour exclure de toutes les analyses.
+        Bastion, Coliseum et The Rock sont exclues automatiquement à leur première apparition
+        (hors rotation compétitive standard).
+      </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
         ${mapNames.map(name => `
           <label class="map-chip ${state.excludedMaps.has(name) ? 'excluded' : ''}">
@@ -122,7 +126,8 @@ export function renderMapExcludePanel() {
       <div class="map-exclude-hint" style="margin-bottom:8px;">
         <strong style="color:var(--text);">Modes de jeu</strong> — utile quand un mode PvE (co-op contre des vagues, etc.)
         réutilise le nom d'une carte PvP : décoche le <em>mode</em> plutôt que la carte pour ne retirer que ces parties-là.
-        Les modes non-PvP sont exclus automatiquement à leur première apparition.
+        Les modes non-PvP, ainsi que tout mode PvP autre que Domination/Hardpoint, sont exclus
+        automatiquement à leur première apparition (compétition standard).
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">
         ${modeEntries.map(([id, cat]) => `

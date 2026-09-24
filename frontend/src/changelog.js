@@ -4,6 +4,9 @@
 // corrections de bugs internes à l'extension navigateur... n'y ont pas leur place). Mettre à
 // jour cette liste après chaque changement notable pour quelqu'un qui UTILISE l'app.
 export const CHANGELOG = [
+  { date: '2026-09-24', items: [
+    "Filtres par défaut resserrés sur le compétitif : la dernière saison est sélectionnée automatiquement, et seuls les modes Domination/Hardpoint et les cartes de la rotation compétitive standard sont pris en compte (réintégrables à tout moment depuis « Cartes & modes »).",
+  ]},
   { date: '2026-09-19', items: [
     "Corrige un ralentissement/blocage du site pour tout le monde pendant qu'une grosse partie de l'historique était importée.",
     "L'extension navigateur bloque désormais l'import et affiche un message si une nouvelle version est disponible, pour ne jamais pousser de données avec une version obsolète sans le savoir.",
