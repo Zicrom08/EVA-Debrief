@@ -58,6 +58,20 @@ export async function setDefaultPlayer(uid) {
   return apiSend('PUT', '/api/me/default-player', { uid });
 }
 
+// Changement de son propre mot de passe (voir PUT /api/me/password côté serveur, ouvert à
+// tous les rôles contrairement à PUT /api/users/:id qui réinitialise le mot de passe d'un
+// AUTRE compte, admin uniquement). Le serveur ferme la session courante après succès — voir
+// mon-compte.js pour la redirection vers /login.html qui suit.
+export async function changeMyPassword(currentPassword, newPassword) {
+  return apiSend('PUT', '/api/me/password', { currentPassword, newPassword });
+}
+
+// Suppression de son propre compte (voir DELETE /api/me côté serveur, ouvert à tous les
+// rôles contrairement à DELETE /api/users/:id qui refuse justement l'auto-suppression).
+export async function deleteMyAccount(password) {
+  return apiSend('DELETE', '/api/me', { password });
+}
+
 // Recharge state.gamesById / state.playerStatsSnapshots / state.customTeams / state.matchGroups / state.playerLinks / state.playerNames depuis le serveur.
 // C'est la SEULE source de vérité pour ces données — après un import, on ne fusionne
 // jamais localement : on redemande l'état complet au serveur pour être sûr d'avoir

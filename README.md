@@ -535,6 +535,16 @@ passe), chacun avec un rôle :
 - **readonly** (lecture seule) — consultation uniquement : import, équipes,
   groupes de parties, reset et gestion des comptes sont tous bloqués.
 
+Quel que soit le rôle, chaque compte gère les siennes propres depuis l'onglet
+"Mon compte" (toujours visible, contrairement à "Comptes") : changer son mot
+de passe ou supprimer définitivement son propre compte — les deux exigent de
+resaisir le mot de passe actuel, et changent/suppriment n'importe quelle
+session ouverte sur ce compte (y compris celle en cours, qui est donc
+déconnectée juste après). Distinct de l'onglet "Comptes" (admin uniquement,
+gère TOUS les comptes) : `PUT /api/users/:id`/`DELETE /api/users/:id`
+refusent explicitement qu'un admin s'applique ces actions à lui-même — c'est
+précisément ce que couvrent `PUT /api/me/password`/`DELETE /api/me`.
+
 Les **groupes de parties** (training/scrim, voir [Fonctionnalités](#fonctionnalités))
 sont un cas à part dans ce modèle de rôles : ils ne sont pas seulement
 réservés à un rôle, ils sont **strictement privés au compte qui les a créés**

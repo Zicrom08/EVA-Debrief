@@ -361,6 +361,51 @@ app.put('/api/me/default-player', (req, res) => {
   res.json({ defaultPlayerUid: user.defaultPlayerUid });
 });
 
+// Changement de son propre mot de passe — ouvert à TOUS les rôles (contrairement à
+// PUT /api/users/:id, réservé aux admins et utilisé pour réinitialiser le mot de passe d'un
+// AUTRE compte). Exige le mot de passe actuel : sans ça, une session laissée ouverte sur un
+// poste partagé suffirait à en prendre le contrôle définitif. destroySessionsForUser() ferme
+// aussi la session courante (même politique qu'un admin qui change le mot de passe de
+// quelqu'un, voir PUT /api/users/:id) — le frontend doit renvoyer vers /login.html ensuite.
+app.put('/api/me/password', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  const user = db.getUserById(req.user.userId);
+  if (!user) return res.status(401).json({ error: 'Authentification requise.' });
+  const { currentPassword, newPassword } = req.body || {};
+  if (!auth.verifyPassword(currentPassword, user.passwordSalt, user.passwordHash)) {
+    return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
+  }
+  if (!newPassword || String(newPassword).length < 8) {
+    return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 8 caractères.' });
+  }
+  const { salt, hash } = auth.hashPassword(newPassword);
+  db.updateUser(user.id, { passwordSalt: salt, passwordHash: hash });
+  auth.destroySessionsForUser(user.id);
+  res.json({ ok: true });
+});
+
+// Suppression de son propre compte — ouvert à TOUS les rôles, contrairement à
+// DELETE /api/users/:id (admin uniquement) qui refuse justement explicitement l'auto-
+// suppression (voir plus bas) puisqu'elle passe ici. Même garde-fou "dernier admin" que la
+// route admin, et même exigence de mot de passe que le changement de mot de passe ci-dessus
+// (une session ouverte sur un poste partagé ne doit pas suffire à supprimer le compte).
+app.delete('/api/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Authentification requise.' });
+  const user = db.getUserById(req.user.userId);
+  if (!user) return res.status(401).json({ error: 'Authentification requise.' });
+  const { password } = req.body || {};
+  if (!auth.verifyPassword(password, user.passwordSalt, user.passwordHash)) {
+    return res.status(401).json({ error: 'Mot de passe incorrect.' });
+  }
+  if (user.role === 'admin' && db.countAdmins() <= 1) {
+    return res.status(400).json({ error: 'Impossible de supprimer le dernier compte administrateur.' });
+  }
+  db.deleteUser(user.id);
+  db.deleteGroupsForUser(user.id);
+  auth.destroySessionsForUser(user.id);
+  res.json({ ok: true });
+});
+
 // Autorise l'import de données aux rôles admin et contributor — seul readonly
 // est bloqué ici (contrairement aux équipes/reset, réservés à admin seul). Aussi utilisée par
 // /api/import-token et /api/game-groups, qui ne déclenchent aucun import eux-mêmes (gestion du

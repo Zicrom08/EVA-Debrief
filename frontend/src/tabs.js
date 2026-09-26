@@ -4,6 +4,7 @@ import { renderProfil } from './profil/index.js';
 import { renderComparatif } from './comparatif.js';
 import { renderEquipes } from './equipes.js';
 import { renderComptes } from './comptes.js';
+import { renderMonCompte } from './mon-compte.js';
 import { renderImportTokenPanel } from './import-token.js';
 
 // ================= TABS =================
@@ -19,6 +20,7 @@ export function activateTab(tab) {
   if (tab === 'comparatif') renderComparatif();
   if (tab === 'equipes') renderEquipes();
   if (tab === 'comptes') renderComptes();
+  if (tab === 'moncompte') renderMonCompte();
   if (tab === 'import') renderImportTokenPanel();
 }
 

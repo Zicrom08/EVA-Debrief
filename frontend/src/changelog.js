@@ -4,6 +4,9 @@
 // corrections de bugs internes à l'extension navigateur... n'y ont pas leur place). Mettre à
 // jour cette liste après chaque changement notable pour quelqu'un qui UTILISE l'app.
 export const CHANGELOG = [
+  { date: '2026-09-26', items: [
+    "Nouvel onglet « Mon compte », accessible à tous les rôles : chacun peut désormais changer son propre mot de passe ou supprimer son propre compte, sans dépendre d'un admin.",
+  ]},
   { date: '2026-09-24', items: [
     "Filtres par défaut resserrés sur le compétitif : la dernière saison est sélectionnée automatiquement, et seuls les modes Domination/Hardpoint et les cartes de la rotation compétitive standard sont pris en compte (réintégrables à tout moment depuis « Cartes & modes »).",
   ]},
