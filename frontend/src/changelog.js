@@ -5,6 +5,7 @@
 // jour cette liste après chaque changement notable pour quelqu'un qui UTILISE l'app.
 export const CHANGELOG = [
   { date: '2026-09-26', items: [
+    "Corrige la correction manuelle Victoire/Défaite (onglet Comptes) qui proposait à tort les parties FreeForAll (un seul nom d'équipe « FFA » pour tout le roster, jamais résoluble en deux équipes) et échouait systématiquement au clic.",
     "Nouvel onglet « Mon compte », accessible à tous les rôles : chacun peut désormais changer son propre mot de passe ou supprimer son propre compte, sans dépendre d'un admin.",
   ]},
   { date: '2026-09-24', items: [

@@ -161,6 +161,27 @@ test('getGamesNeedingTeamNames lists only games with a known score but still-unr
   assert.equal(entry.teamTwoScore, 0);
 });
 
+// Bug réel signalé : une partie FreeForAll (Coliseum) apparaissait dans le panneau admin
+// avec un seul bouton "FFA" (tout le roster partage ce même nom d'équipe unique, comme les
+// modes PvE) qui échouait systématiquement en PUT /api/games/:id/team-names (aucune paire de
+// deux noms distincts à lui opposer) — ce mode n'a structurellement pas de dichotomie à deux
+// équipes, il ne doit donc même pas être proposé à la correction.
+test('getGamesNeedingTeamNames excludes a single-team roster (FreeForAll/"FFA") — never resolvable as two team names', () => {
+  db.upsertGame({
+    id: 'g2f',
+    createdAt: '2026-03-02T21:07:00Z',
+    map: { name: 'Coliseum' },
+    mode: { identifier: 'FreeForAll' },
+    data: { teamOne: { name: null, score: 100 }, teamTwo: { name: null, score: 0 } },
+    players: [
+      { userId: 'u1', data: { team: 'FFA', outcome: null } },
+      { userId: 'u2', data: { team: 'FFA', outcome: null } },
+      { userId: 'u3', data: { team: 'FFA', outcome: null } },
+    ],
+  });
+  assert.ok(!db.getGamesNeedingTeamNames().some(g => g.id === 'g2f'));
+});
+
 test('setGameTeamNames applies an admin correction and re-derives outcomes immediately', () => {
   const g = db.setGameTeamNames('g2e', 'BONOBO', 'AFK');
   assert.equal(g.data.teamOne.name, 'BONOBO');

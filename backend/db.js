@@ -508,19 +508,30 @@ module.exports = {
   // à charge pour l'admin de dire lequel est teamOne.
   getGamesNeedingTeamNames() {
     return Object.values(state.games)
-      .filter(g => {
+      .map(g => {
         const t1 = g.data && g.data.teamOne, t2 = g.data && g.data.teamTwo;
-        return t1 && t2 && t1.score != null && t2.score != null && (t1.name == null || t2.name == null);
+        if (!(t1 && t2 && t1.score != null && t2.score != null && (t1.name == null || t2.name == null))) return null;
+        const rosterTeamNames = [...new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null))];
+        // Un mode sans opposition à deux équipes (ex: FreeForAll — tout le roster porte le
+        // même nom d'équipe "FFA", comme les modes PvE déjà exclus par isPveGame() dans
+        // server.js) ne peut structurellement PAS être résolu par ce mécanisme : il exige
+        // exactement deux noms distincts (voir la même contrainte dans
+        // PUT /api/games/:id/team-names). Sans ce garde-fou, ces parties apparaissaient dans
+        // le panneau admin avec un seul bouton ("FFA") qui échouait systématiquement à la
+        // validation côté serveur (bug signalé) puisqu'aucune paire de deux noms distincts
+        // n'existe à lui opposer.
+        if (rosterTeamNames.length !== 2) return null;
+        return {
+          id: g.id,
+          createdAt: g.createdAt,
+          map: g.map || null,
+          mode: g.mode || null,
+          teamOneScore: t1.score,
+          teamTwoScore: t2.score,
+          rosterTeamNames,
+        };
       })
-      .map(g => ({
-        id: g.id,
-        createdAt: g.createdAt,
-        map: g.map || null,
-        mode: g.mode || null,
-        teamOneScore: g.data.teamOne.score,
-        teamTwoScore: g.data.teamTwo.score,
-        rosterTeamNames: [...new Set((g.players || []).map(p => p.data && p.data.team).filter(t => t != null))],
-      }))
+      .filter(Boolean)
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   },
   // Correction manuelle admin : attribue les deux noms d'équipe réels (doivent correspondre
